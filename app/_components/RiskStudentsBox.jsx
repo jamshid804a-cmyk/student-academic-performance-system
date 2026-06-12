@@ -12,39 +12,37 @@ function Toast({ message }) {
 
 function RiskStudentsBox({ students }) {
   const [sentIds, setSentIds] = useState([])
-  const [sendingId, setSendingId] = useState(null) // Track which student is currently sending
+  const [sendingId, setSendingId] = useState(null)
   const [toast, setToast] = useState(null)
 
-  // Load sent IDs from localStorage on mount
   useEffect(() => {
     const saved = localStorage.getItem("academic_sent_ids")
-    if (saved) {
-      try {
-        setSentIds(JSON.parse(saved))
-      } catch (e) {
-        console.error("Failed to parse sentIds:", e)
-      }
-    }
+    if (saved) setSentIds(JSON.parse(saved))
   }, [])
 
-  // Improved risk detection
+  // ✅ FIXED: Convert strings to numbers
   const riskStudents = students?.filter(s => {
-    const gpa = parseFloat(s.gpa) || 0
-    const cgpa = parseFloat(s.cgpa) || 0
-    return (gpa < 2.5 && gpa !== 0) || (cgpa < 2.5 && cgpa !== 0)
+    const gpa = Number(s.gpa || 0);     // Convert string to number
+    const cgpa = Number(s.cgpa || 0);   // Convert string to number
+    const lowGpa = gpa < 2.5 && gpa !== 0
+    const lowCgpa = cgpa < 2.5 && cgpa !== 0
+    
+    if (lowGpa || lowCgpa) {
+      console.log(`⚠️ RISK STUDENT: ${s.name} (GPA: ${gpa}, CGPA: ${cgpa})`)
+    }
+    
+    return lowGpa || lowCgpa
   }) || []
 
-  const showToast = (msg, isError = false) => {
-    setToast({ message: msg, isError })
+  console.log("Total students:", students?.length, "At risk:", riskStudents.length)
+
+  const showToast = (msg) => {
+    setToast(msg)
     setTimeout(() => setToast(null), 3000)
   }
 
   const handleSend = async (student) => {
-    // Prevent multiple sends for the same student
-    if (sendingId === student.id) return
-    
     setSendingId(student.id)
-    
     try {
       const response = await fetch("/api/notifications", {
         method: "POST",
@@ -61,47 +59,34 @@ function RiskStudentsBox({ students }) {
       })
 
       if (response.ok) {
-        showToast(`✅ Notification sent to parent of ${student.name} successfully!`)
-        
-        // ✅ FIX: Add to sent IDs only after successful send
+        showToast(`Notification sent to parent of ${student.name} successfully!`)
         if (!sentIds.includes(student.id)) {
           const newSentIds = [...sentIds, student.id]
           setSentIds(newSentIds)
           localStorage.setItem("academic_sent_ids", JSON.stringify(newSentIds))
         }
       } else {
-        const errorData = await response.json()
-        showToast(`❌ Failed to send: ${errorData.message || "Try again"}`, true)
+        showToast("Failed to send. Try again.")
       }
     } catch (err) {
       console.error("Failed to send:", err)
-      showToast("❌ Network error. Failed to send notification.", true)
+      showToast("Failed to send notification. Try again.")
     } finally {
-      setSendingId(null) // ✅ Clear sending state
+      setSendingId(null)
     }
   }
 
   const handleClearCache = () => {
     localStorage.removeItem("academic_sent_ids")
     setSentIds([])
-    showToast("🗑️ Cache cleared! You can now resend to all students.")
+    showToast("Cache cleared - refresh the page")
   }
-
-  // Debug info
-  useEffect(() => {
-    if (students?.length > 0) {
-      console.log("=== Risk Box Status ===")
-      console.log("Total students:", students.length)
-      console.log("At risk students:", riskStudents.length)
-      console.log("Already sent IDs:", sentIds)
-    }
-  }, [students, riskStudents, sentIds])
 
   if (riskStudents.length === 0) {
     if (students?.length > 0) {
       return (
-        <div className='mb-5 p-4 bg-green-50 border border-green-200 rounded-lg'>
-          <p className='text-green-700'>✅ No at-risk students found. All students have CGPA/GPA above 2.5!</p>
+        <div className='mb-5 p-4 bg-yellow-50 border border-yellow-200 rounded-lg'>
+          <p className='text-yellow-700'>📊 No at-risk students found. All students have CGPA/GPA above 2.5!</p>
         </div>
       )
     }
@@ -110,13 +95,7 @@ function RiskStudentsBox({ students }) {
 
   return (
     <>
-      {toast && (
-        <div className={`fixed bottom-6 left-1/2 -translate-x-1/2 z-50 text-white text-sm font-semibold px-6 py-3 rounded-xl shadow-lg ${
-          toast.isError ? 'bg-red-600' : 'bg-green-600'
-        }`}>
-          {toast.message}
-        </div>
-      )}
+      {toast && <Toast message={toast} />}
 
       <div className='mb-5'>
         <div className='p-4 bg-red-50 border border-red-200 rounded-lg'>
@@ -129,18 +108,16 @@ function RiskStudentsBox({ students }) {
               onClick={handleClearCache}
               className='text-xs text-gray-400 hover:text-red-500 underline'
             >
-              Reset All Sent Status
+              Reset
             </button>
           </div>
 
           <div className='flex flex-col gap-3'>
             {riskStudents.map((student) => {
-              const gpa = parseFloat(student.gpa || 0)
-              const cgpa = parseFloat(student.cgpa || 0)
+              const gpa = Number(student.gpa || 0)
+              const cgpa = Number(student.cgpa || 0)
               const lowGpa = gpa < 2.5 && gpa !== 0
               const lowCgpa = cgpa < 2.5 && cgpa !== 0
-              const isSending = sendingId === student.id
-              const alreadySent = sentIds.includes(student.id)
 
               return (
                 <div key={student.id} className='bg-white border border-red-200 rounded-lg p-3'>
@@ -171,34 +148,12 @@ function RiskStudentsBox({ students }) {
                     </div>
                   </div>
 
-                  <div className='flex gap-2 flex-wrap mb-2'>
-                    {lowCgpa && (
-                      <span className='inline-flex items-center gap-1 bg-red-100 text-red-700 text-xs px-3 py-1 rounded-full border border-red-300'>
-                        ⚠️ Low CGPA
-                      </span>
-                    )}
-                    {lowGpa && (
-                      <span className='inline-flex items-center gap-1 bg-red-100 text-red-700 text-xs px-3 py-1 rounded-full border border-red-300'>
-                        ⚠️ Low GPA
-                      </span>
-                    )}
-                    {alreadySent && (
-                      <span className='inline-flex items-center gap-1 bg-green-100 text-green-700 text-xs px-3 py-1 rounded-full border border-green-300'>
-                        ✓ Already Sent
-                      </span>
-                    )}
-                  </div>
-
                   <button
                     onClick={() => handleSend(student)}
-                    disabled={isSending}
-                    className={`mt-3 w-full text-white text-sm font-semibold py-2 px-4 rounded-lg transition-all ${
-                      alreadySent 
-                        ? 'bg-blue-500 hover:bg-blue-600' 
-                        : 'bg-red-500 hover:bg-red-600'
-                    } disabled:opacity-50`}
+                    disabled={sendingId === student.id}
+                    className='mt-3 w-full bg-red-500 hover:bg-red-600 disabled:opacity-50 text-white text-sm font-semibold py-2 px-4 rounded-lg transition-all'
                   >
-                    {isSending ? "⏳ Sending..." : alreadySent ? "📱 Send Again to Parent" : "📱 Send to Parent"}
+                    {sendingId === student.id ? "Sending..." : "📱 Send to Parent"}
                   </button>
                 </div>
               )
