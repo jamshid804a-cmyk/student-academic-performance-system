@@ -6,13 +6,25 @@ import GlobalApi from '../_services/GlobalApi';
 import moment from 'moment';
 import StatusList from './_component/StatusList';
 import AttendanceChart from './_component/AttendanceChart';
+import RiskStudentsBox from '../../_components/RiskStudentsBox';  // ✅ Add this
 
 function Dashboard() {
   const [selectedMonth, setSelectedMonth] = useState()
   const [selectedGrade, setSelectedGrade] = useState()
   const [attendanceList, setAttendanceList] = useState([])
+  const [studentList, setStudentList] = useState([])  // ✅ Add this
 
-  // ✅ Restore from localStorage on page load
+  // ✅ Fetch students for academic risk box
+  useEffect(() => {
+    GlobalApi.GetAllStudents()
+      .then(resp => {
+        console.log("Students for risk box:", resp.data);
+        setStudentList(resp.data || []);
+      })
+      .catch(err => console.error("Error fetching students:", err));
+  }, []);
+
+  // Restore from localStorage on page load
   useEffect(() => {
     if (typeof window === 'undefined') return
     const savedMonth = localStorage.getItem('dashboard_month')
@@ -24,7 +36,7 @@ function Dashboard() {
     if (savedGrade) setSelectedGrade(savedGrade)
   }, [])
 
-  // ✅ Fetch when month or grade changes
+  // Fetch when month or grade changes
   useEffect(() => {
     if (selectedMonth && selectedGrade) {
       getStudentAttendance()
@@ -59,8 +71,11 @@ function Dashboard() {
 
   return (
     <div className='p-10'>
-      <div className='flex items-center justify-between'>
-        <h2 className='font-bold text-2xl'>Dashboard</h2>
+      {/* ✅ ACADEMIC RISK BOX - Shows at top of dashboard */}
+      <RiskStudentsBox students={studentList} />
+
+      <div className='flex items-center justify-between mt-5'>
+        <h2 className='font-bold text-2xl'>Attendance Dashboard</h2>
         <div className='flex items-center gap-4'>
           <MonthSelection
             selectedMonth={handleMonthChange}
