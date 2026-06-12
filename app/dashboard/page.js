@@ -6,7 +6,7 @@ import GlobalApi from '../_services/GlobalApi';
 import moment from 'moment';
 import StatusList from './_component/StatusList';
 import AttendanceChart from './_component/AttendanceChart';
-import RiskStudentsBox from '../_components/RiskStudentsBox'  // ✅ Add this
+// import RiskStudentsBox from '../_components/RiskStudentsBox'  // ✅ Add this
 
 function Dashboard() {
   const [selectedMonth, setSelectedMonth] = useState()
