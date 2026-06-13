@@ -6,21 +6,18 @@ function RiskStudentsBox({ students }) {
   const [sentNumbers, setSentNumbers] = useState([])
   const [sendingNumber, setSendingNumber] = useState(null)
   const [toast, setToast] = useState(null)
-  const [hiddenNumbers, setHiddenNumbers] = useState([])
+  const [hiddenContacts, setHiddenContacts] = useState([])
   const [isVisible, setIsVisible] = useState(true)
 
   useEffect(() => {
     const saved = localStorage.getItem("academic_sent_numbers")
     if (saved) setSentNumbers(JSON.parse(saved))
-    
-    // Clear hidden numbers on page refresh
-    setHiddenNumbers([])
+    setHiddenContacts([])
     setIsVisible(true)
   }, [])
 
-  // ✅ When students prop changes (new data), reset everything
   useEffect(() => {
-    setHiddenNumbers([])
+    setHiddenContacts([])
     setIsVisible(true)
   }, [students])
 
@@ -33,7 +30,7 @@ function RiskStudentsBox({ students }) {
     return acc
   }, {})
 
-  const atRiskContacts = Object.keys(studentsByContact).filter(contact => {
+  const allAtRiskContacts = Object.keys(studentsByContact).filter(contact => {
     return studentsByContact[contact].some(s => {
       const gpa = Number(s.gpa || 0)
       const cgpa = Number(s.cgpa || 0)
@@ -41,8 +38,7 @@ function RiskStudentsBox({ students }) {
     })
   })
 
-  // ✅ Filter out hidden contacts
-  const visibleContacts = atRiskContacts.filter(contact => !hiddenNumbers.includes(contact))
+  const visibleContacts = allAtRiskContacts
   
   const riskStudents = visibleContacts.flatMap(contact => 
     studentsByContact[contact].filter(s => {
@@ -94,9 +90,9 @@ function RiskStudentsBox({ students }) {
           localStorage.setItem("academic_sent_numbers", JSON.stringify(newSentNumbers))
         }
         
-        // ✅ Hide this contact after 5 seconds
         setTimeout(() => {
-          setHiddenNumbers(prev => [...prev, contact])
+          setHiddenContacts(prev => [...prev, contact])
+          setIsVisible(true)
         }, 5000)
         
       } else {
@@ -111,14 +107,12 @@ function RiskStudentsBox({ students }) {
     }
   }
 
-  // ✅ SHOW ALL - Clear ALL hidden numbers and ensure visibility
   const handleShowAll = () => {
-    setHiddenNumbers([])  // Clear all hidden contacts
-    setIsVisible(true)     // Make sure box is visible
+    setHiddenContacts([])
+    setIsVisible(true)
     showToast("📋 All at-risk students are now visible again", false)
   }
 
-  // ✅ TOGGLE HIDE/SHOW
   const handleToggleVisibility = () => {
     setIsVisible(!isVisible)
     showToast(isVisible ? "📦 Risk box hidden" : "🔓 Risk box shown", false)
@@ -131,10 +125,8 @@ function RiskStudentsBox({ students }) {
     return acc
   }, {})
 
-  // Don't show anything if no risk students
   if (Object.keys(riskGroups).length === 0) {
-    // ✅ If there were hidden numbers but no visible students, show "Show All" button
-    if (hiddenNumbers.length > 0) {
+    if (hiddenContacts.length > 0) {
       return (
         <div className="mb-5 p-4 bg-green-50 border border-green-200 rounded-lg">
           <div className="flex justify-between items-center">
@@ -143,7 +135,7 @@ function RiskStudentsBox({ students }) {
               onClick={handleShowAll}
               className="text-sm bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded-lg transition-all"
             >
-              📋 Show All ({hiddenNumbers.length} hidden)
+              📋 Show All ({hiddenContacts.length} hidden)
             </button>
           </div>
         </div>
@@ -152,7 +144,6 @@ function RiskStudentsBox({ students }) {
     return null
   }
 
-  // ✅ If hidden by toggle, show expand button
   if (!isVisible) {
     return (
       <div className="mb-5">
@@ -187,12 +178,12 @@ function RiskStudentsBox({ students }) {
             >
               ➖ Less
             </button>
-            {hiddenNumbers.length > 0 && (
+            {hiddenContacts.length > 0 && (
               <button 
                 onClick={handleShowAll}
                 className="text-sm bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded-lg transition-all"
               >
-                📋 Show All ({hiddenNumbers.length} hidden)
+                📋 Show All ({hiddenContacts.length} hidden)
               </button>
             )}
           </div>
@@ -201,6 +192,9 @@ function RiskStudentsBox({ students }) {
         {Object.entries(riskGroups).map(([contact, groupStudents]) => {
           const alreadySent = sentNumbers.includes(contact)
           const isSending = sendingNumber === contact
+          const isHidden = hiddenContacts.includes(contact)
+          
+          if (isHidden) return null
           
           return (
             <div key={contact} className="bg-white border border-red-200 rounded-lg p-3 mb-3">
