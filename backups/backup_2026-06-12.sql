@@ -21,7 +21,7 @@ SET @@SESSION.SQL_LOG_BIN= 0;
 -- GTID state at the beginning of the backup 
 --
 
-SET @@GLOBAL.GTID_PURGED=/*!80000 '+'*/ 'db062cdd-4497-11f1-9bb2-1cc1deaed3e6:1-652';
+SET @@GLOBAL.GTID_PURGED=/*!80000 '+'*/ 'db062cdd-4497-11f1-9bb2-1cc1deaed3e6:1-657';
 
 --
 -- Table structure for table `attendance`
@@ -146,8 +146,8 @@ CREATE TABLE `students` (
   `contact` varchar(20) DEFAULT '',
   `midMarks` int DEFAULT '0',
   `finalMarks` int DEFAULT '0',
-  `gpa` varchar(10) DEFAULT '0',
-  `cgpa` varchar(10) DEFAULT '0',
+  `gpa` decimal(3,2) DEFAULT '0.00',
+  `cgpa` decimal(3,2) DEFAULT '0.00',
   `risk` varchar(20) DEFAULT 'safe',
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB AUTO_INCREMENT=6 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
@@ -159,7 +159,7 @@ CREATE TABLE `students` (
 
 LOCK TABLES `students` WRITE;
 /*!40000 ALTER TABLE `students` DISABLE KEYS */;
-INSERT INTO `students` VALUES (1,'jamshid ','3rd Semester','gahri chandan payan','03480121949',0,0,'3.34','3.01','safe'),(2,'shah','5th Semester','gahri chandan payan','03279712048',0,0,'3.34','3.01','safe'),(3,'attendance','1st Semester','gahri chandan payan','03058717008',0,0,'3.34','2.29','at-risk'),(4,'zuhab','4th Semester','gahri chandan payan','03491962107',0,0,'3.34','2.3','at-risk'),(5,'jams','3rd Semester','gahri chandan payan','03058717008',0,0,'3.34','3.01','safe');
+INSERT INTO `students` VALUES (1,'jamshid ','3rd Semester','gahri chandan payan','03480121949',0,0,2.00,2.00,'safe'),(2,'shah','5th Semester','gahri chandan payan','03279712048',0,0,2.00,2.00,'safe'),(3,'attendance','1st Semester','gahri chandan payan','03058717008',0,0,2.00,2.00,'at-risk'),(4,'zuhab','4th Semester','gahri chandan payan','03491962107',0,0,3.34,2.30,'at-risk'),(5,'jams','3rd Semester','gahri chandan payan','03058717008',0,0,3.34,3.01,'safe');
 /*!40000 ALTER TABLE `students` ENABLE KEYS */;
 UNLOCK TABLES;
 SET @@SESSION.SQL_LOG_BIN = @MYSQLDUMP_TEMP_LOG_BIN;
@@ -173,4 +173,4 @@ SET @@SESSION.SQL_LOG_BIN = @MYSQLDUMP_TEMP_LOG_BIN;
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2026-06-12  1:50:26
+-- Dump completed on 2026-06-12 13:20:27

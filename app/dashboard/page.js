@@ -6,7 +6,7 @@ import GlobalApi from '../_services/GlobalApi';
 import moment from 'moment';
 import StatusList from './_component/StatusList';
 import AttendanceChart from './_component/AttendanceChart';
-// import RiskStudentsBox from '../_components/RiskStudentsBox'  // ✅ Add this
+// import RiskStudentsBox from '../_components/RiskStudentsBox';
 
 function Dashboard() {
   const [selectedMonth, setSelectedMonth] = useState()
@@ -72,7 +72,7 @@ function Dashboard() {
   return (
     <div className='p-10'>
       {/* ✅ ACADEMIC RISK BOX - Shows at top of dashboard */}
-      <RiskStudentsBox students={studentList} />
+      {/* <RiskStudentsBox students={studentList} /> */}
 
       <div className='flex items-center justify-between mt-5'>
         <h2 className='font-bold text-2xl'>Attendance Dashboard</h2>

@@ -2,164 +2,234 @@
 
 import React, { useEffect, useState } from 'react'
 
-function Toast({ message }) {
-  return (
-    <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-green-600 text-white text-sm font-semibold px-6 py-3 rounded-xl shadow-lg">
-      ✅ {message}
-    </div>
-  )
-}
-
 function RiskStudentsBox({ students }) {
-  const [sentIds, setSentIds] = useState([])
-  const [sendingId, setSendingId] = useState(null)
+  const [sentNumbers, setSentNumbers] = useState([])
+  const [sendingNumber, setSendingNumber] = useState(null)
   const [toast, setToast] = useState(null)
+  const [hiddenNumbers, setHiddenNumbers] = useState([])
+  const [isVisible, setIsVisible] = useState(true)
 
   useEffect(() => {
-    const saved = localStorage.getItem("academic_sent_ids")
-    if (saved) setSentIds(JSON.parse(saved))
+    const saved = localStorage.getItem("academic_sent_numbers")
+    if (saved) setSentNumbers(JSON.parse(saved))
   }, [])
 
-  // ✅ FIXED: Convert strings to numbers
-  const riskStudents = students?.filter(s => {
-    const gpa = Number(s.gpa || 0);     // Convert string to number
-    const cgpa = Number(s.cgpa || 0);   // Convert string to number
-    const lowGpa = gpa < 2.5 && gpa !== 0
-    const lowCgpa = cgpa < 2.5 && cgpa !== 0
-    
-    if (lowGpa || lowCgpa) {
-      console.log(`⚠️ RISK STUDENT: ${s.name} (GPA: ${gpa}, CGPA: ${cgpa})`)
-    }
-    
-    return lowGpa || lowCgpa
-  }) || []
+  const studentList = Array.isArray(students) ? students : []
+  
+  const studentsByContact = studentList.reduce((acc, student) => {
+    const contact = student.contact || student.phone || student.mobile || 'N/A'
+    if (!acc[contact]) acc[contact] = []
+    acc[contact].push(student)
+    return acc
+  }, {})
 
-  console.log("Total students:", students?.length, "At risk:", riskStudents.length)
+  const atRiskContacts = Object.keys(studentsByContact).filter(contact => {
+    return studentsByContact[contact].some(s => {
+      const gpa = Number(s.gpa || 0)
+      const cgpa = Number(s.cgpa || 0)
+      return (gpa < 2.5 && gpa !== 0) || (cgpa < 2.5 && cgpa !== 0)
+    })
+  })
 
-  const showToast = (msg) => {
-    setToast(msg)
+  // ✅ Filter out hidden contacts
+  const visibleContacts = atRiskContacts.filter(contact => !hiddenNumbers.includes(contact))
+  
+  const riskStudents = visibleContacts.flatMap(contact => 
+    studentsByContact[contact].filter(s => {
+      const gpa = Number(s.gpa || 0)
+      const cgpa = Number(s.cgpa || 0)
+      return (gpa < 2.5 && gpa !== 0) || (cgpa < 2.5 && cgpa !== 0)
+    })
+  )
+
+  const showToast = (msg, isError = false) => {
+    setToast({ msg, isError })
     setTimeout(() => setToast(null), 3000)
   }
 
-  const handleSend = async (student) => {
-    setSendingId(student.id)
+  const handleSendToNumber = async (contact, studentsToNotify) => {
+    setSendingNumber(contact)
+    
     try {
-      const response = await fetch("/api/notifications", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          studentId: student.id,
-          type: "academic",
-          message: `Dear Parent, your child ${student.name} is academically at risk. CGPA: ${student.cgpa}, GPA: ${student.gpa}, Semester: ${student.grade}. Please meet with the academic advisor.`,
-          name: student.name,
-          cgpa: student.cgpa,
-          gpa: student.gpa,
-          semester: student.grade,
-        }),
-      })
-
-      if (response.ok) {
-        showToast(`Notification sent to parent of ${student.name} successfully!`)
-        if (!sentIds.includes(student.id)) {
-          const newSentIds = [...sentIds, student.id]
-          setSentIds(newSentIds)
-          localStorage.setItem("academic_sent_ids", JSON.stringify(newSentIds))
+      const results = await Promise.all(
+        studentsToNotify.map(async (student) => {
+          const response = await fetch("/api/notifications", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              studentId: student.id,
+              type: "academic",
+              message: `Dear Parent, your child ${student.name} is academically at risk. CGPA: ${student.cgpa}, GPA: ${student.gpa}, Semester: ${student.grade}. Please meet with the academic advisor.`,
+              name: student.name,
+              cgpa: student.cgpa,
+              gpa: student.gpa,
+              semester: student.grade,
+              contact: contact,
+            }),
+          })
+          return { student, success: response.ok }
+        })
+      )
+      
+      const allSuccess = results.every(r => r.success)
+      const successCount = results.filter(r => r.success).length
+      
+      if (allSuccess) {
+        const studentNames = studentsToNotify.map(s => s.name).join(', ')
+        showToast(`✅ Notifications sent for: ${studentNames}`, false)
+        
+        if (!sentNumbers.includes(contact)) {
+          const newSentNumbers = [...sentNumbers, contact]
+          setSentNumbers(newSentNumbers)
+          localStorage.setItem("academic_sent_numbers", JSON.stringify(newSentNumbers))
         }
+        
+        // ✅ Hide this contact after 5 seconds
+        setTimeout(() => {
+          setHiddenNumbers(prev => [...prev, contact])
+        }, 5000)
+        
       } else {
-        showToast("Failed to send. Try again.")
+        showToast(`⚠️ Sent ${successCount}/${studentsToNotify.length} notifications`, true)
       }
+      
     } catch (err) {
-      console.error("Failed to send:", err)
-      showToast("Failed to send notification. Try again.")
+      console.error(err)
+      showToast("❌ Network error", true)
     } finally {
-      setSendingId(null)
+      setSendingNumber(null)
     }
   }
 
-  const handleClearCache = () => {
-    localStorage.removeItem("academic_sent_ids")
-    setSentIds([])
-    showToast("Cache cleared - refresh the page")
+  // ✅ SHOW ALL - Clear ALL hidden numbers
+  const handleShowAll = () => {
+    setHiddenNumbers([])  // Clear all hidden contacts
+    setIsVisible(true)     // Make sure box is visible
+    showToast("📋 All at-risk students are now visible again", false)
   }
 
-  if (riskStudents.length === 0) {
-    if (students?.length > 0) {
+  // ✅ TOGGLE HIDE/SHOW
+  const handleToggleVisibility = () => {
+    setIsVisible(!isVisible)
+    showToast(isVisible ? "📦 Risk box hidden" : "🔓 Risk box shown", false)
+  }
+
+  const riskGroups = riskStudents.reduce((acc, student) => {
+    const contact = student.contact || student.phone || student.mobile || 'N/A'
+    if (!acc[contact]) acc[contact] = []
+    acc[contact].push(student)
+    return acc
+  }, {})
+
+  // Don't show anything if no risk students
+  if (Object.keys(riskGroups).length === 0) {
+    // ✅ If there were hidden numbers but no visible students, show "Show All" button
+    if (hiddenNumbers.length > 0) {
       return (
-        <div className='mb-5 p-4 bg-yellow-50 border border-yellow-200 rounded-lg'>
-          <p className='text-yellow-700'>📊 No at-risk students found. All students have CGPA/GPA above 2.5!</p>
+        <div className="mb-5 p-4 bg-green-50 border border-green-200 rounded-lg">
+          <div className="flex justify-between items-center">
+            <p className="text-green-700">✅ All at-risk students have been notified!</p>
+            <button 
+              onClick={handleShowAll}
+              className="text-sm bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded-lg transition-all"
+            >
+              📋 Show All ({hiddenNumbers.length} hidden)
+            </button>
+          </div>
         </div>
       )
     }
     return null
   }
 
+  // ✅ If hidden by toggle, show expand button
+  if (!isVisible) {
+    return (
+      <div className="mb-5">
+        <button
+          onClick={handleToggleVisibility}
+          className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-all flex items-center gap-2"
+        >
+          🔓 Show Risk Box ({riskStudents.length} at-risk)
+        </button>
+      </div>
+    )
+  }
+
   return (
     <>
-      {toast && <Toast message={toast} />}
-
-      <div className='mb-5'>
-        <div className='p-4 bg-red-50 border border-red-200 rounded-lg'>
-          
-          <div className='flex justify-between items-center mb-3'>
-            <h3 className='font-bold text-red-600 text-lg'>
-              ⚠️ At Risk Students ({riskStudents.length})
-            </h3>
-            <button
-              onClick={handleClearCache}
-              className='text-xs text-gray-400 hover:text-red-500 underline'
+      {toast && (
+        <div className={`fixed bottom-4 left-1/2 transform -translate-x-1/2 text-white px-4 py-2 rounded z-50 ${
+          toast.isError ? 'bg-red-600' : 'bg-green-600'
+        }`}>
+          {toast.msg}
+        </div>
+      )}
+      <div className="mb-5 p-4 bg-red-50 border border-red-200 rounded-lg">
+        <div className="flex justify-between items-center mb-3">
+          <h3 className="font-bold text-red-600 text-lg">
+            ⚠️ At Risk Students ({riskStudents.length})
+          </h3>
+          <div className="flex gap-2">
+            <button 
+              onClick={handleToggleVisibility}
+              className="text-sm bg-gray-500 hover:bg-gray-600 text-white px-3 py-1 rounded-lg transition-all"
             >
-              Reset
+              ➖ Less
             </button>
-          </div>
-
-          <div className='flex flex-col gap-3'>
-            {riskStudents.map((student) => {
-              const gpa = Number(student.gpa || 0)
-              const cgpa = Number(student.cgpa || 0)
-              const lowGpa = gpa < 2.5 && gpa !== 0
-              const lowCgpa = cgpa < 2.5 && cgpa !== 0
-
-              return (
-                <div key={student.id} className='bg-white border border-red-200 rounded-lg p-3'>
-                  <p className='font-semibold text-red-700 mb-2 text-sm'>
-                    👤 {student.name}
-                  </p>
-
-                  <div className='grid grid-cols-2 gap-2 mb-2'>
-                    <div className='bg-red-50 rounded-md p-2'>
-                      <p className='text-xs text-gray-500'>Student ID</p>
-                      <p className='font-medium text-sm text-gray-800'>{student.id}</p>
-                    </div>
-                    <div className='bg-red-50 rounded-md p-2'>
-                      <p className='text-xs text-gray-500'>Semester</p>
-                      <p className='font-medium text-sm text-gray-800'>{student.grade}</p>
-                    </div>
-                    <div className={`rounded-md p-2 ${lowCgpa ? 'bg-red-100' : 'bg-red-50'}`}>
-                      <p className='text-xs text-gray-500'>CGPA</p>
-                      <p className={`font-medium text-sm ${lowCgpa ? 'text-red-600 font-bold' : 'text-gray-800'}`}>
-                        {student.cgpa} {lowCgpa ? '⚠️' : ''}
-                      </p>
-                    </div>
-                    <div className={`rounded-md p-2 ${lowGpa ? 'bg-red-100' : 'bg-red-50'}`}>
-                      <p className='text-xs text-gray-500'>GPA</p>
-                      <p className={`font-medium text-sm ${lowGpa ? 'text-red-600 font-bold' : 'text-gray-800'}`}>
-                        {student.gpa} {lowGpa ? '⚠️' : ''}
-                      </p>
-                    </div>
-                  </div>
-
-                  <button
-                    onClick={() => handleSend(student)}
-                    disabled={sendingId === student.id}
-                    className='mt-3 w-full bg-red-500 hover:bg-red-600 disabled:opacity-50 text-white text-sm font-semibold py-2 px-4 rounded-lg transition-all'
-                  >
-                    {sendingId === student.id ? "Sending..." : "📱 Send to Parent"}
-                  </button>
-                </div>
-              )
-            })}
+            {hiddenNumbers.length > 0 && (
+              <button 
+                onClick={handleShowAll}
+                className="text-sm bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded-lg transition-all"
+              >
+                📋 Show All ({hiddenNumbers.length} hidden)
+              </button>
+            )}
           </div>
         </div>
+        
+        {Object.entries(riskGroups).map(([contact, groupStudents]) => {
+          const alreadySent = sentNumbers.includes(contact)
+          const isSending = sendingNumber === contact
+          
+          return (
+            <div key={contact} className="bg-white border border-red-200 rounded-lg p-3 mb-3">
+              <div className="flex justify-between items-center mb-2">
+                <p className="font-semibold text-red-700">📞 {contact}</p>
+                <span className="text-xs bg-gray-100 px-2 py-1 rounded">
+                  {groupStudents.length} student{groupStudents.length > 1 ? 's' : ''}
+                </span>
+              </div>
+              
+              <div className="ml-2 space-y-2">
+                {groupStudents.map((student) => {
+                  const gpa = Number(student.gpa || 0)
+                  const cgpa = Number(student.cgpa || 0)
+                  return (
+                    <div key={student.id} className="border-l-2 border-red-300 pl-3 py-1">
+                      <p className="font-medium">👤 {student.name}</p>
+                      <div className="grid grid-cols-2 gap-2 text-sm">
+                        <p><span className="text-gray-500">Grade:</span> {student.grade}</p>
+                        <p><span className="text-gray-500">CGPA:</span> {student.cgpa} {cgpa < 2.5 && '⚠️'}</p>
+                        <p><span className="text-gray-500">GPA:</span> {student.gpa} {gpa < 2.5 && '⚠️'}</p>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+              
+              <button
+                onClick={() => handleSendToNumber(contact, groupStudents)}
+                disabled={isSending}
+                className={`mt-3 w-full text-white py-2 rounded transition-all ${
+                  alreadySent ? 'bg-blue-500 hover:bg-blue-600' : 'bg-red-500 hover:bg-red-600'
+                } disabled:opacity-50`}
+              >
+                {isSending ? "⏳ Sending..." : alreadySent ? "📱 Send Again to Parent" : "📱 Send to Parent"}
+              </button>
+            </div>
+          )
+        })}
       </div>
     </>
   )
