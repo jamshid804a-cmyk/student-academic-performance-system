@@ -12,7 +12,17 @@ function RiskStudentsBox({ students }) {
   useEffect(() => {
     const saved = localStorage.getItem("academic_sent_numbers")
     if (saved) setSentNumbers(JSON.parse(saved))
+    
+    // ✅ Clear hidden numbers on page refresh/load
+    setHiddenNumbers([])
+    setIsVisible(true)
   }, [])
+
+  // ✅ Also clear when students data changes (new student added)
+  useEffect(() => {
+    setHiddenNumbers([])
+    setIsVisible(true)
+  }, [students])
 
   const studentList = Array.isArray(students) ? students : []
   
@@ -31,7 +41,6 @@ function RiskStudentsBox({ students }) {
     })
   })
 
-  // ✅ Filter out hidden contacts
   const visibleContacts = atRiskContacts.filter(contact => !hiddenNumbers.includes(contact))
   
   const riskStudents = visibleContacts.flatMap(contact => 
@@ -84,7 +93,6 @@ function RiskStudentsBox({ students }) {
           localStorage.setItem("academic_sent_numbers", JSON.stringify(newSentNumbers))
         }
         
-        // ✅ Hide this contact after 5 seconds
         setTimeout(() => {
           setHiddenNumbers(prev => [...prev, contact])
         }, 5000)
@@ -101,14 +109,12 @@ function RiskStudentsBox({ students }) {
     }
   }
 
-  // ✅ SHOW ALL - Clear ALL hidden numbers
   const handleShowAll = () => {
-    setHiddenNumbers([])  // Clear all hidden contacts
-    setIsVisible(true)     // Make sure box is visible
+    setHiddenNumbers([])
+    setIsVisible(true)
     showToast("📋 All at-risk students are now visible again", false)
   }
 
-  // ✅ TOGGLE HIDE/SHOW
   const handleToggleVisibility = () => {
     setIsVisible(!isVisible)
     showToast(isVisible ? "📦 Risk box hidden" : "🔓 Risk box shown", false)
@@ -121,9 +127,7 @@ function RiskStudentsBox({ students }) {
     return acc
   }, {})
 
-  // Don't show anything if no risk students
   if (Object.keys(riskGroups).length === 0) {
-    // ✅ If there were hidden numbers but no visible students, show "Show All" button
     if (hiddenNumbers.length > 0) {
       return (
         <div className="mb-5 p-4 bg-green-50 border border-green-200 rounded-lg">
@@ -142,7 +146,6 @@ function RiskStudentsBox({ students }) {
     return null
   }
 
-  // ✅ If hidden by toggle, show expand button
   if (!isVisible) {
     return (
       <div className="mb-5">
