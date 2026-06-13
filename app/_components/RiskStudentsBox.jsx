@@ -13,12 +13,12 @@ function RiskStudentsBox({ students }) {
     const saved = localStorage.getItem("academic_sent_numbers")
     if (saved) setSentNumbers(JSON.parse(saved))
     
-    // ✅ Clear hidden numbers on page refresh/load
+    // Clear hidden numbers on page refresh
     setHiddenNumbers([])
     setIsVisible(true)
   }, [])
 
-  // ✅ Also clear when students data changes (new student added)
+  // ✅ When students prop changes (new data), reset everything
   useEffect(() => {
     setHiddenNumbers([])
     setIsVisible(true)
@@ -41,6 +41,7 @@ function RiskStudentsBox({ students }) {
     })
   })
 
+  // ✅ Filter out hidden contacts
   const visibleContacts = atRiskContacts.filter(contact => !hiddenNumbers.includes(contact))
   
   const riskStudents = visibleContacts.flatMap(contact => 
@@ -93,6 +94,7 @@ function RiskStudentsBox({ students }) {
           localStorage.setItem("academic_sent_numbers", JSON.stringify(newSentNumbers))
         }
         
+        // ✅ Hide this contact after 5 seconds
         setTimeout(() => {
           setHiddenNumbers(prev => [...prev, contact])
         }, 5000)
@@ -109,12 +111,14 @@ function RiskStudentsBox({ students }) {
     }
   }
 
+  // ✅ SHOW ALL - Clear ALL hidden numbers and ensure visibility
   const handleShowAll = () => {
-    setHiddenNumbers([])
-    setIsVisible(true)
+    setHiddenNumbers([])  // Clear all hidden contacts
+    setIsVisible(true)     // Make sure box is visible
     showToast("📋 All at-risk students are now visible again", false)
   }
 
+  // ✅ TOGGLE HIDE/SHOW
   const handleToggleVisibility = () => {
     setIsVisible(!isVisible)
     showToast(isVisible ? "📦 Risk box hidden" : "🔓 Risk box shown", false)
@@ -127,7 +131,9 @@ function RiskStudentsBox({ students }) {
     return acc
   }, {})
 
+  // Don't show anything if no risk students
   if (Object.keys(riskGroups).length === 0) {
+    // ✅ If there were hidden numbers but no visible students, show "Show All" button
     if (hiddenNumbers.length > 0) {
       return (
         <div className="mb-5 p-4 bg-green-50 border border-green-200 rounded-lg">
@@ -146,6 +152,7 @@ function RiskStudentsBox({ students }) {
     return null
   }
 
+  // ✅ If hidden by toggle, show expand button
   if (!isVisible) {
     return (
       <div className="mb-5">
@@ -212,9 +219,9 @@ function RiskStudentsBox({ students }) {
                     <div key={student.id} className="border-l-2 border-red-300 pl-3 py-1">
                       <p className="font-medium">👤 {student.name}</p>
                       <div className="grid grid-cols-2 gap-2 text-sm">
-                        <p><span className="text-gray-500">Grade:</span> {student.grade}</p>
-                        <p><span className="text-gray-500">CGPA:</span> {student.cgpa} {cgpa < 2.5 && '⚠️'}</p>
-                        <p><span className="text-gray-500">GPA:</span> {student.gpa} {gpa < 2.5 && '⚠️'}</p>
+                        <p><span className="text-gray-500">Grade:</span> {student.grade || 'Not set'}</p>
+                        <p><span className="text-gray-500">CGPA:</span> {student.cgpa || 'N/A'} {cgpa < 2.5 && cgpa !== 0 && '⚠️'}</p>
+                        <p><span className="text-gray-500">GPA:</span> {student.gpa || 'N/A'} {gpa < 2.5 && gpa !== 0 && '⚠️'}</p>
                       </div>
                     </div>
                   )
