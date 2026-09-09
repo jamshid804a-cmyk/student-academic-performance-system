@@ -21,6 +21,7 @@ function RiskStudentsBox({ students }) {
     setIsVisible(true)
   }, [students])
 
+  // Ensure students is an array
   const studentList = Array.isArray(students) ? students : []
 
   const isAtRisk = (s) => {
@@ -29,7 +30,7 @@ function RiskStudentsBox({ students }) {
     return (gpa < 2.5 && gpa !== 0) || (cgpa < 2.5 && cgpa !== 0)
   }
 
-  // ✅ Each student is its own risk entry — no more grouping by phone number
+  // 🔥 FILTER EACH STUDENT INDIVIDUALLY - NO GROUPING
   const riskStudents = studentList.filter(isAtRisk)
 
   const showToast = (msg, isError = false) => {
@@ -37,7 +38,6 @@ function RiskStudentsBox({ students }) {
     setTimeout(() => setToast(null), 3000)
   }
 
-  // ✅ Sends ONE notification for ONE student only
   const handleSendNotification = async (student) => {
     setSendingId(student.id)
     const contact = student.contact || student.phone || student.mobile || 'N/A'
@@ -160,7 +160,7 @@ function RiskStudentsBox({ students }) {
           </div>
         </div>
 
-        {/* ✅ One box PER STUDENT, even when the phone number repeats */}
+        {/* 🔥 EACH STUDENT GETS THEIR OWN BOX - EVEN WITH SAME PHONE */}
         {visibleRiskStudents.map((student) => {
           const contact = student.contact || student.phone || student.mobile || 'N/A'
           const alreadySent = sentIds.includes(student.id)
@@ -172,6 +172,7 @@ function RiskStudentsBox({ students }) {
             <div key={student.id} className="bg-white border border-red-200 rounded-lg p-3 mb-3">
               <div className="flex justify-between items-center mb-2">
                 <p className="font-semibold text-red-700">📞 {contact}</p>
+                <span className="text-xs text-gray-400">ID: {student.id}</span>
               </div>
 
               <div className="ml-2">
