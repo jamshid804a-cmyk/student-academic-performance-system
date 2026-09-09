@@ -21,29 +21,15 @@ function RiskStudentsBox({ students }) {
     setIsVisible(true)
   }, [students])
 
-  // 🔥 DEBUG: Log what we're receiving
-  console.log("RiskStudentsBox received:", students)
-  console.log("Is array?", Array.isArray(students))
-  console.log("Number of students:", students?.length || 0)
-
   const studentList = Array.isArray(students) ? students : []
 
   const isAtRisk = (s) => {
-    // 🔥 TEMPORARY: Mark ALL students as at-risk for testing
-    return true
-    
-    // Original logic (commented out for testing)
-    // const gpa = Number(s.gpa || 0)
-    // const cgpa = Number(s.cgpa || 0)
-    // return (gpa < 2.5 && gpa !== 0) || (cgpa < 2.5 && cgpa !== 0)
+    const gpa = Number(s.gpa || 0)
+    const cgpa = Number(s.cgpa || 0)
+    return (gpa < 2.5 && gpa !== 0) || (cgpa < 2.5 && cgpa !== 0)
   }
 
   const riskStudents = studentList.filter(isAtRisk)
-  
-  // 🔥 DEBUG: Log what we filtered
-  console.log("All students:", studentList)
-  console.log("At-risk students:", riskStudents)
-  console.log("Number of at-risk students:", riskStudents.length)
 
   const showToast = (msg, isError = false) => {
     setToast({ msg, isError })
@@ -51,15 +37,28 @@ function RiskStudentsBox({ students }) {
   }
 
   const handleSendNotification = async (student) => {
-    setSendingId(student.id)
+    // 🔥 IMPORTANT: Use student.id as the unique identifier
+    const studentId = student.id
+    setSendingId(studentId)
+    
     const contact = student.contact || student.phone || student.mobile || 'N/A'
 
+    // 🔥 Add this: Create a unique request ID for each student
+    const requestId = `${studentId}_${Date.now()}_${Math.random()}`
+
     try {
+      console.log(`📤 Sending notification for: ${student.name} (ID: ${studentId}, Phone: ${contact})`)
+      console.log(`📤 Request ID: ${requestId}`)
+
       const response = await fetch("/api/notifications", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          // 🔥 Add unique header to prevent caching
+          "X-Request-ID": requestId
+        },
         body: JSON.stringify({
-          studentId: student.id,
+          studentId: studentId,
           type: "academic",
           message: `Dear Parent, your child ${student.name} is academically at risk. CGPA: ${student.cgpa}, GPA: ${student.gpa}, Semester: ${student.grade}. Please meet with the academic advisor.`,
           name: student.name,
@@ -67,30 +66,40 @@ function RiskStudentsBox({ students }) {
           gpa: student.gpa,
           semester: student.grade,
           contact: contact,
+          // 🔥 Add these to make each request unique
+          requestId: requestId,
+          timestamp: Date.now(),
+          // 🔥 Important: Include student ID in the message to differentiate
+          studentName: student.name
         }),
       })
 
       if (response.ok) {
+        const result = await response.json()
+        console.log(`✅ Success for ${student.name}:`, result)
         showToast(`✅ Notification sent for: ${student.name}`, false)
 
-        if (!sentIds.includes(student.id)) {
-          const newSentIds = [...sentIds, student.id]
+        // 🔥 Track by student ID
+        if (!sentIds.includes(studentId)) {
+          const newSentIds = [...sentIds, studentId]
           setSentIds(newSentIds)
           localStorage.setItem("academic_sent_ids", JSON.stringify(newSentIds))
         }
 
         setTimeout(() => {
-          setHiddenIds(prev => [...prev, student.id])
+          setHiddenIds(prev => [...prev, studentId])
           setIsVisible(true)
         }, 5000)
 
       } else {
-        showToast(`⚠️ Failed to send notification for ${student.name}`, true)
+        const errorData = await response.text()
+        console.error(`❌ Server error for ${student.name}:`, errorData)
+        showToast(`⚠️ Failed to send for ${student.name}: ${errorData}`, true)
       }
 
     } catch (err) {
-      console.error(err)
-      showToast("❌ Network error", true)
+      console.error(`❌ Network error for ${student.name}:`, err)
+      showToast(`❌ Network error for ${student.name}`, true)
     } finally {
       setSendingId(null)
     }
@@ -109,13 +118,7 @@ function RiskStudentsBox({ students }) {
 
   const visibleRiskStudents = riskStudents.filter(s => !hiddenIds.includes(s.id))
 
-  // 🔥 DEBUG: Log what will be rendered
-  console.log("Visible at-risk students:", visibleRiskStudents)
-
-  if (riskStudents.length === 0) {
-    console.log("No at-risk students found - returning null")
-    return null
-  }
+  if (riskStudents.length === 0) return null
 
   if (visibleRiskStudents.length === 0 && hiddenIds.length > 0) {
     return (
@@ -178,22 +181,18 @@ function RiskStudentsBox({ students }) {
           </div>
         </div>
 
-        {/* 🔥 EACH STUDENT GETS THEIR OWN BOX */}
-        {visibleRiskStudents.map((student, index) => {
+        {visibleRiskStudents.map((student) => {
           const contact = student.contact || student.phone || student.mobile || 'N/A'
           const alreadySent = sentIds.includes(student.id)
           const isSending = sendingId === student.id
           const gpa = Number(student.gpa || 0)
           const cgpa = Number(student.cgpa || 0)
 
-          // 🔥 Use a guaranteed unique key
-          const uniqueKey = student.id || `student-${index}-${Date.now()}`
-
           return (
-            <div key={uniqueKey} className="bg-white border border-red-200 rounded-lg p-3 mb-3">
+            <div key={student.id} className="bg-white border border-red-200 rounded-lg p-3 mb-3">
               <div className="flex justify-between items-center mb-2">
                 <p className="font-semibold text-red-700">📞 {contact}</p>
-                <span className="text-xs text-gray-400">ID: {student.id || 'No ID'}</span>
+                <span className="text-xs text-gray-400">ID: {student.id}</span>
               </div>
 
               <div className="ml-2">
@@ -207,12 +206,16 @@ function RiskStudentsBox({ students }) {
 
               <button
                 onClick={() => handleSendNotification(student)}
-                disabled={isSending}
+                disabled={isSending || alreadySent}
                 className={`mt-3 w-full text-white py-2 rounded transition-all ${
-                  alreadySent ? 'bg-blue-500 hover:bg-blue-600' : 'bg-red-500 hover:bg-red-600'
+                  alreadySent 
+                    ? 'bg-green-500 hover:bg-green-600' 
+                    : isSending 
+                      ? 'bg-gray-400' 
+                      : 'bg-red-500 hover:bg-red-600'
                 } disabled:opacity-50`}
               >
-                {isSending ? "⏳ Sending..." : alreadySent ? "📱 Send Again to Parent" : "📱 Send to Parent"}
+                {isSending ? "⏳ Sending..." : alreadySent ? "✅ Sent to Parent" : "📱 Send to Parent"}
               </button>
             </div>
           )
