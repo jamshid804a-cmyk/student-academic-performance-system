@@ -21,17 +21,29 @@ function RiskStudentsBox({ students }) {
     setIsVisible(true)
   }, [students])
 
-  // Ensure students is an array
+  // 🔥 DEBUG: Log what we're receiving
+  console.log("RiskStudentsBox received:", students)
+  console.log("Is array?", Array.isArray(students))
+  console.log("Number of students:", students?.length || 0)
+
   const studentList = Array.isArray(students) ? students : []
 
   const isAtRisk = (s) => {
-    const gpa = Number(s.gpa || 0)
-    const cgpa = Number(s.cgpa || 0)
-    return (gpa < 2.5 && gpa !== 0) || (cgpa < 2.5 && cgpa !== 0)
+    // 🔥 TEMPORARY: Mark ALL students as at-risk for testing
+    return true
+    
+    // Original logic (commented out for testing)
+    // const gpa = Number(s.gpa || 0)
+    // const cgpa = Number(s.cgpa || 0)
+    // return (gpa < 2.5 && gpa !== 0) || (cgpa < 2.5 && cgpa !== 0)
   }
 
-  // 🔥 FILTER EACH STUDENT INDIVIDUALLY - NO GROUPING
   const riskStudents = studentList.filter(isAtRisk)
+  
+  // 🔥 DEBUG: Log what we filtered
+  console.log("All students:", studentList)
+  console.log("At-risk students:", riskStudents)
+  console.log("Number of at-risk students:", riskStudents.length)
 
   const showToast = (msg, isError = false) => {
     setToast({ msg, isError })
@@ -97,7 +109,13 @@ function RiskStudentsBox({ students }) {
 
   const visibleRiskStudents = riskStudents.filter(s => !hiddenIds.includes(s.id))
 
-  if (riskStudents.length === 0) return null
+  // 🔥 DEBUG: Log what will be rendered
+  console.log("Visible at-risk students:", visibleRiskStudents)
+
+  if (riskStudents.length === 0) {
+    console.log("No at-risk students found - returning null")
+    return null
+  }
 
   if (visibleRiskStudents.length === 0 && hiddenIds.length > 0) {
     return (
@@ -160,19 +178,22 @@ function RiskStudentsBox({ students }) {
           </div>
         </div>
 
-        {/* 🔥 EACH STUDENT GETS THEIR OWN BOX - EVEN WITH SAME PHONE */}
-        {visibleRiskStudents.map((student) => {
+        {/* 🔥 EACH STUDENT GETS THEIR OWN BOX */}
+        {visibleRiskStudents.map((student, index) => {
           const contact = student.contact || student.phone || student.mobile || 'N/A'
           const alreadySent = sentIds.includes(student.id)
           const isSending = sendingId === student.id
           const gpa = Number(student.gpa || 0)
           const cgpa = Number(student.cgpa || 0)
 
+          // 🔥 Use a guaranteed unique key
+          const uniqueKey = student.id || `student-${index}-${Date.now()}`
+
           return (
-            <div key={student.id} className="bg-white border border-red-200 rounded-lg p-3 mb-3">
+            <div key={uniqueKey} className="bg-white border border-red-200 rounded-lg p-3 mb-3">
               <div className="flex justify-between items-center mb-2">
                 <p className="font-semibold text-red-700">📞 {contact}</p>
-                <span className="text-xs text-gray-400">ID: {student.id}</span>
+                <span className="text-xs text-gray-400">ID: {student.id || 'No ID'}</span>
               </div>
 
               <div className="ml-2">
