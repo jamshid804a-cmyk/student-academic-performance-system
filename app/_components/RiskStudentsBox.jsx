@@ -36,25 +36,21 @@ function RiskStudentsBox({ students }) {
     setTimeout(() => setToast(null), 3000)
   }
 
+  // 🔥 Updated: Always allow sending, even if already sent
   const handleSendNotification = async (student) => {
-    // 🔥 IMPORTANT: Use student.id as the unique identifier
     const studentId = student.id
     setSendingId(studentId)
     
     const contact = student.contact || student.phone || student.mobile || 'N/A'
-
-    // 🔥 Add this: Create a unique request ID for each student
     const requestId = `${studentId}_${Date.now()}_${Math.random()}`
 
     try {
       console.log(`📤 Sending notification for: ${student.name} (ID: ${studentId}, Phone: ${contact})`)
-      console.log(`📤 Request ID: ${requestId}`)
 
       const response = await fetch("/api/notifications", {
         method: "POST",
         headers: { 
           "Content-Type": "application/json",
-          // 🔥 Add unique header to prevent caching
           "X-Request-ID": requestId
         },
         body: JSON.stringify({
@@ -66,10 +62,8 @@ function RiskStudentsBox({ students }) {
           gpa: student.gpa,
           semester: student.grade,
           contact: contact,
-          // 🔥 Add these to make each request unique
           requestId: requestId,
           timestamp: Date.now(),
-          // 🔥 Important: Include student ID in the message to differentiate
           studentName: student.name
         }),
       })
@@ -79,22 +73,26 @@ function RiskStudentsBox({ students }) {
         console.log(`✅ Success for ${student.name}:`, result)
         showToast(`✅ Notification sent for: ${student.name}`, false)
 
-        // 🔥 Track by student ID
+        // 🔥 Always add to sent list (even if already sent)
         if (!sentIds.includes(studentId)) {
           const newSentIds = [...sentIds, studentId]
           setSentIds(newSentIds)
           localStorage.setItem("academic_sent_ids", JSON.stringify(newSentIds))
+        } else {
+          // 🔥 If already sent, still update to show it was sent again
+          showToast(`🔄 Resent notification for: ${student.name}`, false)
         }
 
-        setTimeout(() => {
-          setHiddenIds(prev => [...prev, studentId])
-          setIsVisible(true)
-        }, 5000)
+        // Don't hide the student - keep them visible for re-sending
+        // setTimeout(() => {
+        //   setHiddenIds(prev => [...prev, studentId])
+        //   setIsVisible(true)
+        // }, 5000)
 
       } else {
         const errorData = await response.text()
         console.error(`❌ Server error for ${student.name}:`, errorData)
-        showToast(`⚠️ Failed to send for ${student.name}: ${errorData}`, true)
+        showToast(`⚠️ Failed to send for ${student.name}`, true)
       }
 
     } catch (err) {
@@ -204,19 +202,32 @@ function RiskStudentsBox({ students }) {
                 </div>
               </div>
 
+              {/* 🔥 Updated: Always enabled, shows different text based on status */}
               <button
                 onClick={() => handleSendNotification(student)}
-                disabled={isSending || alreadySent}
+                disabled={isSending}
                 className={`mt-3 w-full text-white py-2 rounded transition-all ${
-                  alreadySent 
-                    ? 'bg-green-500 hover:bg-green-600' 
-                    : isSending 
-                      ? 'bg-gray-400' 
+                  isSending 
+                    ? 'bg-gray-400 cursor-not-allowed' 
+                    : alreadySent 
+                      ? 'bg-blue-500 hover:bg-blue-600' 
                       : 'bg-red-500 hover:bg-red-600'
-                } disabled:opacity-50`}
+                }`}
               >
-                {isSending ? "⏳ Sending..." : alreadySent ? "✅ Sent to Parent" : "📱 Send to Parent"}
+                {isSending 
+                  ? "⏳ Sending..." 
+                  : alreadySent 
+                    ? "🔄 Send Again to Parent" 
+                    : "📱 Send to Parent"
+                }
               </button>
+
+              {/* 🔥 NEW: Show when last sent (optional) */}
+              {alreadySent && !isSending && (
+                <p className="text-xs text-gray-500 mt-1 text-center">
+                  ✅ Previously sent
+                </p>
+              )}
             </div>
           )
         })}
