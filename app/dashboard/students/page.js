@@ -11,12 +11,11 @@ function Students() {
 
     const [studentList, setStudentList] = useState([])
 
-    // 🔥 THIS FUNCTION FLATTENS GROUPED DATA
     const flattenStudentData = (data) => {
         if (!data) return []
-        
+
         if (Array.isArray(data)) {
-            // Check if data is grouped by phone number
+            // If data is grouped by phone number
             if (data.length > 0 && data[0]?.phone && data[0]?.students) {
                 const flattened = []
                 data.forEach(group => {
@@ -41,18 +40,16 @@ function Students() {
         try {
             const resp = await GlobalApi.GetAllStudents()
             console.log("RAW DATA:", resp.data)
-            
-            // Flatten the data
+
             const flattened = flattenStudentData(resp.data)
             console.log("FLATTENED:", flattened)
-            
-            // Add unique IDs
+
             const processed = flattened.map((student, index) => ({
                 ...student,
                 id: student.id || `student_${Date.now()}_${index}`,
                 contact: student.contact || student.phone || student.mobile || 'N/A'
             }))
-            
+
             console.log("FINAL:", processed)
             setStudentList(processed || [])
         } catch (error) {
@@ -70,7 +67,9 @@ function Students() {
                 <h2 className='font-bold text-2xl'>Students</h2>
                 <AddNewStudent refreshData={GetAllStudents} />
             </div>
-            <RiskStudentsBox students={studentList} />
+
+            {/* RiskStudentsBox removed */}
+
             <StudentListTable
                 StudentList={studentList}
                 refreshData={GetAllStudents}
