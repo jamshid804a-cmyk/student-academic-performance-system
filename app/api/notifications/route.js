@@ -1,90 +1,146 @@
 import { NextResponse } from "next/server";
-import { db } from "@/utils";
-import { NOTIFICATIONS } from "@/utils/schema";
-import { eq, and } from "drizzle-orm";
+import { getDb } from "@/utils";
+import { ObjectId } from "mongodb";
 
-// GET - fetch notifications for parent app
+// ✅ GET — fetch notifications for a student
 export async function GET(req) {
-  const searchParams = req.nextUrl.searchParams;
-  const studentId = searchParams.get("studentId");
+  try {
+    const { searchParams } = new URL(req.url);
+    const studentId = searchParams.get("studentId");
 
-  if (!studentId) {
-    return NextResponse.json({ error: "studentId required" }, { status: 400 });
-  }
-
-  const notifications = await db
-    .select()
-    .from(NOTIFICATIONS)
-    .where(eq(NOTIFICATIONS.studentId, Number(studentId)))
-    .orderBy(NOTIFICATIONS.createdAt);
-
-  return NextResponse.json(notifications);
-}
-
-// POST - save notification (handles both attendance and academic types)
-export async function POST(req) {
-  const data = await req.json();
-  const { studentId, message, blockNumber, weekStart, weekEnd, type } = data;
-
-  const isAcademic = type === "academic";
-
-  // For attendance: check duplicate by block+week
-  // For academic: check duplicate by studentId + type (only one per student)
-  if (!isAcademic) {
-    const existing = await db
-      .select()
-      .from(NOTIFICATIONS)
-      .where(
-        and(
-          eq(NOTIFICATIONS.studentId, Number(studentId)),
-          eq(NOTIFICATIONS.blockNumber, Number(blockNumber)),
-          eq(NOTIFICATIONS.weekStart, Number(weekStart)),
-          eq(NOTIFICATIONS.weekEnd, Number(weekEnd))
-        )
-      );
-
-    if (existing.length > 0) {
-      return NextResponse.json({ success: false, alreadySent: true });
+    if (!studentId) {
+      return NextResponse.json({ error: "studentId required" }, { status: 400 });
     }
+
+    const db = await getDb();
+
+    const notifications = await db
+      .collection("notifications")
+      .find({ studentId: String(studentId) })
+      .sort({ createdAt: 1 })
+      .toArray();
+
+    return NextResponse.json(
+      notifications.map((n) => ({
+        ...n,
+        id: n._id.toString(),
+        _id: undefined,
+      }))
+    );
+  } catch (err) {
+    console.error("❌ GET /api/notifications:", err.message);
+    return NextResponse.json({ error: err.message }, { status: 500 });
   }
-
-  // Insert notification
-  const result = await db.insert(NOTIFICATIONS).values({
-    studentId: Number(studentId),
-    message,
-    readStatus: false,
-    // For academic notifications, set block/week to 0
-    blockNumber: isAcademic ? 0 : Number(blockNumber),
-    weekStart: isAcademic ? 0 : Number(weekStart),
-    weekEnd: isAcademic ? 0 : Number(weekEnd),
-    type: type || "attendance",   // ← store the type
-  });
-
-  return NextResponse.json({ success: true, result });
 }
 
-// PUT - mark notification as read (used by parent app)
+// ✅ POST — save notification (attendance or academic)
+export async function POST(req) {
+  try {
+    const data = await req.json();
+    const { studentId, message, blockNumber, weekStart, weekEnd, type } = data;
+
+    if (!studentId || !message) {
+      return NextResponse.json(
+        { error: "studentId and message are required" },
+        { status: 400 }
+      );
+    }
+
+    const isAcademic = type === "academic";
+    const db = await getDb();
+    const collection = db.collection("notifications");
+
+    // Duplicate check for attendance type
+    if (!isAcademic) {
+      const existing = await collection.findOne({
+        studentId: String(studentId),
+        blockNumber: Number(blockNumber),
+        weekStart: Number(weekStart),
+        weekEnd: Number(weekEnd),
+        type: { $ne: "academic" },
+      });
+
+      if (existing) {
+        return NextResponse.json({ success: false, alreadySent: true });
+      }
+    }
+
+    const result = await collection.insertOne({
+      studentId: String(studentId),
+      message,
+      readStatus: false,
+      blockNumber: isAcademic ? 0 : Number(blockNumber) || 0,
+      weekStart: isAcademic ? 0 : Number(weekStart) || 0,
+      weekEnd: isAcademic ? 0 : Number(weekEnd) || 0,
+      type: type || "attendance",
+      createdAt: new Date(),
+    });
+
+    return NextResponse.json({
+      success: true,
+      id: result.insertedId.toString(),
+    });
+  } catch (err) {
+    console.error("❌ POST /api/notifications:", err.message);
+    return NextResponse.json({ error: err.message }, { status: 500 });
+  }
+}
+
+// ✅ PUT — mark as read
 export async function PUT(req) {
-  const data = await req.json();
+  try {
+    const data = await req.json();
 
-  const result = await db
-    .update(NOTIFICATIONS)
-    .set({ readStatus: true })
-    .where(eq(NOTIFICATIONS.id, Number(data.id)));
+    if (!data.id) {
+      return NextResponse.json({ error: "id required" }, { status: 400 });
+    }
 
-  return NextResponse.json({ success: true, result });
+    const db = await getDb();
+
+    let result;
+    try {
+      result = await db.collection("notifications").updateOne(
+        { _id: new ObjectId(data.id) },
+        { $set: { readStatus: true } }
+      );
+    } catch {
+      result = await db.collection("notifications").updateOne(
+        { id: data.id },
+        { $set: { readStatus: true } }
+      );
+    }
+
+    return NextResponse.json({ success: true, result });
+  } catch (err) {
+    console.error("❌ PUT /api/notifications:", err.message);
+    return NextResponse.json({ error: err.message }, { status: 500 });
+  }
 }
 
-// DELETE - remove a notification
+// ✅ DELETE — remove one notification
 export async function DELETE(req) {
-  const searchParams = req.nextUrl.searchParams;
-  const id = searchParams.get("id");
+  try {
+    const { searchParams } = new URL(req.url);
+    const id = searchParams.get("id");
 
-  if (!id) {
-    return NextResponse.json({ error: "id required" }, { status: 400 });
+    if (!id) {
+      return NextResponse.json({ error: "id required" }, { status: 400 });
+    }
+
+    const db = await getDb();
+
+    let result;
+    try {
+      result = await db.collection("notifications").deleteOne({
+        _id: new ObjectId(id),
+      });
+    } catch {
+      result = await db.collection("notifications").deleteOne({ id });
+    }
+
+    return NextResponse.json({ success: true, result });
+  } catch (err) {
+    console.error("❌ DELETE /api/notifications:", err.message);
+    return NextResponse.json({ error: err.message }, { status: 500 });
   }
-
-  await db.delete(NOTIFICATIONS).where(eq(NOTIFICATIONS.id, Number(id)));
-
-  return NextResponse.json({ success: true });
 }
