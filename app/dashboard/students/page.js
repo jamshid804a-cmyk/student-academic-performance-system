@@ -5,7 +5,6 @@ export const dynamic = 'force-dynamic'
 import React, { useEffect, useState } from 'react'
 import AddNewStudent from './_components/AddNewStudent'
 import StudentListTable from './_components/StudentListTable'
-import RiskStudentsBox from '../../_components/RiskStudentsBox'
 import GlobalApi from '@/app/_services/GlobalApi'
 
 function Students() {
