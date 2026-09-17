@@ -11,6 +11,9 @@ const GetAllStudents = () =>
 const DeleteStudentRecord = (id) =>
     axios.delete(`/api/student/${id}`);
 
+const UpdateStudentRecord = (id, data) =>
+    axios.put(`/api/student/${id}`, data);
+
 const SaveAttendance = (data) =>
     axios.post('/api/attendance', data);
 
@@ -38,6 +41,7 @@ export default {
     CreateNewStudent,
     GetAllStudents,
     DeleteStudentRecord,
+    UpdateStudentRecord,
     SaveAttendance,
     GetAttendance,
     GetAttendanceList,

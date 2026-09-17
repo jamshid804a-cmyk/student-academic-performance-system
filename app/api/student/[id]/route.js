@@ -1,68 +1,97 @@
 import { NextResponse } from "next/server";
-import { db } from "@/utils";
-import { STUDENTS } from "@/utils/schema";
-import { eq, sql } from "drizzle-orm";
+import { getDb } from "@/utils";
+import { ObjectId } from "mongodb";
 
+// ✅ GET — fetch one student by id
 export async function GET(req, { params }) {
   try {
     const { id } = await params;
+    if (!id) return NextResponse.json({ error: "ID required" }, { status: 400 });
 
-    if (!id) {
-      return NextResponse.json(
-        { success: false, message: "Student ID required" },
-        { status: 400 }
-      );
+    const db = await getDb();
+    let student;
+    try {
+      student = await db.collection("students").findOne({ _id: new ObjectId(id) });
+    } catch {
+      student = await db.collection("students").findOne({ id });
     }
 
-    const student = await db
-      .select()
-      .from(STUDENTS)
-      .where(eq(STUDENTS.id, Number(id)));
+    if (!student) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-    if (!student || student.length === 0) {
-      return NextResponse.json(
-        { success: false, message: "Student not found" },
-        { status: 404 }
-      );
-    }
-
-    return NextResponse.json(student[0]);
-
-  } catch (error) {
-    console.error("❌ GET /api/student/[id] error:", error.message);
-    return NextResponse.json(
-      { success: false, message: "Server error", error: error.message },
-      { status: 500 }
-    );
+    return NextResponse.json({ ...student, id: student._id.toString(), _id: undefined });
+  } catch (err) {
+    console.error("❌ GET /api/student/[id]:", err.message);
+    return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }
 
-export async function DELETE(req, { params }) {
+// ✅ PUT — update a student
+export async function PUT(req, { params }) {
   try {
     const { id } = await params;
+    const data = await req.json();
 
-    if (!id) {
-      return NextResponse.json(
-        { success: false, message: "Student ID required" },
-        { status: 400 }
+    if (!data.name || !data.grade) {
+      return NextResponse.json({ error: "Name and Grade required" }, { status: 400 });
+    }
+
+    const db = await getDb();
+
+    const update = {
+      name: data.name,
+      fatherName: data.fatherName || null,
+      admissionNo: data.admissionNo || null,
+      contact: data.contact || "",
+      grade: data.grade,
+      section: data.section || null,
+      rollNo: data.rollNo ? Number(data.rollNo) : null,
+      session: data.session || null,
+      fee: data.fee ? Number(data.fee) : 0,
+      address: data.address || "",
+      updatedAt: new Date(),
+    };
+
+    let result;
+    try {
+      result = await db.collection("students").updateOne(
+        { _id: new ObjectId(id) },
+        { $set: update }
+      );
+    } catch {
+      result = await db.collection("students").updateOne(
+        { id },
+        { $set: update }
       );
     }
 
-    await db.delete(STUDENTS).where(eq(STUDENTS.id, Number(id)));
-    await db.execute(sql`ALTER TABLE students AUTO_INCREMENT = 1`);
+    if (result.matchedCount === 0) {
+      return NextResponse.json({ error: "Student not found" }, { status: 404 });
+    }
 
-    console.log(`✅ Student ${id} deleted, AUTO_INCREMENT reset`);
+    return NextResponse.json({ success: true });
+  } catch (err) {
+    console.error("❌ PUT /api/student/[id]:", err.message);
+    return NextResponse.json({ error: err.message }, { status: 500 });
+  }
+}
 
-    return NextResponse.json({
-      success: true,
-      message: "Student deleted successfully",
-    });
+// ✅ DELETE — remove a student
+export async function DELETE(req, { params }) {
+  try {
+    const { id } = await params;
+    if (!id) return NextResponse.json({ error: "ID required" }, { status: 400 });
 
-  } catch (error) {
-    console.error("❌ DELETE /api/student/[id] error:", error.message);
-    return NextResponse.json(
-      { success: false, message: "Server error", error: error.message },
-      { status: 500 }
-    );
+    const db = await getDb();
+    let result;
+    try {
+      result = await db.collection("students").deleteOne({ _id: new ObjectId(id) });
+    } catch {
+      result = await db.collection("students").deleteOne({ id });
+    }
+
+    return NextResponse.json({ success: true, result });
+  } catch (err) {
+    console.error("❌ DELETE /api/student/[id]:", err.message);
+    return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }

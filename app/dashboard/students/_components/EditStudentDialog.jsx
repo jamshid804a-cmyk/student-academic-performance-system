@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useEffect } from 'react'
+import React, { useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { Button } from '@/components/ui/button'
 import {
@@ -13,25 +13,25 @@ import {
 import GlobalApi from '@/app/_services/GlobalApi'
 import { toast } from 'sonner'
 import { LoaderIcon } from 'lucide-react'
-import { useState } from 'react'
 
 function EditStudentDialog({ student, open, onOpenChange, refreshData }) {
     const [loading, setLoading] = useState(false)
     const { register, handleSubmit, reset } = useForm()
 
-    // Pre-fill the form whenever a different student is selected
+    // Pre-fill form when a student is selected
     useEffect(() => {
         if (student) {
             reset({
-                studentName: student.studentName || "",
+                studentName: student.name || "",
                 fatherName: student.fatherName || "",
                 admissionNo: student.admissionNo || "",
-                contactNo: student.contactNo || "",
+                contactNo: student.contact || "",
                 grade: student.grade || "",
                 section: student.section || "",
                 rollNo: student.rollNo || "",
                 session: student.session || "",
                 fee: student.fee || "",
+                address: student.address || "",
             })
         }
     }, [student, reset])
@@ -46,36 +46,39 @@ function EditStudentDialog({ student, open, onOpenChange, refreshData }) {
 
         try {
             const payload = {
-                studentName: data.studentName,
+                name: data.studentName,
                 fatherName: data.fatherName || "",
                 admissionNo: data.admissionNo || "",
-                contactNo: data.contactNo || "",
+                contact: data.contactNo || "",
                 grade: data.grade,
                 section: data.section || "",
-                rollNo: data.rollNo || "",
+                rollNo: data.rollNo ? Number(data.rollNo) : null,
                 session: data.session || "",
                 fee: data.fee ? Number(data.fee) : 0,
+                address: data.address || "",
             }
 
-            // ⚠️ Confirm this matches your actual GlobalApi update function name
-            const resp = await GlobalApi.UpdateStudentRecord(student.id, payload)
+            console.log("Update payload:", payload)
+            console.log("Student id:", student.id)
 
-            if (resp?.status === 200 || resp?.status === 201) {
-                toast.success("Student Updated Successfully")
-                onOpenChange(false)
-                if (refreshData) await refreshData()
-            } else {
-                toast.error("Failed to update student")
-            }
+            await GlobalApi.UpdateStudentRecord(student.id, payload)
+
+            toast.success("Student Updated Successfully")
+            onOpenChange(false)
+            if (refreshData) await refreshData()
+
         } catch (error) {
-            console.log("UPDATE ERROR:", error)
-            toast.error("Server error while updating student")
+            console.log("UPDATE ERROR:", error?.response?.data || error)
+            toast.error(error?.response?.data?.error || "Failed to update student")
         }
 
         setLoading(false)
     }
 
     if (!student) return null
+
+    const inputClass = "w-full px-3 py-2.5 rounded-lg border border-gray-300 focus:border-yellow-500 focus:ring-2 focus:ring-yellow-100 outline-none transition text-gray-900 placeholder:text-gray-400"
+    const labelClass = "block text-sm font-semibold text-gray-700 mb-1"
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
@@ -95,102 +98,79 @@ function EditStudentDialog({ student, open, onOpenChange, refreshData }) {
                 <form onSubmit={handleSubmit(onSubmit)} className="px-6 py-6 space-y-5 max-h-[70vh] overflow-y-auto">
 
                     <div className="grid grid-cols-2 gap-4">
+
+                        {/* Student Name */}
                         <div>
-                            <label className="block text-sm font-semibold text-gray-700 mb-1">
+                            <label className={labelClass}>
                                 Student Name <span className="text-red-500">*</span>
                             </label>
-                            <input
-                                className="w-full px-3 py-2.5 rounded-lg border border-gray-300 focus:border-yellow-500 focus:ring-2 focus:ring-yellow-100 outline-none transition text-gray-900"
-                                {...register("studentName", { required: true })}
-                            />
+                            <input className={inputClass} {...register("studentName", { required: true })} />
                         </div>
 
+                        {/* Father Name */}
                         <div>
-                            <label className="block text-sm font-semibold text-gray-700 mb-1">
-                                Father Name
-                            </label>
-                            <input
-                                className="w-full px-3 py-2.5 rounded-lg border border-gray-300 focus:border-yellow-500 focus:ring-2 focus:ring-yellow-100 outline-none transition text-gray-900"
-                                {...register("fatherName")}
-                            />
+                            <label className={labelClass}>Father Name</label>
+                            <input className={inputClass} {...register("fatherName")} />
                         </div>
 
+                        {/* Admission No */}
                         <div>
-                            <label className="block text-sm font-semibold text-gray-700 mb-1">
-                                Admission No
-                            </label>
-                            <input
-                                className="w-full px-3 py-2.5 rounded-lg border border-gray-300 focus:border-yellow-500 focus:ring-2 focus:ring-yellow-100 outline-none transition text-gray-900"
-                                {...register("admissionNo")}
-                            />
+                            <label className={labelClass}>Admission No</label>
+                            <input className={inputClass} {...register("admissionNo")} />
                         </div>
 
+                        {/* Contact No */}
                         <div>
-                            <label className="block text-sm font-semibold text-gray-700 mb-1">
-                                Contact No
-                            </label>
-                            <input
-                                className="w-full px-3 py-2.5 rounded-lg border border-gray-300 focus:border-yellow-500 focus:ring-2 focus:ring-yellow-100 outline-none transition text-gray-900"
-                                {...register("contactNo")}
-                            />
+                            <label className={labelClass}>Contact No</label>
+                            <input className={inputClass} {...register("contactNo")} />
                         </div>
 
+                        {/* Grade */}
                         <div>
-                            <label className="block text-sm font-semibold text-gray-700 mb-1">
+                            <label className={labelClass}>
                                 Grade <span className="text-red-500">*</span>
                             </label>
-                            <select
-                                className="w-full px-3 py-2.5 rounded-lg border border-gray-300 focus:border-yellow-500 focus:ring-2 focus:ring-yellow-100 outline-none transition text-gray-900"
-                                {...register("grade", { required: true })}
-                            >
+                            <select className={inputClass} {...register("grade", { required: true })}>
                                 <option value="">Select Grade</option>
-                                {[1,2,3,4,5,6,7,8,9,10].map((g) => (
-                                    <option key={g} value={g}>Grade {g}</option>
-                                ))}
+                                <option value="1st">1st</option>
+                                <option value="2nd">2nd</option>
+                                <option value="3rd">3rd</option>
+                                <option value="4th">4th</option>
+                                <option value="5th">5th</option>
+                                <option value="6th">6th</option>
+                                <option value="7th">7th</option>
+                                <option value="8th">8th</option>
+                                <option value="9th">9th</option>
+                                <option value="10th">10th</option>
                             </select>
                         </div>
 
+                        {/* Section */}
                         <div>
-                            <label className="block text-sm font-semibold text-gray-700 mb-1">
-                                Section
-                            </label>
-                            <select
-                                className="w-full px-3 py-2.5 rounded-lg border border-gray-300 focus:border-yellow-500 focus:ring-2 focus:ring-yellow-100 outline-none transition text-gray-900"
-                                {...register("section")}
-                            >
+                            <label className={labelClass}>Section</label>
+                            <select className={inputClass} {...register("section")}>
                                 <option value="">Select Section</option>
-                                {["A","B","C","D"].map((s) => (
-                                    <option key={s} value={s}>{s}</option>
-                                ))}
+                                <option value="A">A</option>
+                                <option value="B">B</option>
+                                <option value="C">C</option>
                             </select>
                         </div>
 
+                        {/* Roll No */}
                         <div>
-                            <label className="block text-sm font-semibold text-gray-700 mb-1">
-                                Roll No
-                            </label>
-                            <input
-                                type="number"
-                                className="w-full px-3 py-2.5 rounded-lg border border-gray-300 focus:border-yellow-500 focus:ring-2 focus:ring-yellow-100 outline-none transition text-gray-900"
-                                {...register("rollNo")}
-                            />
+                            <label className={labelClass}>Roll No</label>
+                            <input type="number" className={inputClass} {...register("rollNo")} />
                         </div>
 
+                        {/* Session */}
                         <div>
-                            <label className="block text-sm font-semibold text-gray-700 mb-1">
-                                Session
-                            </label>
-                            <input
-                                placeholder="e.g. 2025-2026"
-                                className="w-full px-3 py-2.5 rounded-lg border border-gray-300 focus:border-yellow-500 focus:ring-2 focus:ring-yellow-100 outline-none transition text-gray-900"
-                                {...register("session")}
-                            />
+                            <label className={labelClass}>Session</label>
+                            <input placeholder="e.g. 2025-2026" className={inputClass} {...register("session")} />
                         </div>
 
-                        <div className="col-span-2">
-                            <label className="block text-sm font-semibold text-gray-700 mb-1">
-                                Fee
-                            </label>
+                        {/* Fee */}
+                        <div>
+                            <label className={labelClass}>Fee</label>
                             <div className="relative">
                                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm">
                                     Rs.
@@ -202,6 +182,13 @@ function EditStudentDialog({ student, open, onOpenChange, refreshData }) {
                                 />
                             </div>
                         </div>
+
+                        {/* Address */}
+                        <div>
+                            <label className={labelClass}>Address</label>
+                            <input className={inputClass} {...register("address")} />
+                        </div>
+
                     </div>
 
                     <div className="flex justify-end gap-3 pt-4 border-t border-gray-100">

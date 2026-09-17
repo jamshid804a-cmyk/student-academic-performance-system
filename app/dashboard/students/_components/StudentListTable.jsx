@@ -117,14 +117,14 @@ function StudentListTable({ StudentList, refreshData }) {
 
     const [colDefs] = useState([
         { field: "id", headerName: "ID", filter: true, width: 80 },
-        { field: "studentName", headerName: "Student Name", filter: true, flex: 1 },
+        { field: "name", headerName: "Student Name", filter: true, flex: 1 },
         { field: "fatherName", headerName: "Father Name", filter: true, flex: 1 },
         { field: "admissionNo", headerName: "Admission No", filter: true, width: 140 },
         { field: "rollNo", headerName: "Roll No", filter: true, width: 110 },
         { field: "grade", headerName: "Grade", filter: true, width: 100 },
         { field: "section", headerName: "Section", filter: true, width: 100 },
         { field: "session", headerName: "Session", filter: true, width: 130 },
-        { field: "contactNo", headerName: "Contact No", filter: true, width: 140 },
+        { field: "contact", headerName: "Contact No", filter: true, width: 140 },
         {
             field: "fee",
             headerName: "Fee",

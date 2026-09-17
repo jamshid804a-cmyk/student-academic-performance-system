@@ -1,13 +1,21 @@
 import { NextResponse } from "next/server";
-import { db } from "@/utils";
-import { STUDENTS, ATTENDANCE } from "@/utils/schema";
-import { eq, sql } from "drizzle-orm";
+import { getDb } from "@/utils";
+import { ObjectId } from "mongodb";
 
 // ✅ GET - Fetch all students
 export async function GET() {
     try {
-        const students = await db.select().from(STUDENTS);
-        return NextResponse.json(students);
+        const db = await getDb();
+        const students = await db.collection("students").find({}).toArray();
+
+        // Convert MongoDB _id to id for frontend compatibility
+        const formatted = students.map((s) => ({
+            ...s,
+            id: s._id.toString(),
+            _id: undefined,
+        }));
+
+        return NextResponse.json(formatted);
     } catch (err) {
         console.error("❌ GET /api/student error:", err.message);
         return NextResponse.json({ error: err.message }, { status: 500 });
@@ -20,7 +28,6 @@ export async function POST(req) {
         const data = await req.json();
         console.log("Received student data:", data);
 
-        // Make sure name exists (required field)
         if (!data.name || !data.grade) {
             return NextResponse.json(
                 { error: "Name and Grade are required" },
@@ -28,26 +35,35 @@ export async function POST(req) {
             );
         }
 
-        // Convert numeric fields safely
-        const gpa = parseFloat(data.gpa) || 0;
-        const cgpa = parseFloat(data.cgpa) || 0;
-        const midMarks = parseFloat(data.midMarks) || 0;
-        const finalMarks = parseFloat(data.finalMarks) || 0;
+        const db = await getDb();
 
-        const result = await db.insert(STUDENTS).values({
+        const newStudent = {
             name: data.name,
             grade: data.grade,
             address: data.address || "",
             contact: data.contact || "",
-            midMarks: midMarks,
-            finalMarks: finalMarks,
-            gpa: gpa,
-            cgpa: cgpa,
+            fatherName: data.fatherName || null,
+            admissionNo: data.admissionNo || null,
+            section: data.section || null,
+            rollNo: data.rollNo ? Number(data.rollNo) : null,
+            session: data.session || null,
+            fee: data.fee ? Number(data.fee) : 0,
+            midMarks: Number(data.midMarks) || 0,
+            finalMarks: Number(data.finalMarks) || 0,
+            gpa: String(data.gpa || "0"),
+            cgpa: String(data.cgpa || "0"),
             risk: data.risk || "safe",
-        });
+            createdAt: new Date(),
+        };
 
-        console.log("✅ Student added successfully:", data.name);
-        return NextResponse.json({ success: true, result });
+        const result = await db.collection("students").insertOne(newStudent);
+
+        console.log("✅ Student added:", data.name);
+
+        return NextResponse.json({
+            success: true,
+            id: result.insertedId.toString(),
+        });
 
     } catch (err) {
         console.error("❌ POST /api/student error:", err.message);
@@ -59,17 +75,28 @@ export async function POST(req) {
 export async function DELETE(req) {
     try {
         const searchParams = req.nextUrl.searchParams;
-        const id = searchParams.get('id');
+        const id = searchParams.get("id");
 
-        const result = await db.delete(STUDENTS)
-            .where(eq(STUDENTS.id, Number(id)));
+        if (!id) {
+            return NextResponse.json(
+                { error: "Student id is required" },
+                { status: 400 }
+            );
+        }
 
-        // If all students deleted, reset auto-increment
-        const remaining = await db.select().from(STUDENTS);
-        if (remaining.length === 0) {
-            await db.execute(sql`ALTER TABLE students AUTO_INCREMENT = 1`);
-            await db.execute(sql`ALTER TABLE attendance AUTO_INCREMENT = 1`);
-            console.log("✅ Auto increment reset to 1");
+        const db = await getDb();
+
+        // Try MongoDB ObjectId first
+        let result;
+        try {
+            result = await db.collection("students").deleteOne({
+                _id: new ObjectId(id),
+            });
+        } catch {
+            // Fallback: maybe id is a number or a custom id field
+            result = await db.collection("students").deleteOne({
+                id: id,
+            });
         }
 
         return NextResponse.json({ success: true, result });
