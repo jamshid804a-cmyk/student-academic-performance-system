@@ -1,5 +1,5 @@
 "use client"
-import React, { useEffect, useState, useMemo, useRef } from "react"
+import React, { useEffect, useState, useMemo, useRef, useCallback } from "react"
 import { AgGridReact } from "ag-grid-react"
 import { ModuleRegistry, AllCommunityModule } from "ag-grid-community"
 import GlobalApi from "@/app/_services/GlobalApi"
@@ -7,7 +7,6 @@ import AttendanceCell from "./AttendanceCell"
 
 ModuleRegistry.registerModules([AllCommunityModule])
 
-// Convert month name to "MM/YYYY"
 const monthNameToNumber = (name) => {
   const map = {
     January: "01", February: "02", March: "03", April: "04",
@@ -24,7 +23,7 @@ const getDaysInMonth = (monthName, year = new Date().getFullYear()) => {
 
 export default function AttendanceGrid({
   attendanceList,
-  selectedMonth,       // e.g. "September"
+  selectedMonth,
   selectedGrade,
   selectedSection,
   selectedSession,
@@ -44,51 +43,55 @@ export default function AttendanceGrid({
     [selectedMonth]
   )
 
-  // Called by cell when a status is chosen
-  const handleCellChange = async (studentId, day, status) => {
-    // Optimistic UI update
-    setRowData((prev) =>
-      prev.map((r) =>
-        r.studentId === studentId
-          ? { ...r, [`d${day}`]: status }
-          : r
+  // Handle cell click — save immediately, optimistic update
+  const handleCellChange = useCallback(
+    async (studentId, day, status) => {
+      // Instant UI update
+      setRowData((prev) =>
+        prev.map((r) =>
+          r.studentId === studentId ? { ...r, [`d${day}`]: status } : r
+        )
       )
-    )
 
-    try {
-      await GlobalApi.SaveAttendance({
-        studentId,
-        day,
-        date: monthKey,
-        status,
-      })
+      try {
+        await GlobalApi.SaveAttendance({
+          studentId,
+          day,
+          date: monthKey,
+          status,
+        })
 
-      // Trigger week-complete for RiskBox
-      if (onWeekComplete) {
-        const lastDayOfWeek = Math.min(Math.ceil(day / 7) * 7, daysInMonth)
-        const firstDayOfWeek = Math.floor((day - 1) / 7) * 7 + 1
-        if (day === lastDayOfWeek) {
-          onWeekComplete({ weekStart: firstDayOfWeek, weekEnd: lastDayOfWeek })
+        if (onWeekComplete) {
+          const lastDayOfWeek = Math.min(Math.ceil(day / 7) * 7, daysInMonth)
+          const firstDayOfWeek = Math.floor((day - 1) / 7) * 7 + 1
+          if (day === lastDayOfWeek) {
+            onWeekComplete({ weekStart: firstDayOfWeek, weekEnd: lastDayOfWeek })
+          }
         }
-      }
 
-      if (onAttendanceChange) onAttendanceChange()
-    } catch (err) {
-      console.error("Save attendance error:", err)
-    }
-  }
+        if (onAttendanceChange) onAttendanceChange()
+      } catch (err) {
+        console.error("Save attendance error:", err)
+      }
+    },
+    [monthKey, daysInMonth, onWeekComplete, onAttendanceChange]
+  )
 
   useEffect(() => {
     onChangeRef.current = handleCellChange
-  })
+  }, [handleCellChange])
 
-  const CellRenderer = (params) => (
-    <AttendanceCell
-      value={params.value}
-      studentId={params.data.studentId}
-      day={Number(params.colDef.field.slice(1))}
-      onChange={(sid, day, status) => onChangeRef.current(sid, day, status)}
-    />
+  // Cell renderer — uses ref so the grid doesn't re-create on every change
+  const CellRenderer = useCallback(
+    (params) => (
+      <AttendanceCell
+        value={params.value}
+        studentId={params.data.studentId}
+        day={Number(params.colDef.field.slice(1))}
+        onChange={(sid, day, status) => onChangeRef.current(sid, day, status)}
+      />
+    ),
+    []
   )
 
   const colDefs = useMemo(() => {
@@ -96,14 +99,23 @@ export default function AttendanceGrid({
       {
         field: "rollNo",
         headerName: "Roll No",
-        width: 90,
+        width: 85,
         pinned: "left",
+        cellStyle: {
+          display: "flex",
+          alignItems: "center",
+          fontWeight: "600",
+        },
       },
       {
         field: "name",
         headerName: "Student Name",
-        width: 200,
+        width: 190,
         pinned: "left",
+        cellStyle: {
+          display: "flex",
+          alignItems: "center",
+        },
       },
     ]
     const days = Array.from({ length: daysInMonth }, (_, i) => {
@@ -111,14 +123,22 @@ export default function AttendanceGrid({
       return {
         field: `d${day}`,
         headerName: String(day),
-        width: 55,
+        width: 44,
+        minWidth: 44,
+        maxWidth: 44,
         cellRenderer: CellRenderer,
         sortable: false,
         resizable: false,
+        cellStyle: {
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          padding: 0,
+        },
       }
     })
     return [...base, ...days]
-  }, [daysInMonth])
+  }, [daysInMonth, CellRenderer])
 
   useEffect(() => {
     if (!attendanceList) return
@@ -136,20 +156,27 @@ export default function AttendanceGrid({
     setRowData(rows)
   }, [attendanceList, daysInMonth])
 
-  return (
-    <div className="ag-theme-quartz rounded-xl overflow-hidden" style={{ height: 560, width: "100%" }}>
-      {rowData.length === 0 ? (
+  if (rowData.length === 0) {
+    return (
+      <div className="ag-theme-quartz rounded-xl bg-white border" style={{ height: 400 }}>
         <div className="flex items-center justify-center h-full text-gray-400 text-lg">
           No students found for these filters.
         </div>
-      ) : (
-        <AgGridReact
-          rowData={rowData}
-          columnDefs={colDefs}
-          rowHeight={48}
-          headerHeight={45}
-        />
-      )}
+      </div>
+    )
+  }
+
+  return (
+    <div className="ag-theme-quartz rounded-xl overflow-hidden border shadow-sm" style={{ height: 560, width: "100%" }}>
+      <AgGridReact
+        rowData={rowData}
+        columnDefs={colDefs}
+        rowHeight={44}
+        headerHeight={44}
+        suppressCellFocus
+        animateRows={false}
+        suppressColumnVirtualisation={false}
+      />
     </div>
   )
 }
