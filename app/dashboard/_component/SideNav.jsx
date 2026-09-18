@@ -1,4 +1,5 @@
 "use client"
+
 import { useKindeBrowserClient } from '@kinde-oss/kinde-auth-nextjs'
 import {
   GraduationCap, Hand, LayoutIcon, BookOpen,
@@ -71,7 +72,6 @@ function SideNav() {
           )}
         </div>
 
-        {/* Fee Management as top-level */}
         <Link href="/dashboard/fee-management">
           <h2 className={itemClass(path === '/dashboard/fee-management')}>
             <Wallet size={20} /> Fee Management
