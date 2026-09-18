@@ -4,8 +4,7 @@ import axios from "axios";
 const GetAllGrades = () => axios.get('/api/grade');
 
 // ─── Students ───────────────────────────────────────────────
-const CreateNewStudent = (data) =>
-    axios.post('/api/student', data);
+const CreateNewStudent = (data) => axios.post('/api/student', data);
 
 const GetAllStudents = (filters = {}) => {
     const params = new URLSearchParams();
@@ -16,18 +15,12 @@ const GetAllStudents = (filters = {}) => {
     return axios.get('/api/student' + (qs ? `?${qs}` : ''));
 };
 
-const DeleteStudentRecord = (id) =>
-    axios.delete(`/api/student/${id}`);
-
-const UpdateStudentRecord = (id, data) =>
-    axios.put(`/api/student/${id}`, data);
+const DeleteStudentRecord = (id) => axios.delete(`/api/student/${id}`);
+const UpdateStudentRecord = (id, data) => axios.put(`/api/student/${id}`, data);
 
 // ─── Attendance ─────────────────────────────────────────────
-const SaveAttendance = (data) =>
-    axios.post('/api/attendance', data);
-
-const GetAttendance = () =>
-    axios.get('/api/attendance');
+const SaveAttendance = (data) => axios.post('/api/attendance', data);
+const GetAttendance = () => axios.get('/api/attendance');
 
 const GetAttendanceList = (grade, month, section, session) => {
     const params = new URLSearchParams();
@@ -40,63 +33,42 @@ const GetAttendanceList = (grade, month, section, session) => {
 
 const DeleteAttendance = (studentId, day, month) =>
     axios.delete(
-        '/api/attendance?studentId=' +
-        studentId +
-        '&day=' +
-        day +
-        '&month=' +
-        month
+        '/api/attendance?studentId=' + studentId +
+        '&day=' + day +
+        '&month=' + month
     );
 
 // ─── Parents ────────────────────────────────────────────────
 const GetParentByStudentId = (studentId) =>
     axios.get(`/api/parents?studentId=${studentId}`);
 
-// ─── Subjects (per student) ─────────────────────────────────
-const GetAllSubjects = (studentId) =>
-    axios.get(`/api/subjects?studentId=${studentId}`);
+// ─── Subjects ───────────────────────────────────────────────
+const GetAllSubjects = () => axios.get('/api/subjects');
+const CreateSubject = (data) => axios.post('/api/subjects', data);
+const DeleteSubject = (id) => axios.delete(`/api/subjects/${id}`);
 
-const CreateSubject = (data) =>
-    axios.post('/api/subjects', data);
-
-const DeleteSubject = (id) =>
-    axios.delete(`/api/subjects/${id}`);
-
-// ─── Tests (Academic Performance) ───────────────────────────
+// ─── Tests ──────────────────────────────────────────────────
 const GetTests = (params) => {
     const qs = new URLSearchParams(params).toString();
     return axios.get('/api/tests' + (qs ? `?${qs}` : ''));
 };
-
-const SaveTest = (data) =>
-    axios.post('/api/tests', data);
+const SaveTest = (data) => axios.post('/api/tests', data);
 
 // ─── Export ─────────────────────────────────────────────────
 export default {
-    // Grades
     GetAllGrades,
-
-    // Students
     CreateNewStudent,
     GetAllStudents,
     DeleteStudentRecord,
     UpdateStudentRecord,
-
-    // Attendance
     SaveAttendance,
     GetAttendance,
     GetAttendanceList,
     DeleteAttendance,
-
-    // Parents
     GetParentByStudentId,
-
-    // Subjects
     GetAllSubjects,
     CreateSubject,
     DeleteSubject,
-
-    // Tests
     GetTests,
     SaveTest,
 };

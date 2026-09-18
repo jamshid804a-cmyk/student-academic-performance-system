@@ -34,13 +34,11 @@ export default function TestingPage() {
   const [month, setMonth] = useState("")
   const [testType, setTestType] = useState("Monthly")
 
-  const [students, setStudents] = useState([])
-  const [selectedStudentId, setSelectedStudentId] = useState("")
-
   const [subjects, setSubjects] = useState([])
   const [newSubject, setNewSubject] = useState("")
   const [loadingSubjects, setLoadingSubjects] = useState(false)
 
+  const [students, setStudents] = useState([])
   const [tests, setTests] = useState({})
   const [loadingTable, setLoadingTable] = useState(false)
 
@@ -60,7 +58,7 @@ export default function TestingPage() {
     setHydrated(true)
   }, [])
 
-  // ─── Save filters ───
+  // ─── Save filters on change ───
   useEffect(() => {
     if (!hydrated) return
     localStorage.setItem(
@@ -69,102 +67,88 @@ export default function TestingPage() {
     )
   }, [grade, section, session, month, testType, hydrated])
 
-  // ─── Load students when grade+month+testType are ready ───
-  useEffect(() => {
-    if (!hydrated) return
-    if (!grade || !month) {
-      setStudents([])
-      setSelectedStudentId("")
-      return
-    }
-    const t = setTimeout(async () => {
-      try {
-        const params = { grade }
-        if (section) params.section = section
-        if (session) params.session = session
-        const resp = await GlobalApi.GetAllStudents(params)
-        setStudents(resp.data || [])
-        // If current student no longer in list, reset
-        setSelectedStudentId((prev) =>
-          resp.data?.some((s) => String(s.id) === String(prev)) ? prev : ""
-        )
-      } catch (err) {
-        console.error(err)
-      }
-    }, 250)
-    return () => clearTimeout(t)
-  }, [grade, section, session, month, testType, hydrated])
-
-  // ─── Load subjects + tests when a student is picked ───
-  const loadSubjects = async (studentId) => {
-    if (!studentId) { setSubjects([]); return }
+  // ─── Load subjects ───
+  const loadSubjects = async () => {
     setLoadingSubjects(true)
     try {
-      const resp = await GlobalApi.GetAllSubjects(studentId)
+      const resp = await GlobalApi.GetAllSubjects()
       setSubjects(resp.data || [])
     } catch (err) { console.error(err) }
     setLoadingSubjects(false)
   }
 
-  const loadTests = async (studentId) => {
-    if (!studentId || !month) { setTests({}); return }
-    setLoadingTable(true)
-    try {
-      const monthKey = monthNameToKey(month)
-      const resp = await GlobalApi.GetTests({
-        studentId,
-        month: monthKey,
-        testType,
-      })
-      const marks = {}
-      ;(resp.data || []).forEach((t) => {
-        marks[t.subject] = {
-          marks: t.marks,
-          totalMarks: t.totalMarks,
-          percentage: t.percentage,
-        }
-      })
-      setTests(marks)
-    } catch (err) { console.error(err) }
-    setLoadingTable(false)
-  }
+  useEffect(() => { loadSubjects() }, [])
 
-  useEffect(() => {
-    loadSubjects(selectedStudentId)
-    loadTests(selectedStudentId)
-  }, [selectedStudentId, month, testType])
-
-  // ─── Add subject ───
+  // ─── Add / Remove subject ───
   const handleAddSubject = async () => {
     const name = newSubject.trim()
     if (!name) return
-    if (!selectedStudentId) {
-      toast.error("Please select a student first.")
-      return
-    }
     try {
-      await GlobalApi.CreateSubject({ name, studentId: selectedStudentId })
+      await GlobalApi.CreateSubject({ name })
       setNewSubject("")
       toast.success("Subject added")
-      loadSubjects(selectedStudentId)
+      loadSubjects()
     } catch (err) {
       toast.error(err?.response?.data?.error || "Failed to add subject")
     }
   }
 
-  // ─── Remove subject ───
   const handleDeleteSubject = async (id, name) => {
     if (!confirm(`Remove subject "${name}"?`)) return
     try {
       await GlobalApi.DeleteSubject(id)
       toast.success("Subject removed")
-      loadSubjects(selectedStudentId)
+      loadSubjects()
     } catch { toast.error("Failed to remove subject") }
   }
 
+  // ─── Auto-fetch students + tests when filters change ───
+  useEffect(() => {
+    if (!hydrated) return
+
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+
+    debounceRef.current = setTimeout(async () => {
+      if (!grade || !month || !testType) {
+        setStudents([]); setTests({}); return
+      }
+      setLoadingTable(true)
+      try {
+        const monthKey = monthNameToKey(month)
+        const studentParams = { grade }
+        if (section) studentParams.section = section
+        if (session) studentParams.session = session
+        const studentResp = await GlobalApi.GetAllStudents(studentParams)
+        const testResp = await GlobalApi.GetTests({
+          grade, section, session, month: monthKey, testType,
+        })
+        const marks = {}
+        ;(testResp.data || []).forEach((t) => {
+          marks[`${t.studentId}__${t.subject}`] = {
+            marks: t.marks,
+            totalMarks: t.totalMarks,
+            percentage: t.percentage,
+          }
+        })
+        setStudents(studentResp.data || [])
+        setTests(marks)
+      } catch (err) {
+        console.error(err)
+        toast.error("Failed to load table")
+      }
+      setLoadingTable(false)
+    }, 300)
+
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current)
+    }
+  }, [grade, section, session, month, testType, hydrated])
+
+  const monthKey = month ? monthNameToKey(month) : ""
+
   // ─── Save marks ───
-  const handleMarksChange = async (subjectName, value) => {
-    const key = subjectName
+  const handleMarksChange = async (student, subject, value) => {
+    const key = `${student.id}__${subject}`
     setTests((prev) => ({
       ...prev,
       [key]: {
@@ -175,60 +159,63 @@ export default function TestingPage() {
     }))
 
     try {
-      const monthKey = monthNameToKey(month)
       await GlobalApi.SaveTest({
-        studentId: selectedStudentId,
-        grade, section, session,
+        studentId: student.id, grade, section, session,
         month: monthKey, testType,
-        subject: subjectName,
-        marks: value,
-        totalMarks: 100,
+        subject, marks: value, totalMarks: 100,
       })
-      await loadTests(selectedStudentId)
+      const testResp = await GlobalApi.GetTests({
+        grade, section, session, month: monthKey, testType,
+      })
+      const marks = {}
+      ;(testResp.data || []).forEach((t) => {
+        marks[`${t.studentId}__${t.subject}`] = {
+          marks: t.marks, totalMarks: t.totalMarks, percentage: t.percentage,
+        }
+      })
+      setTests(marks)
     } catch (err) {
       console.error(err)
       toast.error("Failed to save marks")
     }
   }
 
-  // ─── Current selected student ───
-  const selectedStudent = useMemo(
-    () => students.find((s) => String(s.id) === String(selectedStudentId)),
-    [students, selectedStudentId]
-  )
+  // ─── Rows ───
+  const rows = useMemo(() => {
+    return students.map((s) => {
+      const studentMarks = {}
+      let totalPct = 0, count = 0, hasLow = false
+      const lowSubjects = []
 
-  // ─── Row for the selected student ───
-  const row = useMemo(() => {
-    if (!selectedStudent) return null
-    const subjectMarks = {}
-    let totalPct = 0, count = 0, hasLow = false
-    const lowSubjects = []
+      subjects.forEach((sub) => {
+        const record = tests[`${s.id}__${sub.name}`]
+        if (record && record.marks !== undefined && record.marks !== "") {
+          const pct = record.percentage ?? Math.round((record.marks / (record.totalMarks || 100)) * 100)
+          studentMarks[sub.name] = { marks: record.marks, total: record.totalMarks || 100, percentage: pct }
+          totalPct += pct; count++
+          if (pct < 50) {
+            hasLow = true
+            lowSubjects.push({ subject: sub.name, percentage: pct, marks: record.marks })
+          }
+        } else {
+          studentMarks[sub.name] = null
+        }
+      })
 
-    subjects.forEach((sub) => {
-      const record = tests[sub.name]
-      if (record && record.marks !== undefined && record.marks !== "") {
-        const pct = record.percentage ?? Math.round((record.marks / (record.totalMarks || 100)) * 100)
-        subjectMarks[sub.name] = { marks: record.marks, total: record.totalMarks || 100, percentage: pct }
-        totalPct += pct; count++
-        if (pct < 50) { hasLow = true; lowSubjects.push({ subject: sub.name, percentage: pct, marks: record.marks }) }
-      } else {
-        subjectMarks[sub.name] = null
+      const overallPct = count > 0 ? Math.round(totalPct / count) : 0
+      return {
+        student: s,
+        subjectMarks: studentMarks,
+        overallPct,
+        risk: hasLow ? "Risk" : "Active",
+        lowSubjects,
       }
     })
-
-    const overallPct = count > 0 ? Math.round(totalPct / count) : 0
-    return {
-      student: selectedStudent,
-      subjectMarks,
-      overallPct,
-      risk: hasLow ? "Risk" : "Active",
-      lowSubjects,
-    }
-  }, [selectedStudent, subjects, tests])
+  }, [students, subjects, tests])
 
   // ─── Send notification ───
   const handleSend = async (row) => {
-    if (!row || row.lowSubjects.length === 0) {
+    if (row.lowSubjects.length === 0) {
       toast.info("All subjects are above 50% — no notification needed.")
       return
     }
@@ -253,8 +240,6 @@ export default function TestingPage() {
     }
   }
 
-  const monthKey = month ? monthNameToKey(month) : ""
-
   return (
     <div className="p-7">
       <div className="flex items-center gap-3 mb-6">
@@ -263,7 +248,7 @@ export default function TestingPage() {
         </div>
         <div>
           <h2 className="text-2xl font-bold">Testing</h2>
-          <p className="text-sm text-slate-500">Pick a student to add subjects and enter marks</p>
+          <p className="text-sm text-slate-500">Monthly, Weekly, and Daily test marks</p>
         </div>
       </div>
 
@@ -293,77 +278,53 @@ export default function TestingPage() {
         </div>
       </div>
 
-      {/* Student picker */}
-      {students.length > 0 && (
-        <div className="bg-white border rounded-2xl shadow-sm p-5 mb-5">
-          <h3 className="text-sm font-semibold text-slate-700 mb-3">Select Student</h3>
-          <select
-            className="fi w-full max-w-md"
-            value={selectedStudentId}
-            onChange={(e) => setSelectedStudentId(e.target.value)}
-          >
-            <option value="">-- Choose a student --</option>
-            {students.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.rollNo ? `${s.rollNo} — ` : ""}{s.name}
-              </option>
+      {/* Subjects */}
+      <div className="bg-white border rounded-2xl shadow-sm p-5 mb-5">
+        <h3 className="text-sm font-semibold text-slate-700 mb-3">Subjects</h3>
+        <div className="flex gap-2 mb-3">
+          <input
+            type="text"
+            placeholder="Add a subject (e.g. Math)"
+            value={newSubject}
+            onChange={(e) => setNewSubject(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && handleAddSubject()}
+            className="flex-1 px-3 py-2 rounded-lg border border-gray-300 focus:border-blue-500 outline-none text-sm"
+          />
+          <Button onClick={handleAddSubject} disabled={!newSubject.trim()}>
+            <Plus size={16} className="mr-1" /> Add Subject
+          </Button>
+        </div>
+        {loadingSubjects ? (
+          <p className="text-sm text-slate-400">Loading subjects...</p>
+        ) : subjects.length === 0 ? (
+          <p className="text-sm text-slate-400">No subjects yet.</p>
+        ) : (
+          <div className="flex flex-wrap gap-2">
+            {subjects.map((s) => (
+              <span key={s.id} className="flex items-center gap-2 pl-3 pr-2 py-1.5 rounded-lg bg-slate-100 border border-slate-200 text-sm">
+                {s.name}
+                <button
+                  onClick={() => handleDeleteSubject(s.id, s.name)}
+                  className="w-5 h-5 rounded bg-slate-200 hover:bg-red-100 hover:text-red-600 text-slate-500 flex items-center justify-center"
+                >
+                  <X size={12} />
+                </button>
+              </span>
             ))}
-          </select>
-        </div>
-      )}
-
-      {/* Subject manager for the selected student */}
-      {selectedStudentId && (
-        <div className="bg-white border rounded-2xl shadow-sm p-5 mb-5">
-          <h3 className="text-sm font-semibold text-slate-700 mb-3">
-            Subjects for <span className="text-blue-600">{selectedStudent?.name}</span>
-          </h3>
-          <div className="flex gap-2 mb-3">
-            <input
-              type="text"
-              placeholder="Add a subject (e.g. Math)"
-              value={newSubject}
-              onChange={(e) => setNewSubject(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleAddSubject()}
-              className="flex-1 px-3 py-2 rounded-lg border border-gray-300 focus:border-blue-500 outline-none text-sm"
-            />
-            <Button onClick={handleAddSubject} disabled={!newSubject.trim()}>
-              <Plus size={16} className="mr-1" /> Add Subject
-            </Button>
           </div>
-
-          {loadingSubjects ? (
-            <p className="text-sm text-slate-400">Loading subjects...</p>
-          ) : subjects.length === 0 ? (
-            <p className="text-sm text-slate-400">No subjects for this student yet.</p>
-          ) : (
-            <div className="flex flex-wrap gap-2">
-              {subjects.map((s) => (
-                <span key={s.id} className="flex items-center gap-2 pl-3 pr-2 py-1.5 rounded-lg bg-slate-100 border border-slate-200 text-sm">
-                  {s.name}
-                  <button
-                    onClick={() => handleDeleteSubject(s.id, s.name)}
-                    className="w-5 h-5 rounded bg-slate-200 hover:bg-red-100 hover:text-red-600 text-slate-500 flex items-center justify-center"
-                  >
-                    <X size={12} />
-                  </button>
-                </span>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
+        )}
+      </div>
 
       {/* Table */}
-      {!selectedStudentId ? (
-        <div className="bg-white border rounded-2xl p-10 text-center text-slate-400">
-          Pick a student to see their subjects and marks.
-        </div>
-      ) : loadingTable ? (
+      {loadingTable ? (
         <div className="flex justify-center py-10 text-slate-400">
           <LoaderIcon className="animate-spin mr-2" /> Loading table...
         </div>
-      ) : row && subjects.length > 0 ? (
+      ) : students.length === 0 ? (
+        <div className="bg-white border rounded-2xl p-10 text-center text-slate-400">
+          Select Grade, Month and Test Type to load students.
+        </div>
+      ) : (
         <div className="bg-white border rounded-2xl shadow-sm overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-slate-50 border-b">
@@ -382,52 +343,50 @@ export default function TestingPage() {
               </tr>
             </thead>
             <tbody>
-              <tr className="border-b">
-                <td className="p-3">{row.student.rollNo ?? "—"}</td>
-                <td className="p-3 font-medium">{row.student.name}</td>
-                <td className="p-3">{row.student.session || "—"}</td>
-                <td className="p-3">{monthKey}</td>
-                <td className="p-3">{testType}</td>
-                {subjects.map((sub) => {
-                  const cell = row.subjectMarks[sub.name]
-                  return (
-                    <td key={sub.id} className="p-2 text-center">
-                      <input
-                        type="number"
-                        min="0"
-                        max="100"
-                        value={cell?.marks ?? ""}
-                        onChange={(e) => handleMarksChange(sub.name, e.target.value)}
-                        className={`w-16 px-2 py-1 rounded border text-center text-sm
-                          ${cell && cell.percentage < 50 ? "border-red-400 bg-red-50 text-red-700" : "border-gray-300"}`}
-                        placeholder="—"
-                      />
-                    </td>
-                  )
-                })}
-                <td className="p-3 text-center font-semibold">{row.overallPct}%</td>
-                <td className="p-3 text-center">
-                  <span className={`px-3 py-1 rounded-full text-xs font-semibold
-                    ${row.risk === "Risk" ? "bg-red-100 text-red-700" : "bg-green-100 text-green-700"}`}>
-                    {row.risk}
-                  </span>
-                </td>
-                <td className="p-3 text-center">
-                  <button
-                    onClick={() => handleSend(row)}
-                    disabled={row.lowSubjects.length === 0}
-                    className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold bg-blue-600 hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-400 text-white"
-                  >
-                    <Send size={12} /> Send
-                  </button>
-                </td>
-              </tr>
+              {rows.map((row) => (
+                <tr key={row.student.id} className="border-b hover:bg-slate-50">
+                  <td className="p-3">{row.student.rollNo ?? "—"}</td>
+                  <td className="p-3 font-medium">{row.student.name}</td>
+                  <td className="p-3">{row.student.session || "—"}</td>
+                  <td className="p-3">{monthKey}</td>
+                  <td className="p-3">{testType}</td>
+                  {subjects.map((sub) => {
+                    const cell = row.subjectMarks[sub.name]
+                    return (
+                      <td key={sub.id} className="p-2 text-center">
+                        <input
+                          type="number"
+                          min="0"
+                          max="100"
+                          value={cell?.marks ?? ""}
+                          onChange={(e) => handleMarksChange(row.student, sub.name, e.target.value)}
+                          className={`w-16 px-2 py-1 rounded border text-center text-sm
+                            ${cell && cell.percentage < 50 ? "border-red-400 bg-red-50 text-red-700" : "border-gray-300"}`}
+                          placeholder="—"
+                        />
+                      </td>
+                    )
+                  })}
+                  <td className="p-3 text-center font-semibold">{row.overallPct}%</td>
+                  <td className="p-3 text-center">
+                    <span className={`px-3 py-1 rounded-full text-xs font-semibold
+                      ${row.risk === "Risk" ? "bg-red-100 text-red-700" : "bg-green-100 text-green-700"}`}>
+                      {row.risk}
+                    </span>
+                  </td>
+                  <td className="p-3 text-center">
+                    <button
+                      onClick={() => handleSend(row)}
+                      disabled={row.lowSubjects.length === 0}
+                      className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold bg-blue-600 hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-400 text-white"
+                    >
+                      <Send size={12} /> Send
+                    </button>
+                  </td>
+                </tr>
+              ))}
             </tbody>
           </table>
-        </div>
-      ) : (
-        <div className="bg-white border rounded-2xl p-10 text-center text-slate-400">
-          Add subjects for this student to see the marks table.
         </div>
       )}
 

@@ -1,21 +1,13 @@
 import { NextResponse } from "next/server";
 import { getDb } from "@/utils";
 
-// ✅ GET — list subjects for ONE student
-// ?studentId=1
-export async function GET(req) {
+// ✅ GET — list all subjects
+export async function GET() {
   try {
-    const { searchParams } = new URL(req.url);
-    const studentId = searchParams.get("studentId");
-
-    if (!studentId) {
-      return NextResponse.json({ error: "studentId required" }, { status: 400 });
-    }
-
     const db = await getDb();
     const subjects = await db
       .collection("subjects")
-      .find({ studentId: String(studentId) })
+      .find({})
       .sort({ name: 1 })
       .toArray();
 
@@ -28,29 +20,22 @@ export async function GET(req) {
   }
 }
 
-// ✅ POST — add a subject for ONE student
+// ✅ POST — add a subject
 export async function POST(req) {
   try {
     const data = await req.json();
-    if (!data.name || !data.studentId) {
-      return NextResponse.json(
-        { error: "name and studentId required" },
-        { status: 400 }
-      );
+    if (!data.name) {
+      return NextResponse.json({ error: "Name required" }, { status: 400 });
     }
 
     const db = await getDb();
-    const existing = await db.collection("subjects").findOne({
-      name: data.name.trim(),
-      studentId: String(data.studentId),
-    });
+    const existing = await db.collection("subjects").findOne({ name: data.name.trim() });
     if (existing) {
       return NextResponse.json({ error: "Subject already exists" }, { status: 400 });
     }
 
     const result = await db.collection("subjects").insertOne({
       name: data.name.trim(),
-      studentId: String(data.studentId),
       createdAt: new Date(),
     });
 
