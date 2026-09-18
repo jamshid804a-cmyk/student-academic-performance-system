@@ -1,7 +1,9 @@
 import axios from "axios";
 
+// ─── Grades ─────────────────────────────────────────────────
 const GetAllGrades = () => axios.get('/api/grade');
 
+// ─── Students ───────────────────────────────────────────────
 const CreateNewStudent = (data) =>
     axios.post('/api/student', data);
 
@@ -20,8 +22,12 @@ const DeleteStudentRecord = (id) =>
 const UpdateStudentRecord = (id, data) =>
     axios.put(`/api/student/${id}`, data);
 
+// ─── Attendance ─────────────────────────────────────────────
 const SaveAttendance = (data) =>
     axios.post('/api/attendance', data);
+
+const GetAttendance = () =>
+    axios.get('/api/attendance');
 
 const GetAttendanceList = (grade, month, section, session) => {
     const params = new URLSearchParams();
@@ -34,22 +40,62 @@ const GetAttendanceList = (grade, month, section, session) => {
 
 const DeleteAttendance = (studentId, day, month) =>
     axios.delete(
-        '/api/attendance?studentId=' + studentId +
-        '&day=' + day +
-        '&month=' + month
+        '/api/attendance?studentId=' +
+        studentId +
+        '&day=' +
+        day +
+        '&month=' +
+        month
     );
 
+// ─── Parents ────────────────────────────────────────────────
 const GetParentByStudentId = (studentId) =>
     axios.get(`/api/parents?studentId=${studentId}`);
 
+// ─── Subjects ───────────────────────────────────────────────
+const GetAllSubjects = () => axios.get('/api/subjects');
+
+const CreateSubject = (data) =>
+    axios.post('/api/subjects', data);
+
+const DeleteSubject = (id) =>
+    axios.delete(`/api/subjects/${id}`);
+
+// ─── Tests (Academic Performance) ───────────────────────────
+const GetTests = (params) => {
+    const qs = new URLSearchParams(params).toString();
+    return axios.get('/api/tests' + (qs ? `?${qs}` : ''));
+};
+
+const SaveTest = (data) =>
+    axios.post('/api/tests', data);
+
+// ─── Export ─────────────────────────────────────────────────
 export default {
+    // Grades
     GetAllGrades,
+
+    // Students
     CreateNewStudent,
     GetAllStudents,
     DeleteStudentRecord,
     UpdateStudentRecord,
+
+    // Attendance
     SaveAttendance,
+    GetAttendance,
     GetAttendanceList,
     DeleteAttendance,
+
+    // Parents
     GetParentByStudentId,
+
+    // Subjects
+    GetAllSubjects,
+    CreateSubject,
+    DeleteSubject,
+
+    // Tests
+    GetTests,
+    SaveTest,
 };
