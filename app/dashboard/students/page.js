@@ -8,7 +8,6 @@ import StudentListTable from './_components/StudentListTable'
 import GlobalApi from '@/app/_services/GlobalApi'
 
 function Students() {
-
     const [studentList, setStudentList] = useState([])
 
     const GetAllStudents = async () => {
@@ -16,13 +15,14 @@ function Students() {
             const resp = await GlobalApi.GetAllStudents()
             console.log("RAW DATA:", resp.data)
 
-            // API already returns a flat array of students with id, name, etc.
             const students = Array.isArray(resp.data) ? resp.data : []
 
-            const processed = students.map((student, index) => ({
+            // ⚠️ DO NOT invent a fake id. Keep the real one from MongoDB.
+            const processed = students.map((student) => ({
                 ...student,
-                id: student.id || student._id || `student_${index}`,
-                contact: student.contact || 'N/A',
+                // Prefer numeric id, then MongoDB _id as string
+                id: student.id ?? student._id ?? null,
+                contact: student.contact || '',
             }))
 
             console.log("FINAL:", processed)

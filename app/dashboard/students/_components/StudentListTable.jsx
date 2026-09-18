@@ -37,8 +37,12 @@ function StudentListTable({ StudentList, refreshData }) {
     }, [StudentList])
 
     const DeleteRecord = async (id) => {
+        // 🔍 DEBUG — see what id is being sent
+        console.log("🗑️ Trying to delete id:", id, "type:", typeof id)
+
         try {
             const resp = await GlobalApi.DeleteStudentRecord(id)
+            console.log("🗑️ Delete response:", resp?.data)
 
             if (resp?.data?.success && (resp.data.deletedCount ?? 1) > 0) {
                 toast.success("Record Deleted Successfully")
@@ -58,6 +62,8 @@ function StudentListTable({ StudentList, refreshData }) {
     }
 
     const handleEditClick = (data) => {
+        // 🔍 DEBUG — see the full student object being edited
+        console.log("✏️ Editing student:", data)
         setEditStudent(data)
         setEditOpen(true)
     }

@@ -13,8 +13,8 @@ export async function GET() {
 
     const formatted = students.map((s) => ({
       ...s,
-      id: typeof s.id === "number" ? s.id : null,
-      _id: undefined,
+      id: s.id ?? null,              // numeric id (1, 2, 3) if it exists
+      _id: s._id.toString(),         // real MongoDB ObjectId as string
     }));
 
     return NextResponse.json(formatted);
@@ -39,7 +39,7 @@ export async function POST(req) {
 
     const db = await getDb();
 
-    // 🔢 Get the next numeric id
+    // 🔢 Get the next numeric id from counters
     const counter = await db.collection("counters").findOneAndUpdate(
       { _id: "student_id" },
       { $inc: { seq: 1 } },
@@ -82,7 +82,7 @@ export async function POST(req) {
   }
 }
 
-// ✅ DELETE - Remove a student (only used if id is passed as query param)
+// ✅ DELETE (via query param ?id=...) - rarely used
 export async function DELETE(req) {
   try {
     const searchParams = req.nextUrl.searchParams;
@@ -95,7 +95,7 @@ export async function DELETE(req) {
     const db = await getDb();
     const result = await db.collection("students").deleteOne({ id: Number(id) });
 
-    // 🔄 Reset counter to the highest remaining id
+    // 🔄 Reset counter to highest remaining id
     const highest = await db
       .collection("students")
       .find({ id: { $type: "number" } })
@@ -111,7 +111,7 @@ export async function DELETE(req) {
       { upsert: true }
     );
 
-    return NextResponse.json({ success: true, result });
+    return NextResponse.json({ success: true, deletedCount: result.deletedCount });
   } catch (err) {
     console.error("❌ DELETE /api/student error:", err.message);
     return NextResponse.json({ error: err.message }, { status: 500 });
