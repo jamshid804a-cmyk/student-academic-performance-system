@@ -24,11 +24,8 @@ const getDaysInMonth = (monthName, year = new Date().getFullYear()) => {
 export default function AttendanceGrid({
   attendanceList,
   selectedMonth,
-  selectedGrade,
-  selectedSection,
-  selectedSession,
-  onAttendanceChange,
   onWeekComplete,
+  onAttendanceChange,
 }) {
   const [rowData, setRowData] = useState([])
   const onChangeRef = useRef(null)
@@ -43,10 +40,8 @@ export default function AttendanceGrid({
     [selectedMonth]
   )
 
-  // Handle cell click — save immediately, optimistic update
   const handleCellChange = useCallback(
     async (studentId, day, status) => {
-      // Instant UI update
       setRowData((prev) =>
         prev.map((r) =>
           r.studentId === studentId ? { ...r, [`d${day}`]: status } : r
@@ -81,7 +76,6 @@ export default function AttendanceGrid({
     onChangeRef.current = handleCellChange
   }, [handleCellChange])
 
-  // Cell renderer — uses ref so the grid doesn't re-create on every change
   const CellRenderer = useCallback(
     (params) => (
       <AttendanceCell
@@ -123,12 +117,13 @@ export default function AttendanceGrid({
       return {
         field: `d${day}`,
         headerName: String(day),
-        width: 44,
-        minWidth: 44,
-        maxWidth: 44,
+        width: 52,
+        minWidth: 52,
+        maxWidth: 52,
         cellRenderer: CellRenderer,
         sortable: false,
         resizable: false,
+        headerClass: "day-header",
         cellStyle: {
           display: "flex",
           alignItems: "center",
@@ -175,7 +170,6 @@ export default function AttendanceGrid({
         headerHeight={44}
         suppressCellFocus
         animateRows={false}
-        suppressColumnVirtualisation={false}
       />
     </div>
   )

@@ -11,7 +11,9 @@ import RiskBox from './_components/RiskBox'
 import GlobalApi from '@/app/_services/GlobalApi'
 import { Button } from '@/components/ui/button'
 import { Printer } from 'lucide-react'
-import React, { useState } from 'react'
+import React, { useState, useEffect, useCallback, useRef } from 'react'
+
+const STORAGE_KEY = 'attendance_filters_v1'
 
 function Attendance() {
   const [selectedGrade, setSelectedGrade] = useState("")
@@ -22,8 +24,35 @@ function Attendance() {
   const [weekRange, setWeekRange] = useState(null)
   const [showRiskBox, setShowRiskBox] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [hydrated, setHydrated] = useState(false)
+  const debounceRef = useRef(null)
 
-  // "September" -> "09/2026"
+  // Load saved filters from localStorage ONCE
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}")
+      if (saved.grade) setSelectedGrade(saved.grade)
+      if (saved.section) setSelectedSection(saved.section)
+      if (saved.session) setSelectedSession(saved.session)
+      if (saved.month) setSelectedMonth(saved.month)
+    } catch {}
+    setHydrated(true)
+  }, [])
+
+  // Save filters whenever they change (after hydration)
+  useEffect(() => {
+    if (!hydrated) return
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        grade: selectedGrade,
+        section: selectedSection,
+        session: selectedSession,
+        month: selectedMonth,
+      })
+    )
+  }, [selectedGrade, selectedSection, selectedSession, selectedMonth, hydrated])
+
   const monthNameToKey = (name) => {
     const map = {
       January: "01", February: "02", March: "03", April: "04",
@@ -33,30 +62,47 @@ function Attendance() {
     return `${map[name]}/${new Date().getFullYear()}`
   }
 
-  const onSearch = async () => {
-    if (!selectedGrade || !selectedMonth) {
-      alert("Please select at least Grade and Month.")
-      return
-    }
-    const month = monthNameToKey(selectedMonth)
+  const fetchAttendance = useCallback(
+    async (grade, section, session, month) => {
+      if (!grade || !month) {
+        setAttendanceList(null)
+        return
+      }
+      setLoading(true)
+      try {
+        const monthKey = monthNameToKey(month)
+        const resp = await GlobalApi.GetAttendanceList(
+          grade,
+          monthKey,
+          section,
+          session
+        )
+        setAttendanceList(resp.data || [])
+      } catch (err) {
+        console.error("Failed to fetch attendance:", err)
+        setAttendanceList([])
+      }
+      setLoading(false)
+    },
+    []
+  )
 
-    setLoading(true)
-    setShowRiskBox(false)
-    setWeekRange(null)
+  // Auto-fetch whenever filters change (debounced 300ms)
+  useEffect(() => {
+    if (!hydrated) return
 
-    try {
-      const resp = await GlobalApi.GetAttendanceList(
-        selectedGrade,
-        month,
-        selectedSection,
-        selectedSession
-      )
-      setAttendanceList(resp.data || [])
-    } catch (err) {
-      console.error("Failed to fetch attendance:", err)
-      setAttendanceList([])
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    debounceRef.current = setTimeout(() => {
+      fetchAttendance(selectedGrade, selectedSection, selectedSession, selectedMonth)
+    }, 300)
+
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current)
     }
-    setLoading(false)
+  }, [selectedGrade, selectedSection, selectedSession, selectedMonth, hydrated, fetchAttendance])
+
+  const onSearch = () => {
+    fetchAttendance(selectedGrade, selectedSection, selectedSession, selectedMonth)
   }
 
   const onWeekComplete = ({ weekStart, weekEnd }) => {
