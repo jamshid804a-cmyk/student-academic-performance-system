@@ -1,216 +1,155 @@
-"use client";
+"use client"
+import React, { useEffect, useState, useMemo, useRef } from "react"
+import { AgGridReact } from "ag-grid-react"
+import { ModuleRegistry, AllCommunityModule } from "ag-grid-community"
+import GlobalApi from "@/app/_services/GlobalApi"
+import AttendanceCell from "./AttendanceCell"
 
-import React, { useEffect, useState, useCallback } from "react";
-import { AgGridReact } from "ag-grid-react";
-import { ModuleRegistry, AllCommunityModule } from "ag-grid-community";
-import GlobalApi from "@/app/_services/GlobalApi";
+ModuleRegistry.registerModules([AllCommunityModule])
 
-ModuleRegistry.registerModules([AllCommunityModule]);
-
-const getTotalDays = (selectedMonth) => {
-  if (!selectedMonth) return 31;
-  try {
-    if (selectedMonth.includes("/")) {
-      const [month, year] = selectedMonth.split("/");
-      return new Date(year, Number(month), 0).getDate();
-    } else {
-      const d = new Date(selectedMonth + " 1");
-      return new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
-    }
-  } catch {
-    return 31;
+// Convert month name to "MM/YYYY"
+const monthNameToNumber = (name) => {
+  const map = {
+    January: "01", February: "02", March: "03", April: "04",
+    May: "05", June: "06", July: "07", August: "08",
+    September: "09", October: "10", November: "11", December: "12",
   }
-};
+  return map[name] || "01"
+}
 
-const getWeekLastDay = (day, totalDays) => {
-  const weekEnd = Math.ceil(day / 7) * 7;
-  return Math.min(weekEnd, totalDays);
-};
-
-const getWeekStartDay = (day) => {
-  return Math.floor((day - 1) / 7) * 7 + 1;
-};
-
-const CheckboxRenderer = (props) => {
-  const [checked, setChecked] = useState(!!props.value);
-
-  useEffect(() => {
-    setChecked(!!props.value);
-  }, [props.value]);
-
-  const handleChange = (e) => {
-    e.stopPropagation();
-    const newValue = !checked;
-    setChecked(newValue);
-    const onCheckboxChange = props.context?.onCheckboxChange;
-    if (onCheckboxChange) {
-      onCheckboxChange(props.data.studentId, props.colDef.field, newValue);
-    }
-  };
-
-  return (
-    <div
-      onClick={handleChange}
-      style={{
-        width: 20,
-        height: 20,
-        border: checked ? "2px solid #2563eb" : "2px solid #94a3b8",
-        borderRadius: 4,
-        backgroundColor: checked ? "#2563eb" : "#ffffff",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        cursor: "pointer",
-        marginTop: 7,
-        transition: "all 0.15s ease",
-      }}
-    >
-      {checked && (
-        <svg
-          viewBox="0 0 12 12"
-          width="13"
-          height="13"
-          fill="none"
-          stroke="#ffffff"
-          strokeWidth="2.5"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          <polyline points="1,6 4,10 11,2" />
-        </svg>
-      )}
-    </div>
-  );
-};
+const getDaysInMonth = (monthName, year = new Date().getFullYear()) => {
+  const m = Number(monthNameToNumber(monthName))
+  return new Date(year, m, 0).getDate()
+}
 
 export default function AttendanceGrid({
   attendanceList,
-  selectedMonth,
-  onWeekComplete,
+  selectedMonth,       // e.g. "September"
+  selectedGrade,
+  selectedSection,
+  selectedSession,
   onAttendanceChange,
+  onWeekComplete,
 }) {
-  const [rowData, setRowData] = useState([]);
-  const [colDefs, setColDefs] = useState([]);
+  const [rowData, setRowData] = useState([])
+  const onChangeRef = useRef(null)
 
-  const getDaysArray = () => {
-    if (!selectedMonth) return [];
-    const totalDays = getTotalDays(selectedMonth);
-    return Array.from({ length: totalDays }, (_, i) => i + 1);
-  };
+  const monthKey = useMemo(() => {
+    if (!selectedMonth) return ""
+    return `${monthNameToNumber(selectedMonth)}/${new Date().getFullYear()}`
+  }, [selectedMonth])
 
-  const isPresent = (studentId, day) => {
-    if (!Array.isArray(attendanceList)) return false;
-    return attendanceList.some(
-      (item) =>
-        Number(item.day) === Number(day) &&
-        Number(item.studentId) === Number(studentId) &&
-        (item.present === 1 || item.present === true || item.present === "1")
-    );
-  };
+  const daysInMonth = useMemo(
+    () => (selectedMonth ? getDaysInMonth(selectedMonth) : 31),
+    [selectedMonth]
+  )
 
-  const getUniqueRecord = () => {
-    const uniqueRecord = [];
-    const existingUser = new Set();
-    (Array.isArray(attendanceList) ? attendanceList : []).forEach((item) => {
-      if (!existingUser.has(item.studentId)) {
-        existingUser.add(item.studentId);
-        uniqueRecord.push({
-          studentId: Number(item.studentId),
-          name: item.name,
-          grade: item.grade,
-        });
-      }
-    });
-    return uniqueRecord;
-  };
+  // Called by cell when a status is chosen
+  const handleCellChange = async (studentId, day, status) => {
+    // Optimistic UI update
+    setRowData((prev) =>
+      prev.map((r) =>
+        r.studentId === studentId
+          ? { ...r, [`d${day}`]: status }
+          : r
+      )
+    )
 
-  const onCheckboxChange = useCallback(
-    (studentId, dayField, present) => {
-      const day = Number(dayField);
-      if (!day || !studentId) return;
+    try {
+      await GlobalApi.SaveAttendance({
+        studentId,
+        day,
+        date: monthKey,
+        status,
+      })
 
-      const totalDays = getTotalDays(selectedMonth);
-      const lastDayOfWeek = getWeekLastDay(day, totalDays);
-      const firstDayOfWeek = getWeekStartDay(day);
-
-      // Update local UI instantly
-      setRowData((prev) =>
-        prev.map((row) =>
-          row.studentId === Number(studentId)
-            ? { ...row, [day]: present }
-            : row
-        )
-      );
-
-      if (present) {
-        GlobalApi.SaveAttendance({
-          studentId: Number(studentId),
-          day,
-          date: selectedMonth,
-          present: true,
-        })
-          .then((resp) => console.log("✅ Saved:", resp.data))
-          .catch((err) => console.error("❌ Save error:", err));
-      } else {
-        GlobalApi.DeleteAttendance(studentId, day, selectedMonth)
-          .then((resp) => console.log("✅ Deleted:", resp.data))
-          .catch((err) => console.error("❌ Delete error:", err));
+      // Trigger week-complete for RiskBox
+      if (onWeekComplete) {
+        const lastDayOfWeek = Math.min(Math.ceil(day / 7) * 7, daysInMonth)
+        const firstDayOfWeek = Math.floor((day - 1) / 7) * 7 + 1
+        if (day === lastDayOfWeek) {
+          onWeekComplete({ weekStart: firstDayOfWeek, weekEnd: lastDayOfWeek })
+        }
       }
 
-      // Trigger RiskBox via page.js when last day of block is clicked
-      if (day === lastDayOfWeek) {
-        const range = { weekStart: firstDayOfWeek, weekEnd: lastDayOfWeek };
-        if (onWeekComplete) onWeekComplete(range);
-      }
-    },
-    [selectedMonth, onWeekComplete]
-  );
+      if (onAttendanceChange) onAttendanceChange()
+    } catch (err) {
+      console.error("Save attendance error:", err)
+    }
+  }
 
-  // Create columns
   useEffect(() => {
-    if (!selectedMonth) return;
-    const daysArrays = getDaysArray();
-    const baseCols = [
-      { field: "studentId", headerName: "Student ID", width: 120 },
-      { field: "name", headerName: "Name", width: 180 },
-    ];
-    const dynamicCols = daysArrays.map((day) => ({
-      field: day.toString(),
-      headerName: day.toString(),
-      width: 60,
-      cellRenderer: CheckboxRenderer,
-    }));
-    setColDefs([...baseCols, ...dynamicCols]);
-  }, [selectedMonth]);
+    onChangeRef.current = handleCellChange
+  })
 
-  // Build rows from backend data
+  const CellRenderer = (params) => (
+    <AttendanceCell
+      value={params.value}
+      studentId={params.data.studentId}
+      day={Number(params.colDef.field.slice(1))}
+      onChange={(sid, day, status) => onChangeRef.current(sid, day, status)}
+    />
+  )
+
+  const colDefs = useMemo(() => {
+    const base = [
+      {
+        field: "rollNo",
+        headerName: "Roll No",
+        width: 90,
+        pinned: "left",
+      },
+      {
+        field: "name",
+        headerName: "Student Name",
+        width: 200,
+        pinned: "left",
+      },
+    ]
+    const days = Array.from({ length: daysInMonth }, (_, i) => {
+      const day = i + 1
+      return {
+        field: `d${day}`,
+        headerName: String(day),
+        width: 55,
+        cellRenderer: CellRenderer,
+        sortable: false,
+        resizable: false,
+      }
+    })
+    return [...base, ...days]
+  }, [daysInMonth])
+
   useEffect(() => {
-    if (!attendanceList || !selectedMonth) return;
-    const daysArrays = getDaysArray();
-    const userList = getUniqueRecord();
-    const updatedList = userList.map((obj) => {
-      const newObj = { ...obj };
-      daysArrays.forEach((day) => {
-        newObj[day] = isPresent(obj.studentId, day);
-      });
-      return newObj;
-    });
-    setRowData(updatedList);
-  }, [attendanceList, selectedMonth]);
+    if (!attendanceList) return
+    const rows = attendanceList.map((s) => {
+      const row = {
+        studentId: s.studentId,
+        rollNo: s.rollNo,
+        name: s.name,
+      }
+      for (let d = 1; d <= daysInMonth; d++) {
+        row[`d${d}`] = s.attendance?.[String(d)] || null
+      }
+      return row
+    })
+    setRowData(rows)
+  }, [attendanceList, daysInMonth])
 
   return (
-    <div className="ag-theme-quartz" style={{ height: 500, width: "100%" }}>
+    <div className="ag-theme-quartz rounded-xl overflow-hidden" style={{ height: 560, width: "100%" }}>
       {rowData.length === 0 ? (
         <div className="flex items-center justify-center h-full text-gray-400 text-lg">
-          No students found. Please select a grade and month.
+          No students found for these filters.
         </div>
       ) : (
         <AgGridReact
           rowData={rowData}
           columnDefs={colDefs}
-          context={{ onCheckboxChange }}
+          rowHeight={48}
+          headerHeight={45}
         />
       )}
     </div>
-  );
+  )
 }

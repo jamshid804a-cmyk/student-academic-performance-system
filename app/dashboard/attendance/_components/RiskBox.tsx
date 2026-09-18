@@ -118,7 +118,7 @@ export default function RiskBox({
     if (typeof window === "undefined" || !selectedMonth || !blockNumber) return;
     const saved = localStorage.getItem(storageKey);
     setSentNotifications(saved ? JSON.parse(saved) : {});
-  }, [storageKey]);
+  }, [storageKey, selectedMonth, blockNumber]);
 
   useEffect(() => {
     if (!show || !attendanceList || !weekRange) return;
@@ -133,6 +133,7 @@ export default function RiskBox({
     const studentMap = {};
     attendanceList.forEach((item) => {
       if (!item.studentId) return;
+
       if (!studentMap[item.studentId]) {
         studentMap[item.studentId] = {
           studentId: item.studentId,
@@ -145,13 +146,18 @@ export default function RiskBox({
           weekEnd,
         };
       }
+
+      // ✅ Support both old (present: true) and new (status: "P") formats
+      const dayNum = Number(item.day);
+      const status = item.status || (item.present ? "P" : null);
+
       if (
-        (item.present === true || item.present === 1) &&
-        Number(item.day) >= weekStart &&
-        Number(item.day) <= weekEnd
+        status === "P" &&
+        dayNum >= weekStart &&
+        dayNum <= weekEnd
       ) {
         studentMap[item.studentId].presentDays += 1;
-        studentMap[item.studentId].presentDaysList.push(Number(item.day));
+        studentMap[item.studentId].presentDaysList.push(dayNum);
       }
     });
 

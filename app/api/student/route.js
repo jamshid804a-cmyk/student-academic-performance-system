@@ -1,20 +1,31 @@
 import { NextResponse } from "next/server";
 import { getDb } from "@/utils";
 
-// ✅ GET - Fetch all students
-export async function GET() {
+// ✅ GET - Fetch students (supports ?grade=&section=&session=)
+export async function GET(req) {
   try {
+    const { searchParams } = new URL(req.url);
+    const grade = searchParams.get("grade");
+    const section = searchParams.get("section");
+    const session = searchParams.get("session");
+
     const db = await getDb();
+
+    const filter = {};
+    if (grade) filter.grade = grade;
+    if (section) filter.section = section;
+    if (session) filter.session = session;
+
     const students = await db
       .collection("students")
-      .find({})
+      .find(filter)
       .sort({ id: 1 })
       .toArray();
 
     const formatted = students.map((s) => ({
       ...s,
-      id: s.id ?? null,              // numeric id (1, 2, 3) if it exists
-      _id: s._id.toString(),         // real MongoDB ObjectId as string
+      id: s.id ?? null,
+      _id: s._id.toString(),
     }));
 
     return NextResponse.json(formatted);
@@ -24,7 +35,7 @@ export async function GET() {
   }
 }
 
-// ✅ POST - Add a new student
+// ✅ POST - Add a new student (unchanged)
 export async function POST(req) {
   try {
     const data = await req.json();
@@ -39,7 +50,6 @@ export async function POST(req) {
 
     const db = await getDb();
 
-    // 🔢 Get the next numeric id from counters
     const counter = await db.collection("counters").findOneAndUpdate(
       { _id: "student_id" },
       { $inc: { seq: 1 } },
@@ -78,42 +88,6 @@ export async function POST(req) {
     });
   } catch (err) {
     console.error("❌ POST /api/student error:", err.message);
-    return NextResponse.json({ error: err.message }, { status: 500 });
-  }
-}
-
-// ✅ DELETE (via query param ?id=...) - rarely used
-export async function DELETE(req) {
-  try {
-    const searchParams = req.nextUrl.searchParams;
-    const id = searchParams.get("id");
-
-    if (!id) {
-      return NextResponse.json({ error: "id is required" }, { status: 400 });
-    }
-
-    const db = await getDb();
-    const result = await db.collection("students").deleteOne({ id: Number(id) });
-
-    // 🔄 Reset counter to highest remaining id
-    const highest = await db
-      .collection("students")
-      .find({ id: { $type: "number" } })
-      .sort({ id: -1 })
-      .limit(1)
-      .toArray();
-
-    const newSeq = highest.length > 0 ? highest[0].id : 0;
-
-    await db.collection("counters").updateOne(
-      { _id: "student_id" },
-      { $set: { seq: newSeq } },
-      { upsert: true }
-    );
-
-    return NextResponse.json({ success: true, deletedCount: result.deletedCount });
-  } catch (err) {
-    console.error("❌ DELETE /api/student error:", err.message);
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }

@@ -1,102 +1,121 @@
 import { NextResponse } from "next/server";
 import { getDb } from "@/utils";
 
-// GET — fetch students + attendance for a grade/month
+// ✅ GET — returns students of the grade/section/session with their attendance for the month
 export async function GET(req) {
   try {
     const { searchParams } = new URL(req.url);
     const grade = searchParams.get("grade");
-    const month = searchParams.get("month");
+    const section = searchParams.get("section");
+    const session = searchParams.get("session");
+    const month = searchParams.get("month"); // "09/2026"
 
     if (!grade || !month) {
-      return NextResponse.json({ error: "grade and month are required" }, { status: 400 });
+      return NextResponse.json(
+        { error: "grade and month are required" },
+        { status: 400 }
+      );
     }
 
     const db = await getDb();
 
-    const students = await db.collection("students").find({ grade }).toArray();
-    const attendance = await db
-      .collection("attendance")
-      .find({ date: { $regex: month } })
+    // Build student filter
+    const studentFilter = { grade };
+    if (section) studentFilter.section = section;
+    if (session) studentFilter.session = session;
+
+    const students = await db
+      .collection("students")
+      .find(studentFilter)
+      .sort({ rollNo: 1, name: 1 })
       .toArray();
 
-    const attendanceMap = new Map();
+    // Build attendance filter
+    const attendance = await db
+      .collection("attendance")
+      .find({ date: month })
+      .toArray();
+
+    // Map attendance by studentId -> { day: status }
+    const attendanceMap = {};
     attendance.forEach((a) => {
       const sid = String(a.studentId);
-      if (!attendanceMap.has(sid)) attendanceMap.set(sid, []);
-      attendanceMap.get(sid).push(a);
+      if (!attendanceMap[sid]) attendanceMap[sid] = {};
+      attendanceMap[sid][String(a.day)] = a.status || (a.present ? "P" : "A");
     });
 
-    const result = students.flatMap((student) => {
-      const sid = student._id.toString();
-      const list = attendanceMap.get(sid);
-
-      if (list && list.length > 0) {
-        return list.map((a) => ({
-          name: student.name,
-          present: a.present === true || a.present === 1 || a.present === "1",
-          day: Number(a.day),
-          date: a.date,
-          grade: student.grade,
-          studentId: sid,
-        }));
-      }
-
-      return [{
-        name: student.name,
-        present: false,
-        day: null,
-        date: null,
-        grade: student.grade,
+    const result = students.map((s) => {
+      const sid = s.id != null ? String(s.id) : s._id.toString();
+      return {
         studentId: sid,
-      }];
+        rollNo: s.rollNo ?? "",
+        name: s.name,
+        grade: s.grade,
+        section: s.section || "",
+        session: s.session || "",
+        attendance: attendanceMap[sid] || {},
+      };
     });
 
     return NextResponse.json(result);
   } catch (err) {
-    console.error("❌ GET /api/attendance:", err.message);
+    console.error("❌ GET /api/attendance error:", err.message);
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }
 
-// POST — mark attendance
+// ✅ POST — set status for one student on one day (upsert)
 export async function POST(req) {
   try {
     const data = await req.json();
+    const { studentId, day, date, status } = data;
 
-    if (!data.studentId || !data.day || !data.date) {
-      return NextResponse.json({ error: "studentId, day and date are required" }, { status: 400 });
+    if (!studentId || !day || !date) {
+      return NextResponse.json(
+        { error: "studentId, day and date are required" },
+        { status: 400 }
+      );
     }
 
     const db = await getDb();
     const collection = db.collection("attendance");
 
     const filter = {
-      studentId: String(data.studentId),
-      day: Number(data.day),
-      date: data.date,
+      studentId: String(studentId),
+      day: Number(day),
+      date,
     };
 
-    const existing = await collection.findOne(filter);
-
-    if (existing) {
-      await collection.updateOne(filter, { $set: { present: !!data.present } });
-      return NextResponse.json({ success: true, updated: true });
+    // If status is null/empty → delete record (so cell shows nothing)
+    if (!status) {
+      await collection.deleteOne(filter);
+      return NextResponse.json({ success: true, cleared: true });
     }
 
-    const result = await collection.insertOne({
-      ...filter,
-      present: !!data.present,
-    });
+    // Validate status
+    const valid = ["P", "A", "L"];
+    if (!valid.includes(status)) {
+      return NextResponse.json(
+        { error: "status must be P, A, L or null" },
+        { status: 400 }
+      );
+    }
 
-    return NextResponse.json({ success: true, id: result.insertedId.toString() });
+    // Upsert
+    await collection.updateOne(
+      filter,
+      { $set: { ...filter, status, updatedAt: new Date() } },
+      { upsert: true }
+    );
+
+    return NextResponse.json({ success: true, status });
   } catch (err) {
-    console.error("❌ POST /api/attendance:", err.message);
+    console.error("❌ POST /api/attendance error:", err.message);
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }
 
-// DELETE — remove one attendance
+// ✅ DELETE — remove a record
 export async function DELETE(req) {
   try {
     const { searchParams } = new URL(req.url);
@@ -105,7 +124,10 @@ export async function DELETE(req) {
     const month = searchParams.get("month");
 
     if (!studentId || !day || !month) {
-      return NextResponse.json({ error: "studentId, day and month required" }, { status: 400 });
+      return NextResponse.json(
+        { error: "studentId, day and month are required" },
+        { status: 400 }
+      );
     }
 
     const db = await getDb();
@@ -117,7 +139,7 @@ export async function DELETE(req) {
 
     return NextResponse.json({ success: true });
   } catch (err) {
-    console.error("❌ DELETE /api/attendance:", err.message);
+    console.error("❌ DELETE /api/attendance error:", err.message);
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }
