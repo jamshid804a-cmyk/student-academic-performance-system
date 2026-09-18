@@ -50,12 +50,19 @@ const GetAllSubjects = (studentId) => {
 const CreateSubject = (data) => axios.post('/api/subjects', data);
 const DeleteSubject = (id) => axios.delete(`/api/subjects/${id}`);
 
-// ─── Tests ──────────────────────────────────────────────────
+// ─── Tests (Academic Performance → Testing) ─────────────────
 const GetTests = (params) => {
     const qs = new URLSearchParams(params).toString();
     return axios.get('/api/tests' + (qs ? `?${qs}` : ''));
 };
 const SaveTest = (data) => axios.post('/api/tests', data);
+
+// ─── Exams (Academic Performance → Examination) ─────────────
+const GetExams = (params) => {
+    const qs = new URLSearchParams(params).toString();
+    return axios.get('/api/exams' + (qs ? `?${qs}` : ''));
+};
+const SaveExam = (data) => axios.post('/api/exams', data);
 
 // ─── Export ─────────────────────────────────────────────────
 export default {
@@ -74,4 +81,6 @@ export default {
     DeleteSubject,
     GetTests,
     SaveTest,
+    GetExams,
+    SaveExam,
 };
