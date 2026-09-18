@@ -1,9 +1,9 @@
 "use client"
 
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useState, useMemo } from 'react'
 import { AgGridReact } from 'ag-grid-react'
 import '@/utils/agGrid'
-import { Search, Trash, Eye, Pencil } from 'lucide-react'
+import { Search, Trash2, Eye, Pencil, Users } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
     AlertDialog,
@@ -28,12 +28,8 @@ const paginationPageSizeSelector = [10, 20, 25, 100]
 function StudentListTable({ StudentList, refreshData }) {
     const [rowData, setRowData] = useState([])
     const [searchInput, setSearchInput] = useState("")
-
-    // View dialog state
     const [selectedStudent, setSelectedStudent] = useState(null)
     const [viewOpen, setViewOpen] = useState(false)
-
-    // Edit dialog state
     const [editStudent, setEditStudent] = useState(null)
     const [editOpen, setEditOpen] = useState(false)
 
@@ -43,11 +39,9 @@ function StudentListTable({ StudentList, refreshData }) {
 
     const DeleteRecord = async (id) => {
         try {
-            const resp = await GlobalApi.DeleteStudentRecord(id)
-            if (resp) {
-                toast.success("Record Deleted Successfully")
-                refreshData()
-            }
+            await GlobalApi.DeleteStudentRecord(id)
+            toast.success("Record Deleted Successfully")
+            refreshData()
         } catch (error) {
             console.log(error)
             toast.error("Delete failed")
@@ -66,46 +60,45 @@ function StudentListTable({ StudentList, refreshData }) {
 
     const CustomButtons = (props) => {
         return (
-            <div className="flex items-center gap-2 h-full">
-                {/* View */}
-                <Button
-                    size="sm"
-                    variant="outline"
+            <div className="flex items-center gap-1.5 h-full">
+                <button
                     onClick={() => handleView(props?.data)}
                     title="View details"
+                    className="w-8 h-8 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-600 flex items-center justify-center transition-colors"
                 >
-                    <Eye size={16} className="text-blue-600" />
-                </Button>
+                    <Eye size={15} />
+                </button>
 
-                {/* Edit */}
-                <Button
-                    size="sm"
-                    variant="outline"
+                <button
                     onClick={() => handleEditClick(props?.data)}
                     title="Edit student"
+                    className="w-8 h-8 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-600 flex items-center justify-center transition-colors"
                 >
-                    <Pencil size={16} className="text-yellow-600" />
-                </Button>
+                    <Pencil size={15} />
+                </button>
 
-                {/* Delete */}
                 <AlertDialog>
                     <AlertDialogTrigger asChild>
-                        <span>
-                            <Button size="sm" variant="destructive" title="Delete student">
-                                <Trash size={16} />
-                            </Button>
-                        </span>
+                        <button
+                            title="Delete student"
+                            className="w-8 h-8 rounded-lg bg-red-50 hover:bg-red-100 text-red-600 flex items-center justify-center transition-colors"
+                        >
+                            <Trash2 size={15} />
+                        </button>
                     </AlertDialogTrigger>
                     <AlertDialogContent>
                         <AlertDialogHeader>
-                            <AlertDialogTitle>You want to?</AlertDialogTitle>
+                            <AlertDialogTitle>Delete this student?</AlertDialogTitle>
                             <AlertDialogDescription>
-                                Delete this student permanently.
+                                This will permanently remove the student from the system.
                             </AlertDialogDescription>
                         </AlertDialogHeader>
                         <AlertDialogFooter>
                             <AlertDialogCancel>Cancel</AlertDialogCancel>
-                            <AlertDialogAction onClick={() => DeleteRecord(props?.data?.id)}>
+                            <AlertDialogAction
+                                onClick={() => DeleteRecord(props?.data?.id)}
+                                className="bg-red-600 hover:bg-red-700 text-white"
+                            >
                                 Delete
                             </AlertDialogAction>
                         </AlertDialogFooter>
@@ -115,16 +108,34 @@ function StudentListTable({ StudentList, refreshData }) {
         )
     }
 
-    const [colDefs] = useState([
-        { field: "id", headerName: "ID", filter: true, width: 80 },
-        { field: "name", headerName: "Student Name", filter: true, flex: 1 },
-        { field: "fatherName", headerName: "Father Name", filter: true, flex: 1 },
+    const colDefs = useMemo(() => [
+        { field: "id", headerName: "ID", width: 70, filter: true },
+        {
+            field: "name",
+            headerName: "Student Name",
+            filter: true,
+            minWidth: 180,
+            flex: 2,
+            wrapText: true,
+            autoHeight: true,
+            cellStyle: { whiteSpace: 'normal', lineHeight: '1.3' },
+        },
+        {
+            field: "fatherName",
+            headerName: "Father Name",
+            filter: true,
+            minWidth: 180,
+            flex: 2,
+            wrapText: true,
+            autoHeight: true,
+            cellStyle: { whiteSpace: 'normal', lineHeight: '1.3' },
+        },
         { field: "admissionNo", headerName: "Admission No", filter: true, width: 140 },
-        { field: "rollNo", headerName: "Roll No", filter: true, width: 110 },
+        { field: "rollNo", headerName: "Roll No", filter: true, width: 100 },
         { field: "grade", headerName: "Grade", filter: true, width: 100 },
         { field: "section", headerName: "Section", filter: true, width: 100 },
         { field: "session", headerName: "Session", filter: true, width: 130 },
-        { field: "contact", headerName: "Contact No", filter: true, width: 140 },
+        { field: "contact", headerName: "Contact No", filter: true, width: 150 },
         {
             field: "fee",
             headerName: "Fee",
@@ -132,24 +143,51 @@ function StudentListTable({ StudentList, refreshData }) {
             width: 110,
             valueFormatter: (params) => (params.value ? `Rs. ${params.value}` : "N/A"),
         },
-        { field: "action", headerName: "Action", cellRenderer: CustomButtons, width: 160 },
-    ])
+        {
+            field: "action",
+            headerName: "Action",
+            cellRenderer: CustomButtons,
+            width: 150,
+            pinned: "right",
+            sortable: false,
+            filter: false,
+        },
+    ], [])
 
     return (
         <div className="my-8">
-            <div className="mb-5 flex items-center justify-between">
-                <h2 className="text-xl font-semibold text-gray-800">Student Records</h2>
-                <div className="flex items-center gap-2 border rounded-xl px-3 py-2 shadow-sm bg-white">
+
+            {/* Header */}
+            <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 text-white flex items-center justify-center shadow-md">
+                        <Users size={20} />
+                    </div>
+                    <div>
+                        <h2 className="text-xl font-bold text-gray-900">Student Records</h2>
+                        <p className="text-xs text-gray-500">
+                            {rowData.length} {rowData.length === 1 ? "student" : "students"} in total
+                        </p>
+                    </div>
+                </div>
+
+                <div className="flex items-center gap-2 border border-gray-200 rounded-xl px-3 py-2 shadow-sm bg-white focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-100 transition">
                     <Search size={18} className="text-gray-400" />
                     <input
                         type="text"
                         placeholder="Search student..."
-                        className="outline-none text-sm w-48"
+                        value={searchInput}
                         onChange={(e) => setSearchInput(e.target.value)}
+                        className="outline-none text-sm w-52 placeholder:text-gray-400"
                     />
                 </div>
             </div>
-            <div className="ag-theme-quartz rounded-xl overflow-hidden shadow-md border bg-white" style={{ height: 520 }}>
+
+            {/* Table */}
+            <div
+                className="ag-theme-quartz rounded-2xl overflow-hidden shadow-lg border border-gray-100 bg-white"
+                style={{ height: 580 }}
+            >
                 <AgGridReact
                     rowData={rowData}
                     columnDefs={colDefs}
@@ -157,18 +195,21 @@ function StudentListTable({ StudentList, refreshData }) {
                     pagination={pagination}
                     paginationPageSize={paginationPageSize}
                     paginationPageSizeSelector={paginationPageSizeSelector}
-                    rowHeight={50}
+                    defaultColDef={{
+                        resizable: true,
+                        sortable: true,
+                    }}
+                    rowHeight={55}
+                    headerHeight={48}
                 />
             </div>
 
-            {/* View dialog */}
             <StudentDetailsDialog
                 student={selectedStudent}
                 open={viewOpen}
                 onOpenChange={setViewOpen}
             />
 
-            {/* Edit dialog */}
             <EditStudentDialog
                 student={editStudent}
                 open={editOpen}

@@ -8,15 +8,24 @@ import {
     DialogTitle,
 } from "@/components/ui/dialog"
 import { Button } from '@/components/ui/button'
-import { Printer } from 'lucide-react'
+import { Printer, X, User, Users, Phone, MapPin, School, Hash, BookOpen, Calendar, CreditCard } from 'lucide-react'
 
 function StudentDetailsDialog({ student, open, onOpenChange }) {
     if (!student) return null
 
-    const Field = ({ label, value }) => (
-        <div>
-            <label className="text-sm font-bold text-gray-600">{label}</label>
-            <p className="text-lg font-semibold text-gray-900">{value || "N/A"}</p>
+    const Field = ({ icon: Icon, label, value }) => (
+        <div className="flex items-start gap-3 p-4 rounded-xl bg-gray-50 hover:bg-blue-50 transition-colors border border-gray-100">
+            <div className="flex-shrink-0 w-9 h-9 rounded-lg bg-blue-100 text-blue-600 flex items-center justify-center">
+                <Icon size={18} />
+            </div>
+            <div className="min-w-0">
+                <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+                    {label}
+                </p>
+                <p className="text-base font-semibold text-gray-900 break-words">
+                    {value || "—"}
+                </p>
+            </div>
         </div>
     )
 
@@ -35,11 +44,6 @@ function StudentDetailsDialog({ student, open, onOpenChange }) {
             ["Contact No", student.contact],
             ["Address", student.address],
             ["Fee", student.fee ? `Rs. ${student.fee}` : null],
-            ["Mid Marks", student.midMarks],
-            ["Final Marks", student.finalMarks],
-            ["GPA", student.gpa],
-            ["CGPA", student.cgpa],
-            ["Risk", student.risk],
         ]
 
         const html = `
@@ -130,46 +134,79 @@ function StudentDetailsDialog({ student, open, onOpenChange }) {
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto bg-white">
-                <DialogHeader>
-                    <DialogTitle className="flex items-center justify-between">
-                        <span>Student Details</span>
-                    </DialogTitle>
-                </DialogHeader>
+            <DialogContent className="max-w-2xl bg-white rounded-2xl shadow-xl border-0 p-0 overflow-hidden">
 
-                <div className="grid grid-cols-2 gap-6 pt-2">
-                    <Field label="Student Name" value={student.name} />
-                    <Field label="Father Name" value={student.fatherName} />
-                    <Field label="Admission No" value={student.admissionNo} />
-                    <Field label="Roll No" value={student.rollNo} />
-                    <Field label="Grade" value={student.grade} />
-                    <Field label="Section" value={student.section} />
-                    <Field label="Session" value={student.session} />
-                    <Field label="Contact No" value={student.contact} />
-                    <Field label="Address" value={student.address} />
-                    <Field label="Fee" value={student.fee ? `Rs. ${student.fee}` : null} />
-                    <Field label="Mid Marks" value={student.midMarks} />
-                    <Field label="Final Marks" value={student.finalMarks} />
-                    <Field label="GPA" value={student.gpa} />
-                    <Field label="CGPA" value={student.cgpa} />
-                    <Field label="Risk" value={student.risk} />
+                {/* Header */}
+                <div className="bg-gradient-to-r from-blue-600 to-indigo-700 px-6 py-5">
+                    <DialogHeader>
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <DialogTitle className="text-white text-xl font-bold">
+                                    Student Details
+                                </DialogTitle>
+                                <p className="text-blue-100 text-sm mt-0.5">
+                                    Complete profile overview
+                                </p>
+                            </div>
+                            <button
+                                onClick={() => onOpenChange(false)}
+                                className="text-blue-100 hover:text-white transition-colors"
+                            >
+                                <X size={20} />
+                            </button>
+                        </div>
+                    </DialogHeader>
                 </div>
 
-                <div className="flex justify-end gap-3 pt-6 border-t border-gray-100">
+                {/* Body */}
+                <div className="px-6 py-6 max-h-[70vh] overflow-y-auto">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+
+                        <Field icon={User}  label="Student Name"  value={student.name} />
+                        <Field icon={Users} label="Father Name"   value={student.fatherName} />
+
+                        <Field icon={Hash}      label="Admission No" value={student.admissionNo} />
+                        <Field icon={BookOpen}  label="Roll No"      value={student.rollNo} />
+
+                        <Field icon={School}    label="Grade"        value={student.grade} />
+                        <Field icon={School}    label="Section"      value={student.section} />
+
+                        <Field icon={Calendar}  label="Session"      value={student.session} />
+                        <Field icon={Phone}     label="Contact No"   value={student.contact} />
+
+                        <div className="sm:col-span-2">
+                            <Field icon={MapPin} label="Address" value={student.address} />
+                        </div>
+
+                        <div className="sm:col-span-2">
+                            <Field
+                                icon={CreditCard}
+                                label="Fee"
+                                value={student.fee ? `Rs. ${student.fee}` : null}
+                            />
+                        </div>
+
+                    </div>
+                </div>
+
+                {/* Footer */}
+                <div className="flex justify-end gap-3 px-6 py-4 border-t border-gray-100 bg-gray-50">
                     <Button
                         variant="outline"
                         onClick={() => onOpenChange(false)}
+                        className="px-5"
                     >
                         Close
                     </Button>
                     <Button
                         onClick={handlePrint}
-                        className="bg-blue-600 hover:bg-blue-700 text-white"
+                        className="bg-blue-600 hover:bg-blue-700 text-white px-6 shadow-sm"
                     >
                         <Printer className="w-4 h-4 mr-2" />
                         Print
                     </Button>
                 </div>
+
             </DialogContent>
         </Dialog>
     )
