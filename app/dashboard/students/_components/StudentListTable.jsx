@@ -4,7 +4,6 @@ import React, { useEffect, useState, useMemo } from 'react'
 import { AgGridReact } from 'ag-grid-react'
 import '@/utils/agGrid'
 import { Search, Trash2, Eye, Pencil, Users } from 'lucide-react'
-import { Button } from '@/components/ui/button'
 import {
     AlertDialog,
     AlertDialogAction,
@@ -109,7 +108,27 @@ function StudentListTable({ StudentList, refreshData }) {
     }
 
     const colDefs = useMemo(() => [
-        { field: "id", headerName: "ID", width: 70, filter: true },
+        // 1. ID (numeric)
+        {
+            field: "id",
+            headerName: "ID",
+            width: 70,
+            filter: true,
+            valueGetter: (params) => {
+                const v = params.data?.id
+                if (typeof v === "number") return v
+                // If id missing, fall back to a short hash of _id
+                return v ? String(v).slice(-4) : ""
+            },
+        },
+
+        // 2. Roll No
+        { field: "rollNo", headerName: "Roll No", filter: true, width: 100 },
+
+        // 3. Admission No
+        { field: "admissionNo", headerName: "Admission No", filter: true, width: 150 },
+
+        // 4. Student Name
         {
             field: "name",
             headerName: "Student Name",
@@ -120,6 +139,8 @@ function StudentListTable({ StudentList, refreshData }) {
             autoHeight: true,
             cellStyle: { whiteSpace: 'normal', lineHeight: '1.3' },
         },
+
+        // 5. Father Name
         {
             field: "fatherName",
             headerName: "Father Name",
@@ -130,12 +151,20 @@ function StudentListTable({ StudentList, refreshData }) {
             autoHeight: true,
             cellStyle: { whiteSpace: 'normal', lineHeight: '1.3' },
         },
-        { field: "admissionNo", headerName: "Admission No", filter: true, width: 140 },
-        { field: "rollNo", headerName: "Roll No", filter: true, width: 100 },
+
+        // 6. Grade
         { field: "grade", headerName: "Grade", filter: true, width: 100 },
+
+        // 7. Section
         { field: "section", headerName: "Section", filter: true, width: 100 },
+
+        // 8. Session
         { field: "session", headerName: "Session", filter: true, width: 130 },
+
+        // 9. Contact
         { field: "contact", headerName: "Contact No", filter: true, width: 150 },
+
+        // 10. Fee
         {
             field: "fee",
             headerName: "Fee",
@@ -143,6 +172,8 @@ function StudentListTable({ StudentList, refreshData }) {
             width: 110,
             valueFormatter: (params) => (params.value ? `Rs. ${params.value}` : "N/A"),
         },
+
+        // 11. Actions
         {
             field: "action",
             headerName: "Action",
