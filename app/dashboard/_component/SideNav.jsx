@@ -2,7 +2,7 @@
 import { useKindeBrowserClient } from '@kinde-oss/kinde-auth-nextjs'
 import {
   GraduationCap, Hand, LayoutIcon, BookOpen,
-  ChevronDown, ChevronRight, FileText, FlaskConical,
+  ChevronDown, ChevronRight, FileText, FlaskConical, Wallet,
 } from 'lucide-react'
 import Image from 'next/image'
 import Link from 'next/link'
@@ -70,6 +70,13 @@ function SideNav() {
             </div>
           )}
         </div>
+
+        {/* Fee Management as top-level */}
+        <Link href="/dashboard/fee-management">
+          <h2 className={itemClass(path === '/dashboard/fee-management')}>
+            <Wallet size={20} /> Fee Management
+          </h2>
+        </Link>
       </div>
 
       <div className="flex gap-2 items-center pt-4 border-t mt-4">

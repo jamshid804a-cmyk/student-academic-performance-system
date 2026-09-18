@@ -50,19 +50,28 @@ const GetAllSubjects = (studentId) => {
 const CreateSubject = (data) => axios.post('/api/subjects', data);
 const DeleteSubject = (id) => axios.delete(`/api/subjects/${id}`);
 
-// ─── Tests (Academic Performance → Testing) ─────────────────
+// ─── Tests ──────────────────────────────────────────────────
 const GetTests = (params) => {
     const qs = new URLSearchParams(params).toString();
     return axios.get('/api/tests' + (qs ? `?${qs}` : ''));
 };
 const SaveTest = (data) => axios.post('/api/tests', data);
 
-// ─── Exams (Academic Performance → Examination) ─────────────
+// ─── Exams ──────────────────────────────────────────────────
 const GetExams = (params) => {
     const qs = new URLSearchParams(params).toString();
     return axios.get('/api/exams' + (qs ? `?${qs}` : ''));
 };
 const SaveExam = (data) => axios.post('/api/exams', data);
+
+// ─── Fees ───────────────────────────────────────────────────
+const GetFees = (params) => {
+    const qs = new URLSearchParams(params).toString();
+    return axios.get('/api/fees' + (qs ? `?${qs}` : ''));
+};
+const SaveFeePayment = (data) => axios.post('/api/fees', data);
+const DeleteFeePayment = (id) => axios.delete(`/api/fees?id=${id}`);
+const SendFeeReminder = (data) => axios.post('/api/fees/remind', data);
 
 // ─── Export ─────────────────────────────────────────────────
 export default {
@@ -83,4 +92,8 @@ export default {
     SaveTest,
     GetExams,
     SaveExam,
+    GetFees,
+    SaveFeePayment,
+    DeleteFeePayment,
+    SendFeeReminder,
 };
