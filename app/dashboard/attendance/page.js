@@ -2,155 +2,194 @@
 
 export const dynamic = 'force-dynamic'
 
-import GradeSelection from '@/app/_components/GradeSelection'
-import MonthSelection from '@/app/_components/MonthSelection'
-import GlobalApi from '@/app/_services/GlobalApi'
-import { Button } from '@/components/ui/button'
-import moment from 'moment'
-import React, { useState, useEffect } from 'react'
+import GradeSelection from './_components/GradeSelection'
+import SectionSelection from './_components/SectionSelection'
+import SessionSelection from './_components/SessionSelection'
+import MonthSelection from './_components/MonthSelection'
 import AttendanceGrid from './_components/AttendanceGrid'
 import RiskBox from './_components/RiskBox'
+import GlobalApi from '@/app/_services/GlobalApi'
+import { Button } from '@/components/ui/button'
+import { Printer } from 'lucide-react'
+import React, { useState } from 'react'
 
 function Attendance() {
-    const [selectedMonth, setSelectedMonth] = useState()
-    const [selectedGrade, setSelectedGrade] = useState()
-    const [attendanceList, setAttendanceList] = useState(null)
-    const [searchMonth, setSearchMonth] = useState()
-    const [showRiskBox, setShowRiskBox] = useState(false)
-    const [weekRange, setWeekRange] = useState(null)
-    const [loading, setLoading] = useState(false)
-    const [mounted, setMounted] = useState(false)
+  const [selectedGrade, setSelectedGrade] = useState("")
+  const [selectedSection, setSelectedSection] = useState("")
+  const [selectedSession, setSelectedSession] = useState("")
+  const [selectedMonth, setSelectedMonth] = useState("")
+  const [attendanceList, setAttendanceList] = useState(null)
+  const [weekRange, setWeekRange] = useState(null)
+  const [showRiskBox, setShowRiskBox] = useState(false)
+  const [loading, setLoading] = useState(false)
 
-    useEffect(() => {
-        setMounted(true)
-    }, [])
-
-    useEffect(() => {
-        if (!mounted) return
-        const savedMonth = localStorage.getItem('selectedMonth')
-        const savedGrade = localStorage.getItem('selectedGrade')
-        if (savedMonth && savedGrade) {
-            setSelectedMonth(savedMonth)
-            setSelectedGrade(savedGrade)
-            setSearchMonth(savedMonth)
-            fetchAttendance(savedGrade, savedMonth)
-        }
-    }, [mounted])
-
-    const fetchAttendance = (grade, month) => {
-        if (!grade || !month) return
-        GlobalApi.GetAttendanceList(grade, month)
-            .then(resp => {
-                setAttendanceList(resp.data || [])
-            })
-            .catch(err => {
-                console.error("Failed to fetch attendance:", err)
-                setAttendanceList([])
-            })
+  // "September" -> "09/2026"
+  const monthNameToKey = (name) => {
+    const map = {
+      January: "01", February: "02", March: "03", April: "04",
+      May: "05", June: "06", July: "07", August: "08",
+      September: "09", October: "10", November: "11", December: "12",
     }
+    return `${map[name]}/${new Date().getFullYear()}`
+  }
 
-    const onSearchHandler = () => {
-        if (!selectedMonth || !selectedGrade) {
-            alert("Please select both Month and Grade.")
-            return
-        }
+  const onSearch = async () => {
+    if (!selectedGrade || !selectedMonth) {
+      alert("Please select at least Grade and Month.")
+      return
+    }
+    const month = monthNameToKey(selectedMonth)
 
-        let month
-        if (typeof selectedMonth === 'string') {
-            month = selectedMonth
-        } else {
-            month = moment(selectedMonth).format('MM/YYYY')
-        }
+    setLoading(true)
+    setShowRiskBox(false)
+    setWeekRange(null)
 
-        if (!month || month === 'Invalid date') {
-            alert("Please select a valid month.")
-            return
-        }
+    try {
+      const resp = await GlobalApi.GetAttendanceList(
+        selectedGrade,
+        month,
+        selectedSection,
+        selectedSession
+      )
+      setAttendanceList(resp.data || [])
+    } catch (err) {
+      console.error("Failed to fetch attendance:", err)
+      setAttendanceList([])
+    }
+    setLoading(false)
+  }
 
-        setSearchMonth(month)
-        setShowRiskBox(false)
-        setWeekRange(null)
-        localStorage.setItem('selectedMonth', month)
-        localStorage.setItem('selectedGrade', selectedGrade)
-        setLoading(true)
-        GlobalApi.GetAttendanceList(selectedGrade, month)
-            .then(resp => {
-                setAttendanceList(resp.data || [])
+  const onWeekComplete = ({ weekStart, weekEnd }) => {
+    setWeekRange({ weekStart, weekEnd })
+    setShowRiskBox(true)
+  }
+
+  const onAttendanceChange = () => {}
+
+  const handlePrint = () => {
+    if (!attendanceList || attendanceList.length === 0) {
+      alert("Nothing to print yet.")
+      return
+    }
+    const w = window.open("", "_blank", "width=1200,height=800")
+    if (!w) return
+
+    const monthNum = Number(monthNameToKey(selectedMonth).split("/")[0])
+    const daysInMonth = new Date(new Date().getFullYear(), monthNum, 0).getDate()
+    const cols = Array.from({ length: daysInMonth }, (_, i) => i + 1)
+
+    const rows = attendanceList
+      .map(
+        (s) => `
+        <tr>
+          <td>${s.rollNo ?? ""}</td>
+          <td style="text-align:left">${s.name ?? ""}</td>
+          ${cols
+            .map((d) => {
+              const v = s.attendance?.[String(d)] || ""
+              const color =
+                v === "P" ? "#16a34a" : v === "A" ? "#dc2626" : v === "L" ? "#d97706" : "#bbb"
+              return `<td style="color:${color};font-weight:bold">${v || "-"}</td>`
             })
-            .catch(err => {
-                console.error("Failed to fetch attendance:", err)
-                setAttendanceList([])
-            })
-            .finally(() => setLoading(false))
-    }
+            .join("")}
+        </tr>`
+      )
+      .join("")
 
-    const onWeekComplete = ({ weekStart, weekEnd }) => {
-        setWeekRange({ weekStart, weekEnd })
-        setShowRiskBox(true)
-        fetchAttendance(selectedGrade, searchMonth)
-    }
+    w.document.write(`
+      <html><head><title>Attendance Report</title>
+      <style>
+        body { font-family: Arial, sans-serif; padding: 20px; font-size: 11px; }
+        h2 { text-align: center; margin: 0 0 4px; }
+        p.sub { text-align: center; color: #555; margin: 0 0 14px; font-size: 12px; }
+        table { border-collapse: collapse; width: 100%; }
+        th, td { border: 1px solid #ccc; padding: 4px 6px; text-align: center; }
+        th { background: #f3f4f6; font-weight: bold; }
+        @media print { @page { size: landscape; } }
+      </style>
+      </head><body>
+        <h2>Attendance Report — ${selectedMonth}</h2>
+        <p class="sub">Grade ${selectedGrade} • Section ${selectedSection || "All"} • Session ${selectedSession || "All"}</p>
+        <table>
+          <thead><tr>
+            <th>Roll No</th><th style="text-align:left">Name</th>
+            ${cols.map((d) => `<th>${d}</th>`).join("")}
+          </tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+        <script>window.onload = () => window.print();</script>
+      </body></html>
+    `)
+    w.document.close()
+  }
 
-    const onAttendanceChange = () => {
-        fetchAttendance(selectedGrade, searchMonth)
-    }
+  return (
+    <div className='p-7'>
+      <div className="flex items-center justify-between mb-3">
+        <h2 className='text-2xl font-bold'>Attendance</h2>
+        {attendanceList && attendanceList.length > 0 && (
+          <Button onClick={handlePrint} variant="outline" className="flex gap-2">
+            <Printer size={16} /> Print
+          </Button>
+        )}
+      </div>
 
-    if (!mounted) return null
-
-    return (
-        <div className='p-7'>
-            <h2 className='text-2xl font-bold'>Attendance</h2>
-
-            <div className='flex gap-5 my-5 p-2 border rounded-lg shadow-sm'>
-                <div className='flex gap-2 items-center'>
-                    <label>Select Month</label>
-                    <MonthSelection
-                        selectedMonth={(value) => setSelectedMonth(value)}
-                        defaultMonth={selectedMonth}
-                    />
-                </div>
-                <div className='flex gap-2 items-center'>
-                    <label>Select Grade</label>
-                    <GradeSelection
-                        selectedGrade={(v) => setSelectedGrade(v)}
-                        defaultGrade={selectedGrade}
-                    />
-                </div>
-                <Button onClick={onSearchHandler}>Search</Button>
-            </div>
-
-            {loading && (
-                <div className='flex items-center justify-center py-10'>
-                    <div className='animate-spin rounded-full h-10 w-10 border-b-2 border-blue-500'></div>
-                    <span className='ml-3 text-gray-500'>Loading attendance...</span>
-                </div>
-            )}
-
-            {!loading && attendanceList !== null && (
-                <>
-                    <RiskBox
-                        attendanceList={attendanceList}
-                        selectedMonth={searchMonth}
-                        weekRange={weekRange}
-                        show={showRiskBox}
-                        onHide={() => setShowRiskBox(false)}
-                    />
-
-                    <AttendanceGrid
-                        attendanceList={attendanceList}
-                        selectedMonth={searchMonth}
-                        onWeekComplete={onWeekComplete}
-                        onAttendanceChange={onAttendanceChange}
-                    />
-                </>
-            )}
-
-            {!loading && attendanceList === null && !searchMonth && (
-                <div className='flex items-center justify-center py-10 text-gray-400 text-lg'>
-                    Please select a Month and Grade, then click Search.
-                </div>
-            )}
+      <div className='flex flex-wrap gap-4 my-5 p-3 border rounded-lg shadow-sm bg-white'>
+        <div className='flex gap-2 items-center'>
+          <label className="text-sm font-medium">Grade</label>
+          <GradeSelection selectedGrade={setSelectedGrade} defaultGrade={selectedGrade} />
         </div>
-    )
+        <div className='flex gap-2 items-center'>
+          <label className="text-sm font-medium">Section</label>
+          <SectionSelection selectedSection={setSelectedSection} defaultSection={selectedSection} />
+        </div>
+        <div className='flex gap-2 items-center'>
+          <label className="text-sm font-medium">Session</label>
+          <SessionSelection selectedSession={setSelectedSession} defaultSession={selectedSession} />
+        </div>
+        <div className='flex gap-2 items-center'>
+          <label className="text-sm font-medium">Month</label>
+          <MonthSelection selectedMonth={setSelectedMonth} defaultMonth={selectedMonth} />
+        </div>
+        <Button onClick={onSearch}>Search</Button>
+      </div>
+
+      {loading && (
+        <div className='flex items-center justify-center py-10'>
+          <div className='animate-spin rounded-full h-10 w-10 border-b-2 border-blue-500'></div>
+          <span className='ml-3 text-gray-500'>Loading attendance...</span>
+        </div>
+      )}
+
+      {!loading && attendanceList !== null && (
+        <>
+          <RiskBox
+            attendanceList={attendanceList}
+            selectedMonth={selectedMonth}
+            weekRange={weekRange}
+            show={showRiskBox}
+            onHide={() => setShowRiskBox(false)}
+          />
+
+          <AttendanceGrid
+            attendanceList={attendanceList}
+            selectedMonth={selectedMonth}
+            selectedGrade={selectedGrade}
+            selectedSection={selectedSection}
+            selectedSession={selectedSession}
+            onAttendanceChange={onAttendanceChange}
+            onWeekComplete={onWeekComplete}
+          />
+        </>
+      )}
+
+      {!loading && attendanceList === null && (
+        <div className='flex items-center justify-center py-10 text-gray-400 text-lg'>
+          Please select filters and click Search.
+        </div>
+      )}
+    </div>
+  )
 }
 
 export default Attendance
