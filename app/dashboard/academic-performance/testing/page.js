@@ -2,8 +2,7 @@
 export const dynamic = 'force-dynamic'
 
 import React, { useEffect, useState, useMemo, useRef } from 'react'
-import { Button } from '@/components/ui/button'
-import { Plus, X, LoaderIcon, FlaskConical, Send } from 'lucide-react'
+import { LoaderIcon, FlaskConical, Send, Plus, X } from 'lucide-react'
 import GlobalApi from '@/app/_services/GlobalApi'
 import { toast } from 'sonner'
 
@@ -16,7 +15,7 @@ const MONTHS = [
 ]
 const TEST_TYPES = ["Monthly", "Weekly", "Daily"]
 
-const STORAGE_KEY = "testing_filters_v1"
+const STORAGE_KEY = "testing_filters_v2"
 
 const monthNameToKey = (name) => {
   const map = {
@@ -34,16 +33,15 @@ export default function TestingPage() {
   const [month, setMonth] = useState("")
   const [testType, setTestType] = useState("Monthly")
 
-  const [subjects, setSubjects] = useState([])
-  const [newSubject, setNewSubject] = useState("")
-  const [loadingSubjects, setLoadingSubjects] = useState(false)
-
   const [students, setStudents] = useState([])
-  const [tests, setTests] = useState({})
-  const [loadingTable, setLoadingTable] = useState(false)
-
+  const [subjects, setSubjects] = useState([]) // [{_id, name, studentId}]
+  const [tests, setTests] = useState({})       // { `${studentId}__${subjectName}`: { marks, percentage } }
+  const [loading, setLoading] = useState(false)
   const [hydrated, setHydrated] = useState(false)
   const debounceRef = useRef(null)
+
+  const [addingFor, setAddingFor] = useState(null)   // studentId of the row currently adding
+  const [newSubjectName, setNewSubjectName] = useState("")
 
   // ─── Load saved filters ───
   useEffect(() => {
@@ -58,7 +56,7 @@ export default function TestingPage() {
     setHydrated(true)
   }, [])
 
-  // ─── Save filters on change ───
+  // ─── Save filters ───
   useEffect(() => {
     if (!hydrated) return
     localStorage.setItem(
@@ -67,88 +65,104 @@ export default function TestingPage() {
     )
   }, [grade, section, session, month, testType, hydrated])
 
-  // ─── Load subjects ───
-  const loadSubjects = async () => {
-    setLoadingSubjects(true)
-    try {
-      const resp = await GlobalApi.GetAllSubjects()
-      setSubjects(resp.data || [])
-    } catch (err) { console.error(err) }
-    setLoadingSubjects(false)
-  }
-
-  useEffect(() => { loadSubjects() }, [])
-
-  // ─── Add / Remove subject ───
-  const handleAddSubject = async () => {
-    const name = newSubject.trim()
-    if (!name) return
-    try {
-      await GlobalApi.CreateSubject({ name })
-      setNewSubject("")
-      toast.success("Subject added")
-      loadSubjects()
-    } catch (err) {
-      toast.error(err?.response?.data?.error || "Failed to add subject")
+  // ─── Fetch students + subjects + tests ───
+  const fetchAll = async () => {
+    if (!grade || !month || !testType) {
+      setStudents([]); setSubjects([]); setTests({}); return
     }
-  }
-
-  const handleDeleteSubject = async (id, name) => {
-    if (!confirm(`Remove subject "${name}"?`)) return
+    setLoading(true)
     try {
-      await GlobalApi.DeleteSubject(id)
-      toast.success("Subject removed")
-      loadSubjects()
-    } catch { toast.error("Failed to remove subject") }
+      const monthKey = monthNameToKey(month)
+      const params = { grade }
+      if (section) params.section = section
+      if (session) params.session = session
+
+      const [studentResp, subjectResp, testResp] = await Promise.all([
+        GlobalApi.GetAllStudents(params),
+        GlobalApi.GetAllSubjects(),          // all subjects across all students
+        GlobalApi.GetTests({ grade, section, session, month: monthKey, testType }),
+      ])
+
+      const marks = {}
+      ;(testResp.data || []).forEach((t) => {
+        marks[`${t.studentId}__${t.subject}`] = {
+          marks: t.marks,
+          totalMarks: t.totalMarks,
+          percentage: t.percentage,
+        }
+      })
+
+      setStudents(studentResp.data || [])
+      setSubjects(subjectResp.data || [])
+      setTests(marks)
+    } catch (err) {
+      console.error(err)
+      toast.error("Failed to load data")
+    }
+    setLoading(false)
   }
 
-  // ─── Auto-fetch students + tests when filters change ───
   useEffect(() => {
     if (!hydrated) return
-
     if (debounceRef.current) clearTimeout(debounceRef.current)
-
-    debounceRef.current = setTimeout(async () => {
-      if (!grade || !month || !testType) {
-        setStudents([]); setTests({}); return
-      }
-      setLoadingTable(true)
-      try {
-        const monthKey = monthNameToKey(month)
-        const studentParams = { grade }
-        if (section) studentParams.section = section
-        if (session) studentParams.session = session
-        const studentResp = await GlobalApi.GetAllStudents(studentParams)
-        const testResp = await GlobalApi.GetTests({
-          grade, section, session, month: monthKey, testType,
-        })
-        const marks = {}
-        ;(testResp.data || []).forEach((t) => {
-          marks[`${t.studentId}__${t.subject}`] = {
-            marks: t.marks,
-            totalMarks: t.totalMarks,
-            percentage: t.percentage,
-          }
-        })
-        setStudents(studentResp.data || [])
-        setTests(marks)
-      } catch (err) {
-        console.error(err)
-        toast.error("Failed to load table")
-      }
-      setLoadingTable(false)
-    }, 300)
-
-    return () => {
-      if (debounceRef.current) clearTimeout(debounceRef.current)
-    }
+    debounceRef.current = setTimeout(fetchAll, 250)
+    return () => debounceRef.current && clearTimeout(debounceRef.current)
+    // eslint-disable-next-line
   }, [grade, section, session, month, testType, hydrated])
 
   const monthKey = month ? monthNameToKey(month) : ""
 
+  // ─── Unique subject names (across all students) — becomes table columns ───
+  const subjectColumns = useMemo(() => {
+    const names = new Set()
+    subjects.forEach((s) => names.add(s.name))
+    return Array.from(names).sort()
+  }, [subjects])
+
+  // ─── Map: studentId → Set of subject names they have ───
+  const subjectsByStudent = useMemo(() => {
+    const map = {}
+    subjects.forEach((s) => {
+      if (!map[s.studentId]) map[s.studentId] = []
+      map[s.studentId].push(s)
+    })
+    return map
+  }, [subjects])
+
+  // ─── Add subject for a student ───
+  const handleAddSubject = async (studentId) => {
+    const name = newSubjectName.trim()
+    if (!name) return
+    try {
+      await GlobalApi.CreateSubject({ name, studentId: String(studentId) })
+      setNewSubjectName("")
+      setAddingFor(null)
+      toast.success("Subject added")
+      fetchAll()
+    } catch (err) {
+      toast.error(err?.response?.data?.error || "Failed to add")
+    }
+  }
+
+  // ─── Remove a subject for one student ───
+  const handleRemoveSubject = async (studentId, subjectName) => {
+    const record = subjects.find(
+      (s) => s.studentId === String(studentId) && s.name === subjectName
+    )
+    if (!record) return
+    if (!confirm(`Remove subject "${subjectName}" from this student?`)) return
+    try {
+      await GlobalApi.DeleteSubject(record.id)
+      toast.success("Removed")
+      fetchAll()
+    } catch {
+      toast.error("Failed to remove")
+    }
+  }
+
   // ─── Save marks ───
-  const handleMarksChange = async (student, subject, value) => {
-    const key = `${student.id}__${subject}`
+  const handleMarksChange = async (studentId, subjectName, value) => {
+    const key = `${studentId}__${subjectName}`
     setTests((prev) => ({
       ...prev,
       [key]: {
@@ -157,12 +171,15 @@ export default function TestingPage() {
         totalMarks: prev[key]?.totalMarks ?? 100,
       },
     }))
-
     try {
       await GlobalApi.SaveTest({
-        studentId: student.id, grade, section, session,
-        month: monthKey, testType,
-        subject, marks: value, totalMarks: 100,
+        studentId,
+        grade, section, session,
+        month: monthKey,
+        testType,
+        subject: subjectName,
+        marks: value,
+        totalMarks: 100,
       })
       const testResp = await GlobalApi.GetTests({
         grade, section, session, month: monthKey, testType,
@@ -180,18 +197,19 @@ export default function TestingPage() {
     }
   }
 
-  // ─── Rows ───
+  // ─── Build rows ───
   const rows = useMemo(() => {
     return students.map((s) => {
+      const mySubjects = subjectsByStudent[String(s.id)] || []
       const studentMarks = {}
       let totalPct = 0, count = 0, hasLow = false
       const lowSubjects = []
 
-      subjects.forEach((sub) => {
+      mySubjects.forEach((sub) => {
         const record = tests[`${s.id}__${sub.name}`]
         if (record && record.marks !== undefined && record.marks !== "") {
           const pct = record.percentage ?? Math.round((record.marks / (record.totalMarks || 100)) * 100)
-          studentMarks[sub.name] = { marks: record.marks, total: record.totalMarks || 100, percentage: pct }
+          studentMarks[sub.name] = { marks: record.marks, percentage: pct }
           totalPct += pct; count++
           if (pct < 50) {
             hasLow = true
@@ -205,25 +223,23 @@ export default function TestingPage() {
       const overallPct = count > 0 ? Math.round(totalPct / count) : 0
       return {
         student: s,
+        mySubjects,
         subjectMarks: studentMarks,
         overallPct,
-        risk: hasLow ? "Risk" : "Active",
+        risk: hasLow ? "Risk" : (count > 0 ? "Active" : "—"),
         lowSubjects,
       }
     })
-  }, [students, subjects, tests])
+  }, [students, subjectsByStudent, tests])
 
   // ─── Send notification ───
   const handleSend = async (row) => {
     if (row.lowSubjects.length === 0) {
-      toast.info("All subjects are above 50% — no notification needed.")
+      toast.info("No subjects below 50%")
       return
     }
-    const lines = row.lowSubjects
-      .map((s) => `${s.subject}: ${s.marks}/100 (${s.percentage}%)`)
-      .join(", ")
+    const lines = row.lowSubjects.map((s) => `${s.subject}: ${s.marks}/100 (${s.percentage}%)`).join(", ")
     const message = `Dear Parent, your child ${row.student.name} scored below 50% in: ${lines} for the ${testType} test in ${month}. Please provide extra support.`
-
     try {
       await fetch("/api/notifications", {
         method: "POST",
@@ -236,7 +252,7 @@ export default function TestingPage() {
       toast.success(`Notification sent for ${row.student.name}`)
     } catch (err) {
       console.error(err)
-      toast.error("Failed to send notification")
+      toast.error("Failed to send")
     }
   }
 
@@ -278,47 +294,10 @@ export default function TestingPage() {
         </div>
       </div>
 
-      {/* Subjects */}
-      <div className="bg-white border rounded-2xl shadow-sm p-5 mb-5">
-        <h3 className="text-sm font-semibold text-slate-700 mb-3">Subjects</h3>
-        <div className="flex gap-2 mb-3">
-          <input
-            type="text"
-            placeholder="Add a subject (e.g. Math)"
-            value={newSubject}
-            onChange={(e) => setNewSubject(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && handleAddSubject()}
-            className="flex-1 px-3 py-2 rounded-lg border border-gray-300 focus:border-blue-500 outline-none text-sm"
-          />
-          <Button onClick={handleAddSubject} disabled={!newSubject.trim()}>
-            <Plus size={16} className="mr-1" /> Add Subject
-          </Button>
-        </div>
-        {loadingSubjects ? (
-          <p className="text-sm text-slate-400">Loading subjects...</p>
-        ) : subjects.length === 0 ? (
-          <p className="text-sm text-slate-400">No subjects yet.</p>
-        ) : (
-          <div className="flex flex-wrap gap-2">
-            {subjects.map((s) => (
-              <span key={s.id} className="flex items-center gap-2 pl-3 pr-2 py-1.5 rounded-lg bg-slate-100 border border-slate-200 text-sm">
-                {s.name}
-                <button
-                  onClick={() => handleDeleteSubject(s.id, s.name)}
-                  className="w-5 h-5 rounded bg-slate-200 hover:bg-red-100 hover:text-red-600 text-slate-500 flex items-center justify-center"
-                >
-                  <X size={12} />
-                </button>
-              </span>
-            ))}
-          </div>
-        )}
-      </div>
-
       {/* Table */}
-      {loadingTable ? (
+      {loading ? (
         <div className="flex justify-center py-10 text-slate-400">
-          <LoaderIcon className="animate-spin mr-2" /> Loading table...
+          <LoaderIcon className="animate-spin mr-2" /> Loading...
         </div>
       ) : students.length === 0 ? (
         <div className="bg-white border rounded-2xl p-10 text-center text-slate-400">
@@ -334,8 +313,10 @@ export default function TestingPage() {
                 <th className="p-3 text-left font-semibold text-slate-700">Session</th>
                 <th className="p-3 text-left font-semibold text-slate-700">Month</th>
                 <th className="p-3 text-left font-semibold text-slate-700">Test</th>
-                {subjects.map((s) => (
-                  <th key={s.id} className="p-3 text-center font-semibold text-slate-700 min-w-[90px]">{s.name}</th>
+                {subjectColumns.map((name) => (
+                  <th key={name} className="p-3 text-center font-semibold text-slate-700 min-w-[110px]">
+                    {name}
+                  </th>
                 ))}
                 <th className="p-3 text-center font-semibold text-slate-700">Overall %</th>
                 <th className="p-3 text-center font-semibold text-slate-700">Status</th>
@@ -343,48 +324,108 @@ export default function TestingPage() {
               </tr>
             </thead>
             <tbody>
-              {rows.map((row) => (
-                <tr key={row.student.id} className="border-b hover:bg-slate-50">
-                  <td className="p-3">{row.student.rollNo ?? "—"}</td>
-                  <td className="p-3 font-medium">{row.student.name}</td>
-                  <td className="p-3">{row.student.session || "—"}</td>
-                  <td className="p-3">{monthKey}</td>
-                  <td className="p-3">{testType}</td>
-                  {subjects.map((sub) => {
-                    const cell = row.subjectMarks[sub.name]
-                    return (
-                      <td key={sub.id} className="p-2 text-center">
-                        <input
-                          type="number"
-                          min="0"
-                          max="100"
-                          value={cell?.marks ?? ""}
-                          onChange={(e) => handleMarksChange(row.student, sub.name, e.target.value)}
-                          className={`w-16 px-2 py-1 rounded border text-center text-sm
-                            ${cell && cell.percentage < 50 ? "border-red-400 bg-red-50 text-red-700" : "border-gray-300"}`}
-                          placeholder="—"
-                        />
-                      </td>
-                    )
-                  })}
-                  <td className="p-3 text-center font-semibold">{row.overallPct}%</td>
-                  <td className="p-3 text-center">
-                    <span className={`px-3 py-1 rounded-full text-xs font-semibold
-                      ${row.risk === "Risk" ? "bg-red-100 text-red-700" : "bg-green-100 text-green-700"}`}>
-                      {row.risk}
-                    </span>
-                  </td>
-                  <td className="p-3 text-center">
-                    <button
-                      onClick={() => handleSend(row)}
-                      disabled={row.lowSubjects.length === 0}
-                      className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold bg-blue-600 hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-400 text-white"
-                    >
-                      <Send size={12} /> Send
-                    </button>
-                  </td>
-                </tr>
-              ))}
+              {rows.map((row) => {
+                const hasSubject = (name) => row.mySubjects.some((s) => s.name === name)
+
+                return (
+                  <tr key={row.student.id} className="border-b hover:bg-slate-50">
+                    <td className="p-3">{row.student.rollNo ?? "—"}</td>
+                    <td className="p-3 font-medium">{row.student.name}</td>
+                    <td className="p-3">{row.student.session || "—"}</td>
+                    <td className="p-3">{monthKey}</td>
+                    <td className="p-3">{testType}</td>
+
+                    {subjectColumns.map((name) => {
+                      if (!hasSubject(name)) {
+                        return <td key={name} className="p-2 text-center text-slate-300">—</td>
+                      }
+                      const cell = row.subjectMarks[name]
+                      return (
+                        <td key={name} className="p-2 text-center">
+                          <div className="flex items-center justify-center gap-1">
+                            <input
+                              type="number"
+                              min="0"
+                              max="100"
+                              value={cell?.marks ?? ""}
+                              onChange={(e) => handleMarksChange(row.student.id, name, e.target.value)}
+                              placeholder="—"
+                              className={`w-14 px-2 py-1 rounded border text-center text-sm
+                                ${cell && cell.percentage < 50
+                                  ? "border-red-400 bg-red-50 text-red-700"
+                                  : "border-gray-300"}`}
+                            />
+                            <button
+                              onClick={() => handleRemoveSubject(row.student.id, name)}
+                              title="Remove subject"
+                              className="w-5 h-5 rounded text-slate-400 hover:text-red-600 hover:bg-red-50 flex items-center justify-center"
+                            >
+                              <X size={12} />
+                            </button>
+                          </div>
+                        </td>
+                      )
+                    })}
+
+                    <td className="p-3 text-center font-semibold">{row.overallPct}%</td>
+
+                    <td className="p-3 text-center">
+                      <span className={`px-3 py-1 rounded-full text-xs font-semibold
+                        ${row.risk === "Risk"
+                          ? "bg-red-100 text-red-700"
+                          : row.risk === "Active"
+                            ? "bg-green-100 text-green-700"
+                            : "bg-slate-100 text-slate-500"}`}>
+                        {row.risk}
+                      </span>
+                    </td>
+
+                    <td className="p-3">
+                      <div className="flex items-center justify-center gap-1">
+                        <button
+                          onClick={() => handleSend(row)}
+                          disabled={row.lowSubjects.length === 0}
+                          className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold bg-blue-600 hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-400 text-white"
+                        >
+                          <Send size={12} /> Send
+                        </button>
+                        <button
+                          onClick={() => {
+                            setAddingFor(addingFor === row.student.id ? null : row.student.id)
+                            setNewSubjectName("")
+                          }}
+                          title="Add subject"
+                          className="w-7 h-7 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 flex items-center justify-center"
+                        >
+                          <Plus size={14} />
+                        </button>
+                      </div>
+
+                      {addingFor === row.student.id && (
+                        <div className="mt-2 flex gap-1 justify-center">
+                          <input
+                            autoFocus
+                            value={newSubjectName}
+                            onChange={(e) => setNewSubjectName(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') handleAddSubject(row.student.id)
+                              if (e.key === 'Escape') { setAddingFor(null); setNewSubjectName("") }
+                            }}
+                            placeholder="Subject name"
+                            className="w-28 px-2 py-1 rounded border border-gray-300 text-xs"
+                          />
+                          <button
+                            onClick={() => handleAddSubject(row.student.id)}
+                            className="px-2 py-1 rounded bg-emerald-600 text-white text-xs"
+                          >
+                            Add
+                          </button>
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         </div>

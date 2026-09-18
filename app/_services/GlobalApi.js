@@ -43,7 +43,10 @@ const GetParentByStudentId = (studentId) =>
     axios.get(`/api/parents?studentId=${studentId}`);
 
 // ─── Subjects ───────────────────────────────────────────────
-const GetAllSubjects = () => axios.get('/api/subjects');
+const GetAllSubjects = (studentId) => {
+    const qs = studentId ? `?studentId=${studentId}` : "";
+    return axios.get('/api/subjects' + qs);
+};
 const CreateSubject = (data) => axios.post('/api/subjects', data);
 const DeleteSubject = (id) => axios.delete(`/api/subjects/${id}`);
 
