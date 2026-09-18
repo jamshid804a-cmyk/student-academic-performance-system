@@ -1,26 +1,27 @@
 import { MongoClient } from 'mongodb';
 
-const uri = process.env.MONGODB_URI;
-const options = {
-  maxPoolSize: 10,
-};
-
 let client;
 let clientPromise;
 
-if (!process.env.MONGODB_URI) {
-  throw new Error('Please add your MONGODB_URI to .env.local');
-}
+export default async function getClientPromise() {
+  const uri = process.env.MONGODB_URI;
 
-if (process.env.NODE_ENV === 'development') {
-  if (!global._mongoClientPromise) {
-    client = new MongoClient(uri, options);
-    global._mongoClientPromise = client.connect();
+  if (!uri) {
+    throw new Error('MONGODB_URI is not set');
   }
-  clientPromise = global._mongoClientPromise;
-} else {
-  client = new MongoClient(uri, options);
-  clientPromise = client.connect();
-}
 
-export default clientPromise;
+  if (process.env.NODE_ENV === 'development') {
+    if (!global._mongoClientPromise) {
+      client = new MongoClient(uri, { maxPoolSize: 10 });
+      global._mongoClientPromise = client.connect();
+    }
+    clientPromise = global._mongoClientPromise;
+  } else {
+    if (!clientPromise) {
+      client = new MongoClient(uri, { maxPoolSize: 10 });
+      clientPromise = client.connect();
+    }
+  }
+
+  return clientPromise;
+}

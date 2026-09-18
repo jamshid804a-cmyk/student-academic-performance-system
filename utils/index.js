@@ -1,6 +1,6 @@
-import clientPromise from "./mongodb";
+import getClientPromise from "./mongodb";
 
 export async function getDb() {
-  const client = await clientPromise;
+  const client = await getClientPromise();
   return client.db("school_db");
 }
