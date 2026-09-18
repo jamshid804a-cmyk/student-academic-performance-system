@@ -2,23 +2,34 @@ import { NextResponse } from "next/server";
 import { getDb } from "@/utils";
 import { ObjectId } from "mongodb";
 
-// ✅ GET — fetch one student by id
+// ✅ GET one student
 export async function GET(req, { params }) {
   try {
     const { id } = await params;
     if (!id) return NextResponse.json({ error: "ID required" }, { status: 400 });
 
     const db = await getDb();
-    let student;
-    try {
-      student = await db.collection("students").findOne({ _id: new ObjectId(id) });
-    } catch {
-      student = await db.collection("students").findOne({ id });
+
+    // Try numeric id first, then ObjectId
+    let student = await db.collection("students").findOne({ id: Number(id) });
+
+    if (!student) {
+      try {
+        student = await db.collection("students").findOne({ _id: new ObjectId(id) });
+      } catch {
+        // ignore
+      }
     }
 
-    if (!student) return NextResponse.json({ error: "Not found" }, { status: 404 });
+    if (!student) {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
 
-    return NextResponse.json({ ...student, id: student._id.toString(), _id: undefined });
+    return NextResponse.json({
+      ...student,
+      id: student.id,
+      _id: undefined,
+    });
   } catch (err) {
     console.error("❌ GET /api/student/[id]:", err.message);
     return NextResponse.json({ error: err.message }, { status: 500 });
@@ -51,17 +62,20 @@ export async function PUT(req, { params }) {
       updatedAt: new Date(),
     };
 
-    let result;
-    try {
-      result = await db.collection("students").updateOne(
-        { _id: new ObjectId(id) },
-        { $set: update }
-      );
-    } catch {
-      result = await db.collection("students").updateOne(
-        { id },
-        { $set: update }
-      );
+    // Try numeric id first
+    let result = await db
+      .collection("students")
+      .updateOne({ id: Number(id) }, { $set: update });
+
+    // Fallback to ObjectId
+    if (result.matchedCount === 0) {
+      try {
+        result = await db
+          .collection("students")
+          .updateOne({ _id: new ObjectId(id) }, { $set: update });
+      } catch {
+        // ignore
+      }
     }
 
     if (result.matchedCount === 0) {
@@ -82,14 +96,54 @@ export async function DELETE(req, { params }) {
     if (!id) return NextResponse.json({ error: "ID required" }, { status: 400 });
 
     const db = await getDb();
-    let result;
-    try {
-      result = await db.collection("students").deleteOne({ _id: new ObjectId(id) });
-    } catch {
-      result = await db.collection("students").deleteOne({ id });
+
+    let result = { deletedCount: 0 };
+
+    // 1. Try numeric id
+    if (!isNaN(Number(id))) {
+      result = await db.collection("students").deleteOne({ id: Number(id) });
     }
 
-    return NextResponse.json({ success: true, result });
+    // 2. Fallback to ObjectId
+    if (result.deletedCount === 0) {
+      try {
+        result = await db
+          .collection("students")
+          .deleteOne({ _id: new ObjectId(id) });
+      } catch {
+        // ignore invalid ObjectId
+      }
+    }
+
+    // 3. Fallback to string id
+    if (result.deletedCount === 0) {
+      result = await db.collection("students").deleteOne({ id: id });
+    }
+
+    if (result.deletedCount === 0) {
+      return NextResponse.json(
+        { error: "Student not found" },
+        { status: 404 }
+      );
+    }
+
+    // 🔄 Reset counter to the highest remaining id
+    const highest = await db
+      .collection("students")
+      .find({ id: { $type: "number" } })
+      .sort({ id: -1 })
+      .limit(1)
+      .toArray();
+
+    const newSeq = highest.length > 0 ? highest[0].id : 0;
+
+    await db.collection("counters").updateOne(
+      { _id: "student_id" },
+      { $set: { seq: newSeq } },
+      { upsert: true }
+    );
+
+    return NextResponse.json({ success: true, deletedCount: result.deletedCount });
   } catch (err) {
     console.error("❌ DELETE /api/student/[id]:", err.message);
     return NextResponse.json({ error: err.message }, { status: 500 });

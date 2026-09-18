@@ -38,12 +38,17 @@ function StudentListTable({ StudentList, refreshData }) {
 
     const DeleteRecord = async (id) => {
         try {
-            await GlobalApi.DeleteStudentRecord(id)
-            toast.success("Record Deleted Successfully")
-            refreshData()
+            const resp = await GlobalApi.DeleteStudentRecord(id)
+
+            if (resp?.data?.success && (resp.data.deletedCount ?? 1) > 0) {
+                toast.success("Record Deleted Successfully")
+                refreshData()
+            } else {
+                toast.error(resp?.data?.error || "Student not found")
+            }
         } catch (error) {
-            console.log(error)
-            toast.error("Delete failed")
+            console.log("DELETE ERROR:", error?.response?.data || error)
+            toast.error(error?.response?.data?.error || "Delete failed")
         }
     }
 
@@ -107,6 +112,17 @@ function StudentListTable({ StudentList, refreshData }) {
         )
     }
 
+    // Global cell style so EVERY cell is vertically centered
+    const defaultColDef = useMemo(() => ({
+        resizable: true,
+        sortable: true,
+        cellStyle: {
+            display: 'flex',
+            alignItems: 'center',
+            lineHeight: 'normal',
+        },
+    }), [])
+
     const colDefs = useMemo(() => [
         // 1. ID
         {
@@ -145,8 +161,14 @@ function StudentListTable({ StudentList, refreshData }) {
             minWidth: 180,
             flex: 2,
             wrapText: true,
-            autoHeight: true,
-            cellStyle: { whiteSpace: 'normal', lineHeight: '1.3' },
+            cellStyle: {
+                display: 'flex',
+                alignItems: 'center',
+                whiteSpace: 'normal',
+                lineHeight: '1.3',
+                paddingTop: '8px',
+                paddingBottom: '8px',
+            },
         },
 
         // 5. Father Name
@@ -157,8 +179,14 @@ function StudentListTable({ StudentList, refreshData }) {
             minWidth: 180,
             flex: 2,
             wrapText: true,
-            autoHeight: true,
-            cellStyle: { whiteSpace: 'normal', lineHeight: '1.3' },
+            cellStyle: {
+                display: 'flex',
+                alignItems: 'center',
+                whiteSpace: 'normal',
+                lineHeight: '1.3',
+                paddingTop: '8px',
+                paddingBottom: '8px',
+            },
         },
 
         // 6. Grade
@@ -191,6 +219,11 @@ function StudentListTable({ StudentList, refreshData }) {
             pinned: "right",
             sortable: false,
             filter: false,
+            cellStyle: {
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+            },
         },
     ], [])
 
@@ -231,15 +264,12 @@ function StudentListTable({ StudentList, refreshData }) {
                 <AgGridReact
                     rowData={rowData}
                     columnDefs={colDefs}
+                    defaultColDef={defaultColDef}
                     quickFilterText={searchInput}
                     pagination={pagination}
                     paginationPageSize={paginationPageSize}
                     paginationPageSizeSelector={paginationPageSizeSelector}
-                    defaultColDef={{
-                        resizable: true,
-                        sortable: true,
-                    }}
-                    rowHeight={55}
+                    rowHeight={60}
                     headerHeight={48}
                 />
             </div>
