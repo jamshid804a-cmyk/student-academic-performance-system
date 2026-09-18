@@ -2,6 +2,26 @@ import { NextResponse } from "next/server";
 import { getDb } from "@/utils";
 import { ObjectId } from "mongodb";
 
+// Helper: build a query that matches the student by id in any format
+function buildIdMatchQuery(id) {
+  const orConditions = [];
+
+  // Match as string id
+  orConditions.push({ id: id });
+
+  // Match as numeric id
+  if (!isNaN(Number(id))) {
+    orConditions.push({ id: Number(id) });
+  }
+
+  // Match as ObjectId (_id)
+  if (ObjectId.isValid(id) && String(new ObjectId(id)) === id) {
+    orConditions.push({ _id: new ObjectId(id) });
+  }
+
+  return { $or: orConditions };
+}
+
 // ✅ GET one student
 export async function GET(req, { params }) {
   try {
@@ -9,17 +29,8 @@ export async function GET(req, { params }) {
     if (!id) return NextResponse.json({ error: "ID required" }, { status: 400 });
 
     const db = await getDb();
-
-    // Try numeric id first, then ObjectId
-    let student = await db.collection("students").findOne({ id: Number(id) });
-
-    if (!student) {
-      try {
-        student = await db.collection("students").findOne({ _id: new ObjectId(id) });
-      } catch {
-        // ignore
-      }
-    }
+    const query = buildIdMatchQuery(id);
+    const student = await db.collection("students").findOne(query);
 
     if (!student) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
@@ -62,21 +73,8 @@ export async function PUT(req, { params }) {
       updatedAt: new Date(),
     };
 
-    // Try numeric id first
-    let result = await db
-      .collection("students")
-      .updateOne({ id: Number(id) }, { $set: update });
-
-    // Fallback to ObjectId
-    if (result.matchedCount === 0) {
-      try {
-        result = await db
-          .collection("students")
-          .updateOne({ _id: new ObjectId(id) }, { $set: update });
-      } catch {
-        // ignore
-      }
-    }
+    const query = buildIdMatchQuery(id);
+    const result = await db.collection("students").updateOne(query, { $set: update });
 
     if (result.matchedCount === 0) {
       return NextResponse.json({ error: "Student not found" }, { status: 404 });
@@ -95,32 +93,22 @@ export async function DELETE(req, { params }) {
     const { id } = await params;
     if (!id) return NextResponse.json({ error: "ID required" }, { status: 400 });
 
+    console.log("🔍 DELETE called with raw id:", id, "| typeof:", typeof id);
+
     const db = await getDb();
 
-    let result = { deletedCount: 0 };
+    // DEBUG: log a sample document so we can compare field types if this still fails
+    const sample = await db.collection("students").findOne({});
+    console.log("🔍 Sample student document in DB:", sample);
 
-    // 1. Try numeric id
-    if (!isNaN(Number(id))) {
-      result = await db.collection("students").deleteOne({ id: Number(id) });
-    }
+    const query = buildIdMatchQuery(id);
+    console.log("🔍 Delete query being used:", JSON.stringify(query));
 
-    // 2. Fallback to ObjectId
-    if (result.deletedCount === 0) {
-      try {
-        result = await db
-          .collection("students")
-          .deleteOne({ _id: new ObjectId(id) });
-      } catch {
-        // ignore invalid ObjectId
-      }
-    }
-
-    // 3. Fallback to string id
-    if (result.deletedCount === 0) {
-      result = await db.collection("students").deleteOne({ id: id });
-    }
+    const result = await db.collection("students").deleteOne(query);
+    console.log("🔍 Delete result -> deletedCount:", result.deletedCount);
 
     if (result.deletedCount === 0) {
+      console.log("❌ No matching student found for id:", id);
       return NextResponse.json(
         { error: "Student not found" },
         { status: 404 }
