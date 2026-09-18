@@ -52,8 +52,9 @@ const DeleteAttendance = (studentId, day, month) =>
 const GetParentByStudentId = (studentId) =>
     axios.get(`/api/parents?studentId=${studentId}`);
 
-// ─── Subjects ───────────────────────────────────────────────
-const GetAllSubjects = () => axios.get('/api/subjects');
+// ─── Subjects (per student) ─────────────────────────────────
+const GetAllSubjects = (studentId) =>
+    axios.get(`/api/subjects?studentId=${studentId}`);
 
 const CreateSubject = (data) =>
     axios.post('/api/subjects', data);
