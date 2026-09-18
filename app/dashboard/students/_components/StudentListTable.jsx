@@ -108,7 +108,7 @@ function StudentListTable({ StudentList, refreshData }) {
     }
 
     const colDefs = useMemo(() => [
-        // 1. ID (numeric)
+        // 1. ID
         {
             field: "id",
             headerName: "ID",
@@ -117,16 +117,25 @@ function StudentListTable({ StudentList, refreshData }) {
             valueGetter: (params) => {
                 const v = params.data?.id
                 if (typeof v === "number") return v
-                // If id missing, fall back to a short hash of _id
                 return v ? String(v).slice(-4) : ""
             },
         },
 
         // 2. Roll No
-        { field: "rollNo", headerName: "Roll No", filter: true, width: 100 },
+        {
+            field: "rollNo",
+            headerName: "Roll No",
+            filter: true,
+            width: 100,
+        },
 
         // 3. Admission No
-        { field: "admissionNo", headerName: "Admission No", filter: true, width: 150 },
+        {
+            field: "admissionNo",
+            headerName: "Admission No",
+            filter: true,
+            width: 150,
+        },
 
         // 4. Student Name
         {
@@ -161,7 +170,7 @@ function StudentListTable({ StudentList, refreshData }) {
         // 8. Session
         { field: "session", headerName: "Session", filter: true, width: 130 },
 
-        // 9. Contact
+        // 9. Contact No
         { field: "contact", headerName: "Contact No", filter: true, width: 150 },
 
         // 10. Fee
@@ -173,7 +182,7 @@ function StudentListTable({ StudentList, refreshData }) {
             valueFormatter: (params) => (params.value ? `Rs. ${params.value}` : "N/A"),
         },
 
-        // 11. Actions
+        // 11. Action
         {
             field: "action",
             headerName: "Action",

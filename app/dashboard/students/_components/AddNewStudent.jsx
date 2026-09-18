@@ -14,6 +14,12 @@ import GlobalApi from '@/app/_services/GlobalApi'
 import { toast } from 'sonner'
 import { LoaderIcon } from 'lucide-react'
 
+// Build session list: 2025-2026, 2026-2027, ... up to 2525-2526 (500 sessions)
+const SESSIONS = Array.from({ length: 500 }, (_, i) => {
+    const start = 2025 + i
+    return `${start}-${start + 1}`
+})
+
 function AddNewStudent({ refreshData }) {
 
     const [open, setOpen] = useState(false)
@@ -185,14 +191,20 @@ function AddNewStudent({ refreshData }) {
                                 />
                             </div>
 
-                            {/* Session */}
+                            {/* Session — INFINITE-STYLE DROPDOWN */}
                             <div>
                                 <label className={labelClass}>Session</label>
-                                <input
-                                    placeholder="e.g. 2025-2026"
+                                <select
                                     className={inputClass}
                                     {...register("session")}
-                                />
+                                >
+                                    <option value="">Select Session</option>
+                                    {SESSIONS.map((s) => (
+                                        <option key={s} value={s}>
+                                            {s}
+                                        </option>
+                                    ))}
+                                </select>
                             </div>
 
                             {/* Fee */}
