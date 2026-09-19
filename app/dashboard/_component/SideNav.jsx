@@ -1,6 +1,5 @@
 "use client"
 import { useKindeBrowserClient } from '@kinde-oss/kinde-auth-nextjs'
-import { LogoutLink } from '@kinde-oss/kinde-auth-nextjs/components'
 import {
   GraduationCap, Hand, LayoutIcon, BookOpen,
   ChevronDown, ChevronRight, FileText, FlaskConical, Wallet, Settings,
@@ -13,7 +12,7 @@ import React, { useState, useEffect, useRef } from 'react'
 import GlobalApi from '@/app/_services/GlobalApi'
 
 function SideNav() {
-  const { user } = useKindeBrowserClient() || {}
+  const { user, logout } = useKindeBrowserClient() || {}
   const path = usePathname()
   const [openAcademic, setOpenAcademic] = useState(false)
   const [openUserMenu, setOpenUserMenu] = useState(false)
@@ -37,7 +36,6 @@ function SideNav() {
       .catch(() => {})
   }, [path])
 
-  // Close menu when clicking outside
   useEffect(() => {
     const handleClickOutside = (e) => {
       if (menuRef.current && !menuRef.current.contains(e.target)) {
@@ -70,7 +68,6 @@ function SideNav() {
   return (
     <div className="border shadow-md h-screen p-5 flex flex-col bg-white dark:bg-slate-800 dark:border-slate-700">
 
-      {/* Dynamic school logo + name */}
       <div className="flex items-center gap-3 px-1 mb-2 group">
         {school.logo ? (
           <img
@@ -137,14 +134,11 @@ function SideNav() {
         </Link>
       </div>
 
-      {/* User card + dropdown */}
       <div className="relative mt-4 pt-4 border-t dark:border-slate-700" ref={menuRef}>
 
-        {/* Dropdown menu */}
         {openUserMenu && (
           <div className="absolute bottom-full left-0 right-0 mb-2 bg-white dark:bg-slate-800 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 overflow-hidden animate-user-menu z-50">
 
-            {/* Header — user info */}
             <div className="px-4 py-4 bg-gradient-to-br from-blue-500 to-indigo-600 text-white">
               <div className="flex items-center gap-3">
                 <Image
@@ -165,7 +159,6 @@ function SideNav() {
               </div>
             </div>
 
-            {/* Menu items */}
             <div className="p-2">
               <Link
                 href="/dashboard/settings"
@@ -179,7 +172,8 @@ function SideNav() {
                 Profile Settings
               </Link>
 
-              <LogoutLink
+              <button
+                onClick={() => logout()}
                 className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium
                   text-slate-600 dark:text-slate-300
                   hover:bg-red-50 dark:hover:bg-red-900/40 hover:text-red-600 dark:hover:text-red-400
@@ -187,12 +181,11 @@ function SideNav() {
               >
                 <LogOut size={16} />
                 Logout
-              </LogoutLink>
+              </button>
             </div>
           </div>
         )}
 
-        {/* Clickable user card */}
         <button
           onClick={() => setOpenUserMenu(!openUserMenu)}
           className="w-full flex items-center gap-3 p-2 rounded-xl
@@ -220,7 +213,6 @@ function SideNav() {
         </button>
       </div>
 
-      {/* Animation for user menu */}
       <style jsx global>{`
         @keyframes user-menu-in {
           from { opacity: 0; transform: translateY(8px) scale(0.98); }
