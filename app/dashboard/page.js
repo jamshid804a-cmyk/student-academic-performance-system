@@ -2,8 +2,8 @@
 export const dynamic = 'force-dynamic'
 
 import { useEffect, useState } from 'react'
-import MonthSelection from '@/app/dashboard/_components/MonthSelection'
-import GradeSelection from '@/app/dashboard/_components/GradeSelection'
+import MonthSelection from '@/app/dashboard/attendance/_components/MonthSelection'
+import GradeSelection from '@/app/dashboard/attendance/_components/GradeSelection'
 import SectionSelection from '@/app/dashboard/attendance/_components/SectionSelection'
 import SessionSelection from '@/app/dashboard/attendance/_components/SessionSelection'
 import GlobalApi from '@/app/_services/GlobalApi'
