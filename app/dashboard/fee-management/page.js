@@ -2,7 +2,7 @@
 export const dynamic = 'force-dynamic'
 
 import React, { useEffect, useState, useMemo, useRef } from 'react'
-import { LoaderIcon, Wallet, Send, Printer, Plus } from 'lucide-react'
+import { LoaderIcon, Wallet, Send, Printer, Trash2 } from 'lucide-react'
 import GlobalApi from '@/app/_services/GlobalApi'
 import { toast } from 'sonner'
 import PayDialog from './_components/PayDialog'
@@ -27,6 +27,8 @@ const monthNameToKey = (name) => {
   return `${map[name]}/${new Date().getFullYear()}`
 }
 
+const MONTH_KEYS = ["01","02","03","04","05","06","07","08","09","10","11","12"]
+
 export default function FeeManagementPage() {
   const [grade, setGrade] = useState("")
   const [section, setSection] = useState("")
@@ -34,13 +36,14 @@ export default function FeeManagementPage() {
   const [month, setMonth] = useState("")
 
   const [students, setStudents] = useState([])
-  const [payments, setPayments] = useState([])
+  const [payments, setPayments] = useState([])          // payments for the SELECTED month
+  const [allPayments, setAllPayments] = useState([])    // payments for ALL months in that session
   const [loading, setLoading] = useState(false)
   const [hydrated, setHydrated] = useState(false)
   const debounceRef = useRef(null)
 
-  const [payDialog, setPayDialog] = useState(null)   // student to pay for
-  const [historyDialog, setHistoryDialog] = useState(null) // student to view history
+  const [payDialog, setPayDialog] = useState(null)
+  const [historyDialog, setHistoryDialog] = useState(null)
 
   useEffect(() => {
     try {
@@ -60,7 +63,7 @@ export default function FeeManagementPage() {
 
   const fetchAll = async () => {
     if (!grade || !month) {
-      setStudents([]); setPayments([]); return
+      setStudents([]); setPayments([]); setAllPayments([]); return
     }
     setLoading(true)
     try {
@@ -69,12 +72,14 @@ export default function FeeManagementPage() {
       if (section) params.section = section
       if (session) params.session = session
 
-      const [studentResp, feeResp] = await Promise.all([
+      const [studentResp, monthFeeResp, allFeeResp] = await Promise.all([
         GlobalApi.GetAllStudents(params),
         GlobalApi.GetFees({ grade, section, session, month: monthKey }),
+        GlobalApi.GetFees({ grade, section, session }),   // all months
       ])
       setStudents(studentResp.data || [])
-      setPayments(feeResp.data || [])
+      setPayments(monthFeeResp.data || [])
+      setAllPayments(allFeeResp.data || [])
     } catch (err) {
       console.error(err)
       toast.error("Failed to load")
@@ -92,7 +97,6 @@ export default function FeeManagementPage() {
 
   const monthKey = month ? monthNameToKey(month) : ""
 
-  // Paid amounts per student for the current month
   const paymentsByStudent = useMemo(() => {
     const map = {}
     payments.forEach((p) => {
@@ -103,6 +107,16 @@ export default function FeeManagementPage() {
     return map
   }, [payments])
 
+  const allPaymentsByStudent = useMemo(() => {
+    const map = {}
+    allPayments.forEach((p) => {
+      const sid = String(p.studentId)
+      if (!map[sid]) map[sid] = []
+      map[sid].push(p)
+    })
+    return map
+  }, [allPayments])
+
   const rows = useMemo(() => {
     return students.map((s) => {
       const sid = String(s.id)
@@ -111,9 +125,24 @@ export default function FeeManagementPage() {
       const fee = Number(s.fee || 0)
       const pending = Math.max(0, fee - paid)
       const status = paid === 0 ? "Unpaid" : pending === 0 ? "Paid" : "Partial"
-      return { student: s, fee, paid, pending, status, paymentList: list }
+
+      // Count months paid (out of 12)
+      const all = allPaymentsByStudent[sid] || []
+      const monthsPaid = new Set()
+      all.forEach((p) => {
+        const monthNum = String(p.month || "").split("/")[0]
+        if (MONTH_KEYS.includes(monthNum)) monthsPaid.add(Number(monthNum))
+      })
+
+      return {
+        student: s,
+        fee, paid, pending, status,
+        paymentList: list,
+        monthsPaid: monthsPaid.size,
+        monthsTotal: 12,
+      }
     })
-  }, [students, paymentsByStudent])
+  }, [students, paymentsByStudent, allPaymentsByStudent])
 
   const summary = useMemo(() => {
     const totalStudents = rows.length
@@ -155,6 +184,19 @@ export default function FeeManagementPage() {
     }
   }
 
+  // ✅ Delete ONLY this month's fee records for the student
+  const handleDeleteAll = async (row) => {
+    if (!confirm(`Delete the ${month} fee records for "${row.student.name}"? This cannot be undone.`)) return
+    try {
+      await GlobalApi.DeleteStudentFees(row.student.id, session, monthKey)
+      toast.success(`Fee records for ${month} deleted for ${row.student.name}`)
+      fetchAll()
+    } catch (err) {
+      console.error(err)
+      toast.error("Failed to delete")
+    }
+  }
+
   const handlePrintClass = () => {
     const w = window.open("", "_blank", "width=1000,height=800")
     if (!w) return
@@ -165,6 +207,7 @@ export default function FeeManagementPage() {
         <td>Rs. ${r.fee}</td>
         <td>Rs. ${r.paid}</td>
         <td>Rs. ${r.pending}</td>
+        <td>${r.monthsPaid}/${r.monthsTotal}</td>
         <td>${r.status}</td>
       </tr>
     `).join("")
@@ -185,7 +228,7 @@ export default function FeeManagementPage() {
         <table>
           <thead><tr>
             <th>Roll No</th><th style="text-align:left">Name</th>
-            <th>Fee</th><th>Paid</th><th>Pending</th><th>Status</th>
+            <th>Fee</th><th>Paid</th><th>Pending</th><th>Months Paid</th><th>Status</th>
           </tr></thead>
           <tbody>${body}</tbody>
         </table>
@@ -219,7 +262,6 @@ export default function FeeManagementPage() {
         </div>
       </div>
 
-      {/* Filters */}
       <div className="bg-white border rounded-2xl shadow-sm p-5 mb-5">
         <h3 className="text-sm font-semibold text-slate-700 mb-3">Filters</h3>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -242,7 +284,6 @@ export default function FeeManagementPage() {
         </div>
       </div>
 
-      {/* Table */}
       {loading ? (
         <div className="flex justify-center py-10 text-slate-400">
           <LoaderIcon className="animate-spin mr-2" /> Loading...
@@ -262,8 +303,10 @@ export default function FeeManagementPage() {
                   <th className="p-3 text-right font-semibold text-slate-700">Fee</th>
                   <th className="p-3 text-right font-semibold text-slate-700">Paid</th>
                   <th className="p-3 text-right font-semibold text-slate-700">Pending</th>
+                  <th className="p-3 text-center font-semibold text-slate-700">Months Paid</th>
                   <th className="p-3 text-center font-semibold text-slate-700">Status</th>
                   <th className="p-3 text-center font-semibold text-slate-700">Action</th>
+                  <th className="p-3 text-center font-semibold text-slate-700">Delete</th>
                 </tr>
               </thead>
               <tbody>
@@ -274,6 +317,9 @@ export default function FeeManagementPage() {
                     <td className="p-3 text-right">Rs. {r.fee}</td>
                     <td className="p-3 text-right text-emerald-600 font-semibold">Rs. {r.paid}</td>
                     <td className="p-3 text-right text-red-600 font-semibold">Rs. {r.pending}</td>
+                    <td className="p-3 text-center font-semibold text-blue-600">
+                      {r.monthsPaid}/{r.monthsTotal}
+                    </td>
                     <td className="p-3 text-center">
                       <span className={`px-3 py-1 rounded-full text-xs font-semibold
                         ${r.status === "Paid" ? "bg-emerald-100 text-emerald-700"
@@ -302,13 +348,20 @@ export default function FeeManagementPage() {
                         </button>
                       </div>
                     </td>
+                    <td className="p-3 text-center">
+                      <button
+                        onClick={() => handleDeleteAll(r)}
+                        title={`Delete ${month} fee records for this student`}
+                        className="w-8 h-8 rounded-lg bg-red-50 hover:bg-red-100 text-red-600 flex items-center justify-center mx-auto">
+                        <Trash2 size={14} />
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
 
-          {/* Summary */}
           <div className="mt-5 grid grid-cols-1 md:grid-cols-4 gap-3">
             <div className="bg-white border rounded-2xl p-4">
               <p className="text-xs text-slate-500">Total Students</p>
@@ -332,7 +385,6 @@ export default function FeeManagementPage() {
         </>
       )}
 
-      {/* Dialogs */}
       {payDialog && (
         <PayDialog
           row={payDialog}

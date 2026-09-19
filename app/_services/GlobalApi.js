@@ -71,29 +71,47 @@ const GetFees = (params) => {
 };
 const SaveFeePayment = (data) => axios.post('/api/fees', data);
 const DeleteFeePayment = (id) => axios.delete(`/api/fees?id=${id}`);
+const DeleteStudentFees = (studentId, session, month) =>
+    axios.put('/api/fees', { studentId, session, month });
 const SendFeeReminder = (data) => axios.post('/api/fees/remind', data);
 
 // ─── Export ─────────────────────────────────────────────────
 export default {
+    // Grades
     GetAllGrades,
+
+    // Students
     CreateNewStudent,
     GetAllStudents,
     DeleteStudentRecord,
     UpdateStudentRecord,
+
+    // Attendance
     SaveAttendance,
     GetAttendance,
     GetAttendanceList,
     DeleteAttendance,
+
+    // Parents
     GetParentByStudentId,
+
+    // Subjects
     GetAllSubjects,
     CreateSubject,
     DeleteSubject,
+
+    // Tests
     GetTests,
     SaveTest,
+
+    // Exams
     GetExams,
     SaveExam,
+
+    // Fees
     GetFees,
     SaveFeePayment,
     DeleteFeePayment,
+    DeleteStudentFees,
     SendFeeReminder,
 };

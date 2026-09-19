@@ -3,6 +3,7 @@ import { getDb } from "@/utils";
 
 // ✅ GET — list all fee payments for a month/class
 // ?grade=5th&section=A&session=2025-2026&month=09/2026
+// month is optional — if omitted, returns all months for that class
 export async function GET(req) {
   try {
     const { searchParams } = new URL(req.url);
@@ -77,7 +78,33 @@ export async function POST(req) {
   }
 }
 
-// ✅ DELETE — remove a payment (optional)
+// ✅ PUT — delete fee records for a specific student
+// If `month` is provided → only that month is deleted
+// If `month` is omitted → all records for the session are deleted
+export async function PUT(req) {
+  try {
+    const data = await req.json();
+    const { studentId, session, month } = data;
+
+    if (!studentId) {
+      return NextResponse.json({ error: "studentId required" }, { status: 400 });
+    }
+
+    const db = await getDb();
+    const filter = { studentId: String(studentId) };
+    if (session) filter.session = session;
+    if (month) filter.month = month;
+
+    const result = await db.collection("fees").deleteMany(filter);
+
+    return NextResponse.json({ success: true, deletedCount: result.deletedCount });
+  } catch (err) {
+    console.error("❌ PUT /api/fees (delete):", err.message);
+    return NextResponse.json({ error: err.message }, { status: 500 });
+  }
+}
+
+// ✅ DELETE — remove a SINGLE payment record by id
 export async function DELETE(req) {
   try {
     const { searchParams } = new URL(req.url);
