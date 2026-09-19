@@ -46,7 +46,7 @@ export default function Dashboard() {
     }))
   }, [selectedMonth, selectedGrade, selectedSection, selectedSession, hydrated])
 
-  // Total students
+  // Total students (whole school)
   useEffect(() => {
     GlobalApi.GetAllStudents()
       .then(resp => setAllStudents(resp.data || []))
@@ -67,12 +67,17 @@ export default function Dashboard() {
       .catch(err => console.error("Class students error:", err))
   }, [selectedGrade, selectedSection, selectedSession, hydrated])
 
-  // Attendance
+  // Attendance — flat list for the dashboard stats + charts
   useEffect(() => {
     if (!hydrated) return
     if (!selectedMonth || !selectedGrade) { setAttendanceList([]); return }
 
-    GlobalApi.GetAttendanceList(selectedGrade, selectedMonth, selectedSection, selectedSession)
+    GlobalApi.GetAttendanceFlat(
+      selectedGrade,
+      selectedMonth,
+      selectedSection,
+      selectedSession
+    )
       .then(resp => setAttendanceList(resp.data || []))
       .catch(err => {
         console.error("Attendance error:", err)
