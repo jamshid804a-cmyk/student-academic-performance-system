@@ -1,11 +1,20 @@
 "use client"
 import React, { useEffect, useState } from 'react'
 import moment from 'moment'
-import {
-    BarChart, Bar, XAxis, YAxis, CartesianGrid,
-    Tooltip, Legend, ResponsiveContainer,
-    PieChart, Pie, Cell
-} from 'recharts'
+import dynamic from 'next/dynamic'
+
+// ✅ Load recharts ONLY on the client — avoids server-side useContext crash
+const BarChart = dynamic(() => import('recharts').then(m => m.BarChart), { ssr: false })
+const Bar = dynamic(() => import('recharts').then(m => m.Bar), { ssr: false })
+const XAxis = dynamic(() => import('recharts').then(m => m.XAxis), { ssr: false })
+const YAxis = dynamic(() => import('recharts').then(m => m.YAxis), { ssr: false })
+const CartesianGrid = dynamic(() => import('recharts').then(m => m.CartesianGrid), { ssr: false })
+const Tooltip = dynamic(() => import('recharts').then(m => m.Tooltip), { ssr: false })
+const Legend = dynamic(() => import('recharts').then(m => m.Legend), { ssr: false })
+const ResponsiveContainer = dynamic(() => import('recharts').then(m => m.ResponsiveContainer), { ssr: false })
+const PieChart = dynamic(() => import('recharts').then(m => m.PieChart), { ssr: false })
+const Pie = dynamic(() => import('recharts').then(m => m.Pie), { ssr: false })
+const Cell = dynamic(() => import('recharts').then(m => m.Cell), { ssr: false })
 
 function AttendanceChart({ attendanceList, selectedMonth }) {
     const [dailyData, setDailyData] = useState([])
@@ -26,7 +35,7 @@ function AttendanceChart({ attendanceList, selectedMonth }) {
         const data = []
         for (let day = 1; day <= totalDays; day++) {
             const presentOnDay = attendanceList.filter(
-                a => Number(a.day) === day && a.present === true
+                a => Number(a.day) === day && (a.status === "P" || a.present === true)
             ).length
             const absentOnDay = totalStudents - presentOnDay
             data.push({
@@ -42,7 +51,9 @@ function AttendanceChart({ attendanceList, selectedMonth }) {
         const totalDays = moment(selectedMonth, 'MM/YYYY').daysInMonth()
         const uniqueStudents = [...new Set(attendanceList.map(a => a.studentId))]
         const totalPossible = uniqueStudents.length * totalDays
-        const totalPresent = attendanceList.filter(a => a.present === true).length
+        const totalPresent = attendanceList.filter(
+            a => a.status === "P" || a.present === true
+        ).length
         const totalAbsent = totalPossible - totalPresent
 
         setMonthlyData([
@@ -50,8 +61,6 @@ function AttendanceChart({ attendanceList, selectedMonth }) {
             { name: 'Absent', value: totalAbsent },
         ])
     }
-
-    const COLORS = ['#6366f1', '#f43f5e']
 
     const CustomBarTooltip = ({ active, payload, label }) => {
         if (active && payload && payload.length) {
@@ -149,17 +158,8 @@ function AttendanceChart({ attendanceList, selectedMonth }) {
                             </linearGradient>
                         </defs>
                         <CartesianGrid strokeDasharray='3 3' stroke='#f1f5f9' vertical={false} />
-                        <XAxis
-                            dataKey='day'
-                            tick={{ fontSize: 10, fill: '#94a3b8' }}
-                            axisLine={false}
-                            tickLine={false}
-                        />
-                        <YAxis
-                            tick={{ fontSize: 10, fill: '#94a3b8' }}
-                            axisLine={false}
-                            tickLine={false}
-                        />
+                        <XAxis dataKey='day' tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
+                        <YAxis tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
                         <Tooltip content={<CustomBarTooltip />} cursor={{ fill: '#f8fafc' }} />
                         <Legend content={<CustomLegend />} />
                         <Bar dataKey='Present' fill='url(#presentGrad)' radius={[6, 6, 0, 0]} maxBarSize={18} />
@@ -204,9 +204,7 @@ function AttendanceChart({ attendanceList, selectedMonth }) {
                             outerRadius={110}
                             dataKey='value'
                             paddingAngle={3}
-                            label={({ name, percent }) =>
-                                `${name} ${(percent * 100).toFixed(1)}%`
-                            }
+                            label={({ name, percent }) => `${name} ${(percent * 100).toFixed(1)}%`}
                             labelLine={{ stroke: '#94a3b8' }}
                         >
                             <Cell fill='url(#piePresent)' />
