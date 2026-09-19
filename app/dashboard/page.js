@@ -12,8 +12,18 @@ import AttendanceChart from './_component/AttendanceChart'
 
 const STORAGE_KEY = 'dashboard_filters_v3'
 
+// Convert "January" → "01", or pass through "01/2026"
+const monthNameToKey = (name) => {
+  const map = {
+    January: "01", February: "02", March: "03", April: "04",
+    May: "05", June: "06", July: "07", August: "08",
+    September: "09", October: "10", November: "11", December: "12",
+  }
+  return map[name] || null
+}
+
 export default function Dashboard() {
-  const [selectedMonth, setSelectedMonth] = useState('')
+  const [selectedMonth, setSelectedMonth] = useState('')       // "January" or "01/2026"
   const [selectedGrade, setSelectedGrade] = useState('')
   const [selectedSection, setSelectedSection] = useState('')
   const [selectedSession, setSelectedSession] = useState('')
@@ -46,7 +56,7 @@ export default function Dashboard() {
     }))
   }, [selectedMonth, selectedGrade, selectedSection, selectedSession, hydrated])
 
-  // Total students
+  // Total students (whole school)
   useEffect(() => {
     GlobalApi.GetAllStudents()
       .then(resp => setAllStudents(resp.data || []))
@@ -67,16 +77,21 @@ export default function Dashboard() {
       .catch(err => console.error("Class students error:", err))
   }, [selectedGrade, selectedSection, selectedSession, hydrated])
 
-  // Attendance (flat list)
+  // Attendance (flat list) — converts "January" to "01/2026"
   useEffect(() => {
     if (!hydrated) return
     if (!selectedMonth || !selectedGrade) { setAttendanceList([]); return }
 
-    console.log("FETCHING FLAT:", selectedGrade, selectedMonth, selectedSection, selectedSession)
+    const monthNum = monthNameToKey(selectedMonth)
+    const monthKey = monthNum
+      ? `${monthNum}/${new Date().getFullYear()}`
+      : selectedMonth
+
+    console.log("FETCHING FLAT:", selectedGrade, monthKey, selectedSection, selectedSession)
 
     GlobalApi.GetAttendanceFlat(
       selectedGrade,
-      selectedMonth,
+      monthKey,
       selectedSection,
       selectedSession
     )
