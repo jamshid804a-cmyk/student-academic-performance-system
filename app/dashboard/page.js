@@ -13,7 +13,7 @@ import AttendanceChart from './_component/AttendanceChart'
 const STORAGE_KEY = 'dashboard_filters_v3'
 
 export default function Dashboard() {
-  const [selectedMonth, setSelectedMonth] = useState('')       // "MM/YYYY"
+  const [selectedMonth, setSelectedMonth] = useState('')
   const [selectedGrade, setSelectedGrade] = useState('')
   const [selectedSection, setSelectedSection] = useState('')
   const [selectedSession, setSelectedSession] = useState('')
@@ -46,7 +46,7 @@ export default function Dashboard() {
     }))
   }, [selectedMonth, selectedGrade, selectedSection, selectedSession, hydrated])
 
-  // Total students (whole school)
+  // Total students
   useEffect(() => {
     GlobalApi.GetAllStudents()
       .then(resp => setAllStudents(resp.data || []))
@@ -67,10 +67,12 @@ export default function Dashboard() {
       .catch(err => console.error("Class students error:", err))
   }, [selectedGrade, selectedSection, selectedSession, hydrated])
 
-  // Attendance — flat list for the dashboard stats + charts
+  // Attendance (flat list)
   useEffect(() => {
     if (!hydrated) return
     if (!selectedMonth || !selectedGrade) { setAttendanceList([]); return }
+
+    console.log("FETCHING FLAT:", selectedGrade, selectedMonth, selectedSection, selectedSession)
 
     GlobalApi.GetAttendanceFlat(
       selectedGrade,
@@ -78,7 +80,10 @@ export default function Dashboard() {
       selectedSection,
       selectedSession
     )
-      .then(resp => setAttendanceList(resp.data || []))
+      .then(resp => {
+        console.log("GOT FLAT:", resp.data)
+        setAttendanceList(resp.data || [])
+      })
       .catch(err => {
         console.error("Attendance error:", err)
         setAttendanceList([])
@@ -97,31 +102,19 @@ export default function Dashboard() {
       <div className="bg-white border rounded-2xl shadow-sm p-4 mb-6 flex flex-wrap items-center gap-3">
         <div className="flex items-center gap-2">
           <label className="text-sm font-medium text-slate-600">Month</label>
-          <MonthSelection
-            selectedMonth={setSelectedMonth}
-            defaultMonth={selectedMonth}
-          />
+          <MonthSelection selectedMonth={setSelectedMonth} defaultMonth={selectedMonth} />
         </div>
         <div className="flex items-center gap-2">
           <label className="text-sm font-medium text-slate-600">Grade</label>
-          <GradeSelection
-            selectedGrade={setSelectedGrade}
-            defaultGrade={selectedGrade}
-          />
+          <GradeSelection selectedGrade={setSelectedGrade} defaultGrade={selectedGrade} />
         </div>
         <div className="flex items-center gap-2">
           <label className="text-sm font-medium text-slate-600">Section</label>
-          <SectionSelection
-            selectedSection={setSelectedSection}
-            defaultSection={selectedSection}
-          />
+          <SectionSelection selectedSection={setSelectedSection} defaultSection={selectedSection} />
         </div>
         <div className="flex items-center gap-2">
           <label className="text-sm font-medium text-slate-600">Session</label>
-          <SessionSelection
-            selectedSession={setSelectedSession}
-            defaultSession={selectedSession}
-          />
+          <SessionSelection selectedSession={setSelectedSession} defaultSession={selectedSession} />
         </div>
       </div>
 

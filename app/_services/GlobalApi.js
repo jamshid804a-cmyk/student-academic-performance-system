@@ -1,9 +1,9 @@
 import axios from "axios";
 
-// ─── Grades ─────────────────────────────────────────────────
+// Grades
 const GetAllGrades = () => axios.get('/api/grade');
 
-// ─── Students ───────────────────────────────────────────────
+// Students
 const CreateNewStudent = (data) => axios.post('/api/student', data);
 
 const GetAllStudents = (filters = {}) => {
@@ -18,7 +18,7 @@ const GetAllStudents = (filters = {}) => {
 const DeleteStudentRecord = (id) => axios.delete(`/api/student/${id}`);
 const UpdateStudentRecord = (id, data) => axios.put(`/api/student/${id}`, data);
 
-// ─── Attendance ─────────────────────────────────────────────
+// Attendance
 const SaveAttendance = (data) => axios.post('/api/attendance', data);
 const GetAttendance = () => axios.get('/api/attendance');
 
@@ -47,11 +47,11 @@ const DeleteAttendance = (studentId, day, month) =>
         '&month=' + month
     );
 
-// ─── Parents ────────────────────────────────────────────────
+// Parents
 const GetParentByStudentId = (studentId) =>
     axios.get(`/api/parents?studentId=${studentId}`);
 
-// ─── Subjects ───────────────────────────────────────────────
+// Subjects
 const GetAllSubjects = (studentId) => {
     const qs = studentId ? `?studentId=${studentId}` : "";
     return axios.get('/api/subjects' + qs);
@@ -59,21 +59,21 @@ const GetAllSubjects = (studentId) => {
 const CreateSubject = (data) => axios.post('/api/subjects', data);
 const DeleteSubject = (id) => axios.delete(`/api/subjects/${id}`);
 
-// ─── Tests ──────────────────────────────────────────────────
+// Tests
 const GetTests = (params) => {
     const qs = new URLSearchParams(params).toString();
     return axios.get('/api/tests' + (qs ? `?${qs}` : ''));
 };
 const SaveTest = (data) => axios.post('/api/tests', data);
 
-// ─── Exams ──────────────────────────────────────────────────
+// Exams
 const GetExams = (params) => {
     const qs = new URLSearchParams(params).toString();
     return axios.get('/api/exams' + (qs ? `?${qs}` : ''));
 };
 const SaveExam = (data) => axios.post('/api/exams', data);
 
-// ─── Fees ───────────────────────────────────────────────────
+// Fees
 const GetFees = (params) => {
     const qs = new URLSearchParams(params).toString();
     return axios.get('/api/fees' + (qs ? `?${qs}` : ''));
@@ -84,41 +84,26 @@ const DeleteStudentFees = (studentId, session, month) =>
     axios.put('/api/fees', { studentId, session, month });
 const SendFeeReminder = (data) => axios.post('/api/fees/remind', data);
 
-// ─── Export ─────────────────────────────────────────────────
+// Export
 export default {
-    // Grades
     GetAllGrades,
-
-    // Students
     CreateNewStudent,
     GetAllStudents,
     DeleteStudentRecord,
     UpdateStudentRecord,
-
-    // Attendance
     SaveAttendance,
     GetAttendance,
     GetAttendanceList,
     GetAttendanceFlat,
     DeleteAttendance,
-
-    // Parents
     GetParentByStudentId,
-
-    // Subjects
     GetAllSubjects,
     CreateSubject,
     DeleteSubject,
-
-    // Tests
     GetTests,
     SaveTest,
-
-    // Exams
     GetExams,
     SaveExam,
-
-    // Fees
     GetFees,
     SaveFeePayment,
     DeleteFeePayment,
