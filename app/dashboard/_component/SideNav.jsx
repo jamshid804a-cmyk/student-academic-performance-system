@@ -1,5 +1,6 @@
 "use client"
 import { useKindeBrowserClient } from '@kinde-oss/kinde-auth-nextjs'
+import { LogoutLink } from '@kinde-oss/kinde-auth-nextjs/components'
 import {
   GraduationCap, Hand, LayoutIcon, BookOpen,
   ChevronDown, ChevronRight, FileText, FlaskConical, Wallet, Settings,
@@ -12,7 +13,7 @@ import React, { useState, useEffect, useRef } from 'react'
 import GlobalApi from '@/app/_services/GlobalApi'
 
 function SideNav() {
-  const { user, logout } = useKindeBrowserClient() || {}
+  const { user } = useKindeBrowserClient() || {}
   const path = usePathname()
   const [openAcademic, setOpenAcademic] = useState(false)
   const [openUserMenu, setOpenUserMenu] = useState(false)
@@ -66,6 +67,7 @@ function SideNav() {
   return (
     <div className="border shadow-md h-screen p-5 flex flex-col bg-white dark:bg-slate-800 dark:border-slate-700">
 
+      {/* School logo + name */}
       <div className="flex items-center gap-3 px-1 mb-2 group">
         {school.logo ? (
           <img
@@ -99,7 +101,11 @@ function SideNav() {
         ))}
 
         <div>
-          <button type="button" onClick={() => setOpenAcademic(!openAcademic)} className={`w-full text-left ${itemClass(path?.startsWith('/dashboard/academic-performance'))}`}>
+          <button
+            type="button"
+            onClick={() => setOpenAcademic(!openAcademic)}
+            className={`w-full text-left ${itemClass(path?.startsWith('/dashboard/academic-performance'))}`}
+          >
             <BookOpen size={20} />
             <span className="flex-1">Academic Performance</span>
             {openAcademic ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
@@ -131,6 +137,7 @@ function SideNav() {
         </Link>
       </div>
 
+      {/* User card + dropdown */}
       <div className="relative mt-4 pt-4 border-t dark:border-slate-700" ref={menuRef}>
 
         {openUserMenu && (
@@ -166,13 +173,12 @@ function SideNav() {
                 Profile Settings
               </Link>
 
-              <button
-                onClick={() => logout()}
+              <LogoutLink
                 className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-600 dark:text-slate-300 hover:bg-red-50 dark:hover:bg-red-900/40 hover:text-red-600 dark:hover:text-red-400 transition-all duration-200 hover:translate-x-1 mt-1"
               >
                 <LogOut size={16} />
                 Logout
-              </button>
+              </LogoutLink>
             </div>
           </div>
         )}
