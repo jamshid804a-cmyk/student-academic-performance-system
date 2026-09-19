@@ -5,7 +5,6 @@ const GetAllGrades = () => axios.get('/api/grade');
 
 // Students
 const CreateNewStudent = (data) => axios.post('/api/student', data);
-
 const GetAllStudents = (filters = {}) => {
     const params = new URLSearchParams();
     if (filters.grade) params.append('grade', filters.grade);
@@ -14,14 +13,12 @@ const GetAllStudents = (filters = {}) => {
     const qs = params.toString();
     return axios.get('/api/student' + (qs ? `?${qs}` : ''));
 };
-
 const DeleteStudentRecord = (id) => axios.delete(`/api/student/${id}`);
 const UpdateStudentRecord = (id, data) => axios.put(`/api/student/${id}`, data);
 
 // Attendance
 const SaveAttendance = (data) => axios.post('/api/attendance', data);
 const GetAttendance = () => axios.get('/api/attendance');
-
 const GetAttendanceList = (grade, month, section, session) => {
     const params = new URLSearchParams();
     params.append('grade', grade);
@@ -30,7 +27,6 @@ const GetAttendanceList = (grade, month, section, session) => {
     if (session) params.append('session', session);
     return axios.get('/api/attendance?' + params.toString());
 };
-
 const GetAttendanceFlat = (grade, month, section, session) => {
     const params = new URLSearchParams();
     params.append('grade', grade);
@@ -39,13 +35,8 @@ const GetAttendanceFlat = (grade, month, section, session) => {
     if (session) params.append('session', session);
     return axios.get('/api/attendance/flat?' + params.toString());
 };
-
 const DeleteAttendance = (studentId, day, month) =>
-    axios.delete(
-        '/api/attendance?studentId=' + studentId +
-        '&day=' + day +
-        '&month=' + month
-    );
+    axios.delete('/api/attendance?studentId=' + studentId + '&day=' + day + '&month=' + month);
 
 // Parents
 const GetParentByStudentId = (studentId) =>
@@ -84,7 +75,10 @@ const DeleteStudentFees = (studentId, session, month) =>
     axios.put('/api/fees', { studentId, session, month });
 const SendFeeReminder = (data) => axios.post('/api/fees/remind', data);
 
-// Export
+// School Info
+const GetSchoolInfo = () => axios.get('/api/school');
+const SaveSchoolInfo = (data) => axios.post('/api/school', data);
+
 export default {
     GetAllGrades,
     CreateNewStudent,
@@ -109,4 +103,6 @@ export default {
     DeleteFeePayment,
     DeleteStudentFees,
     SendFeeReminder,
+    GetSchoolInfo,
+    SaveSchoolInfo,
 };
