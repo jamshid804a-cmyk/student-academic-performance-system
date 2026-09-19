@@ -1,24 +1,25 @@
+"use client"
 export const dynamic = 'force-dynamic'
 
 import React from 'react'
 import SideNav from './_component/SideNav'
 import Header from './_component/Header'
-import { Toaster } from "sonner";
+import { Toaster } from "sonner"
 
-function layout({children}) {
+function DashboardLayout({ children }) {
   return (
     <div>
       <div className='md:w-64 fixed hidden md:block'>
-        <SideNav/>
+        <SideNav />
       </div>
 
       <div className='md:ml-64'>
-        <Header/>
-        <Toaster/>
-        { children }
+        <Header />
+        <Toaster />
+        {children}
       </div>
     </div>
   )
 }
 
-export default layout
+export default DashboardLayout
