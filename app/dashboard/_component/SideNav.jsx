@@ -58,12 +58,10 @@ function SideNav() {
   ]
 
   const itemClass = (a) =>
-    `flex items-center gap-3 text-md p-4 rounded-lg my-1 cursor-pointer transition-all duration-300
-    ${a ? 'bg-blue-700 text-white shadow-md' : 'text-slate-500 hover:bg-blue-700 hover:text-white hover:translate-x-1'}`
+    `flex items-center gap-3 text-md p-4 rounded-lg my-1 cursor-pointer transition-all duration-300 ${a ? 'bg-blue-700 text-white shadow-md' : 'text-slate-500 hover:bg-blue-700 hover:text-white hover:translate-x-1'}`
 
   const subItemClass = (a) =>
-    `flex items-center gap-3 text-sm py-2 px-3 my-1 rounded-lg cursor-pointer transition-all duration-300 ml-4
-    ${a ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-500 hover:bg-blue-100 hover:text-blue-700 hover:translate-x-1'}`
+    `flex items-center gap-3 text-sm py-2 px-3 my-1 rounded-lg cursor-pointer transition-all duration-300 ml-4 ${a ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-500 hover:bg-blue-100 hover:text-blue-700 hover:translate-x-1'}`
 
   return (
     <div className="border shadow-md h-screen p-5 flex flex-col bg-white dark:bg-slate-800 dark:border-slate-700">
@@ -101,8 +99,7 @@ function SideNav() {
         ))}
 
         <div>
-          <button type="button" onClick={() => setOpenAcademic(!openAcademic)}
-            className={`w-full text-left ${itemClass(path?.startsWith('/dashboard/academic-performance'))}`}>
+          <button type="button" onClick={() => setOpenAcademic(!openAcademic)} className={`w-full text-left ${itemClass(path?.startsWith('/dashboard/academic-performance'))}`}>
             <BookOpen size={20} />
             <span className="flex-1">Academic Performance</span>
             {openAcademic ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
@@ -163,10 +160,7 @@ function SideNav() {
               <Link
                 href="/dashboard/settings"
                 onClick={() => setOpenUserMenu(false)}
-                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium
-                  text-slate-600 dark:text-slate-300
-                  hover:bg-blue-50 dark:hover:bg-slate-700 hover:text-blue-700 dark:hover:text-blue-300
-                  transition-all duration-200 hover:translate-x-1"
+                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-600 dark:text-slate-300 hover:bg-blue-50 dark:hover:bg-slate-700 hover:text-blue-700 dark:hover:text-blue-300 transition-all duration-200 hover:translate-x-1"
               >
                 <User size={16} />
                 Profile Settings
@@ -174,10 +168,7 @@ function SideNav() {
 
               <button
                 onClick={() => logout()}
-                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium
-                  text-slate-600 dark:text-slate-300
-                  hover:bg-red-50 dark:hover:bg-red-900/40 hover:text-red-600 dark:hover:text-red-400
-                  transition-all duration-200 hover:translate-x-1 mt-1"
+                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-600 dark:text-slate-300 hover:bg-red-50 dark:hover:bg-red-900/40 hover:text-red-600 dark:hover:text-red-400 transition-all duration-200 hover:translate-x-1 mt-1"
               >
                 <LogOut size={16} />
                 Logout
@@ -188,9 +179,7 @@ function SideNav() {
 
         <button
           onClick={() => setOpenUserMenu(!openUserMenu)}
-          className="w-full flex items-center gap-3 p-2 rounded-xl
-            hover:bg-slate-100 dark:hover:bg-slate-700
-            transition-all duration-200 group"
+          className="w-full flex items-center gap-3 p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-700 transition-all duration-200 group"
         >
           <Image
             src={user?.picture || '/default-avatar.png'}
