@@ -1,8 +1,8 @@
 "use client"
 export const dynamic = 'force-dynamic'
 
-import React, { useEffect, useState, useMemo, useRef } from 'react'
-import { LoaderIcon, FileText, Send, Plus, X } from 'lucide-react'
+import React, { useEffect, useState, useMemo } from 'react'
+import { LoaderIcon, FileText, Send, Plus, X, Search } from 'lucide-react'
 import GlobalApi from '@/app/_services/GlobalApi'
 import { toast } from 'sonner'
 
@@ -10,8 +10,8 @@ const GRADES = ["1st","2nd","3rd","4th","5th","6th","7th","8th","9th","10th"]
 const SECTIONS = ["A", "B", "C"]
 const SESSIONS = Array.from({ length: 100 }, (_, i) => `${2025 + i}-${2026 + i}`)
 const MONTHS = [
-  "January", "February", "March", "April", "May", "June",
-  "July", "August", "September", "October", "November", "December"
+  "January","February","March","April","May","June",
+  "July","August","September","October","November","December"
 ]
 const EXAM_TYPES = ["Mid Term", "Final Term"]
 
@@ -35,13 +35,12 @@ export default function ExaminationPage() {
 
   const [students, setStudents] = useState([])
   const [subjects, setSubjects] = useState([])
-  const [exams, setExams] = useState({}) // { `${studentId}__${subject}`: { obtained, total, percentage } }
+  const [exams, setExams] = useState({})
   const [loading, setLoading] = useState(false)
   const [hydrated, setHydrated] = useState(false)
-  const debounceRef = useRef(null)
-
   const [addingFor, setAddingFor] = useState(null)
   const [newSubjectName, setNewSubjectName] = useState("")
+  const [searchInput, setSearchInput] = useState("")
 
   useEffect(() => {
     try {
@@ -57,10 +56,7 @@ export default function ExaminationPage() {
 
   useEffect(() => {
     if (!hydrated) return
-    localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify({ grade, section, session, month, examType })
-    )
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ grade, section, session, month, examType }))
   }, [grade, section, session, month, examType, hydrated])
 
   const fetchAll = async () => {
@@ -83,27 +79,20 @@ export default function ExaminationPage() {
       const marks = {}
       ;(examResp.data || []).forEach((e) => {
         marks[`${e.studentId}__${e.subject}`] = {
-          obtained: e.obtained,
-          total: e.total,
-          percentage: e.percentage,
+          obtained: e.obtained, total: e.total, percentage: e.percentage,
         }
       })
-
       setStudents(studentResp.data || [])
       setSubjects(subjectResp.data || [])
       setExams(marks)
-    } catch (err) {
-      console.error(err)
-      toast.error("Failed to load data")
-    }
+    } catch (err) { console.error(err); toast.error("Failed to load") }
     setLoading(false)
   }
 
   useEffect(() => {
     if (!hydrated) return
-    if (debounceRef.current) clearTimeout(debounceRef.current)
-    debounceRef.current = setTimeout(fetchAll, 250)
-    return () => debounceRef.current && clearTimeout(debounceRef.current)
+    const t = setTimeout(fetchAll, 250)
+    return () => clearTimeout(t)
     // eslint-disable-next-line
   }, [grade, section, session, month, examType, hydrated])
 
@@ -129,70 +118,36 @@ export default function ExaminationPage() {
     if (!name) return
     try {
       await GlobalApi.CreateSubject({ name, studentId: String(studentId) })
-      setNewSubjectName("")
-      setAddingFor(null)
-      toast.success("Subject added")
-      fetchAll()
-    } catch (err) {
-      toast.error(err?.response?.data?.error || "Failed to add")
-    }
+      setNewSubjectName(""); setAddingFor(null); toast.success("Subject added"); fetchAll()
+    } catch (err) { toast.error(err?.response?.data?.error || "Failed to add") }
   }
 
   const handleRemoveSubject = async (studentId, subjectName) => {
-    const record = subjects.find(
-      (s) => s.studentId === String(studentId) && s.name === subjectName
-    )
+    const record = subjects.find((s) => s.studentId === String(studentId) && s.name === subjectName)
     if (!record) return
-    if (!confirm(`Remove subject "${subjectName}" from this student?`)) return
-    try {
-      await GlobalApi.DeleteSubject(record.id)
-      toast.success("Removed")
-      fetchAll()
-    } catch {
-      toast.error("Failed to remove")
-    }
+    if (!confirm(`Remove subject "${subjectName}"?`)) return
+    try { await GlobalApi.DeleteSubject(record.id); toast.success("Removed"); fetchAll() }
+    catch { toast.error("Failed to remove") }
   }
 
   const handleMarksChange = async (studentId, subjectName, field, value) => {
     const key = `${studentId}__${subjectName}`
     setExams((prev) => {
       const prevRec = prev[key] || { obtained: "", total: "" }
-      const next = { ...prevRec, [field]: value }
-      return { ...prev, [key]: next }
+      return { ...prev, [key]: { ...prevRec, [field]: value } }
     })
-
     try {
-      // Get current values after the state change is queued
       const current = exams[key] || {}
       const obtained = field === "obtained" ? value : current.obtained
       const total = field === "total" ? value : current.total
-
-      await GlobalApi.SaveExam({
-        studentId,
-        grade, section, session,
-        month: monthKey,
-        examType,
-        subject: subjectName,
-        obtained,
-        total,
-      })
-
-      const examResp = await GlobalApi.GetExams({
-        grade, section, session, month: monthKey, examType,
-      })
+      await GlobalApi.SaveExam({ studentId, grade, section, session, month: monthKey, examType, subject: subjectName, obtained, total })
+      const examResp = await GlobalApi.GetExams({ grade, section, session, month: monthKey, examType })
       const marks = {}
       ;(examResp.data || []).forEach((e) => {
-        marks[`${e.studentId}__${e.subject}`] = {
-          obtained: e.obtained,
-          total: e.total,
-          percentage: e.percentage,
-        }
+        marks[`${e.studentId}__${e.subject}`] = { obtained: e.obtained, total: e.total, percentage: e.percentage }
       })
       setExams(marks)
-    } catch (err) {
-      console.error(err)
-      toast.error("Failed to save")
-    }
+    } catch (err) { console.error(err); toast.error("Failed to save") }
   }
 
   const rows = useMemo(() => {
@@ -209,250 +164,247 @@ export default function ExaminationPage() {
           const tot = Number(record.total) || 0
           const pct = tot > 0 ? Math.round((obt / tot) * 100) : 0
           studentMarks[sub.name] = { obtained: obt, total: tot, percentage: pct }
-          sumObtained += obt
-          sumTotal += tot
-          if (tot > 0 && pct < 50) {
-            hasLow = true
-            lowSubjects.push({ subject: sub.name, obtained: obt, total: tot, percentage: pct })
-          }
-        } else {
-          studentMarks[sub.name] = null
-        }
+          sumObtained += obt; sumTotal += tot
+          if (tot > 0 && pct < 50) { hasLow = true; lowSubjects.push({ subject: sub.name, obtained: obt, total: tot, percentage: pct }) }
+        } else { studentMarks[sub.name] = null }
       })
 
       const overallPct = sumTotal > 0 ? Math.round((sumObtained / sumTotal) * 100) : 0
       const hasAny = mySubjects.length > 0
-
       return {
-        student: s,
-        mySubjects,
-        subjectMarks: studentMarks,
-        sumObtained,
-        sumTotal,
-        overallPct,
+        student: s, mySubjects, subjectMarks: studentMarks,
+        sumObtained, sumTotal, overallPct,
         risk: hasLow ? "Risk" : (hasAny ? "Active" : "—"),
         lowSubjects,
       }
     })
   }, [students, subjectsByStudent, exams])
 
+  const filteredRows = useMemo(() => {
+    if (!searchInput.trim()) return rows
+    const q = searchInput.toLowerCase()
+    return rows.filter((r) => r.student.name?.toLowerCase().includes(q))
+  }, [rows, searchInput])
+
   const handleSend = async (row) => {
-    if (row.lowSubjects.length === 0) {
-      toast.info("No subjects below 50%")
-      return
-    }
-    const lines = row.lowSubjects
-      .map((s) => `${s.subject}: ${s.obtained}/${s.total} (${s.percentage}%)`)
-      .join(", ")
-    const message = `Dear Parent, your child ${row.student.name} scored below 50% in: ${lines} for the ${examType} examination in ${month}. Please provide extra support.`
+    if (row.lowSubjects.length === 0) { toast.info("No subjects below 50%"); return }
+    const lines = row.lowSubjects.map((s) => `${s.subject}: ${s.obtained}/${s.total} (${s.percentage}%)`).join(", ")
+    const message = `Dear Parent, your child ${row.student.name} scored below 50% in: ${lines} for the ${examType} exam in ${month}.`
     try {
       await fetch("/api/notifications", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          studentId: row.student.id, message,
-          blockNumber: 0, weekStart: 0, weekEnd: 0, type: "academic",
-        }),
+        body: JSON.stringify({ studentId: row.student.id, message, blockNumber: 0, weekStart: 0, weekEnd: 0, type: "academic" }),
       })
       toast.success(`Notification sent for ${row.student.name}`)
-    } catch (err) {
-      console.error(err)
-      toast.error("Failed to send")
-    }
+    } catch (err) { console.error(err); toast.error("Failed to send") }
   }
 
+  const filterClass = "px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 text-sm outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-100 dark:focus:ring-purple-900/40 transition-all"
+
   return (
-    <div className="p-7">
+    <div className="p-7 animate-page-in">
+
+      {/* Header */}
       <div className="flex items-center gap-3 mb-6">
-        <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-purple-500 to-pink-500 text-white flex items-center justify-center shadow-md">
-          <FileText size={22} />
+        <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-purple-500 to-pink-600 text-white flex items-center justify-center shadow-md hover:scale-110 transition-transform duration-300">
+          <FileText size={24} />
         </div>
         <div>
-          <h2 className="text-2xl font-bold">Examination</h2>
-          <p className="text-sm text-slate-500">Mid Term and Final Term examination records</p>
+          <h2 className="text-2xl font-bold text-slate-800 dark:text-slate-100">Examination</h2>
+          <p className="text-sm text-slate-500 dark:text-slate-400">Mid Term and Final Term records</p>
         </div>
       </div>
 
       {/* Filters */}
-      <div className="bg-white border rounded-2xl shadow-sm p-5 mb-5">
-        <h3 className="text-sm font-semibold text-slate-700 mb-3">Filters</h3>
+      <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg border border-slate-100 dark:border-slate-700 p-5 mb-5">
+        <div className="flex items-center gap-2 mb-3">
+          <div className="w-1.5 h-5 rounded-full bg-gradient-to-b from-purple-500 to-pink-500" />
+          <h3 className="text-sm font-bold text-slate-700 dark:text-slate-200 uppercase tracking-wide">Filters</h3>
+        </div>
         <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-          <select className="fi" value={grade} onChange={(e) => setGrade(e.target.value)}>
+          <select className={filterClass} value={grade} onChange={(e) => setGrade(e.target.value)}>
             <option value="">Grade</option>
             {GRADES.map(g => <option key={g}>{g}</option>)}
           </select>
-          <select className="fi" value={section} onChange={(e) => setSection(e.target.value)}>
+          <select className={filterClass} value={section} onChange={(e) => setSection(e.target.value)}>
             <option value="">Section</option>
             {SECTIONS.map(s => <option key={s}>{s}</option>)}
           </select>
-          <select className="fi" value={session} onChange={(e) => setSession(e.target.value)}>
+          <select className={filterClass} value={session} onChange={(e) => setSession(e.target.value)}>
             <option value="">Session</option>
             {SESSIONS.map(s => <option key={s}>{s}</option>)}
           </select>
-          <select className="fi" value={month} onChange={(e) => setMonth(e.target.value)}>
+          <select className={filterClass} value={month} onChange={(e) => setMonth(e.target.value)}>
             <option value="">Month</option>
             {MONTHS.map(m => <option key={m}>{m}</option>)}
           </select>
-          <select className="fi" value={examType} onChange={(e) => setExamType(e.target.value)}>
+          <select className={filterClass} value={examType} onChange={(e) => setExamType(e.target.value)}>
             {EXAM_TYPES.map(t => <option key={t}>{t}</option>)}
           </select>
         </div>
       </div>
 
-      {/* Table */}
       {loading ? (
-        <div className="flex justify-center py-10 text-slate-400">
+        <div className="flex justify-center py-16 text-slate-400">
           <LoaderIcon className="animate-spin mr-2" /> Loading...
         </div>
       ) : students.length === 0 ? (
-        <div className="bg-white border rounded-2xl p-10 text-center text-slate-400">
-          Select Grade, Month and Exam Type to load students.
+        <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg border border-slate-100 dark:border-slate-700 p-12 text-center">
+          <div className="w-16 h-16 rounded-full bg-purple-50 dark:bg-purple-900/40 text-purple-500 mx-auto flex items-center justify-center mb-4">
+            <FileText size={28} />
+          </div>
+          <p className="text-base font-semibold text-slate-700 dark:text-slate-200">No students loaded</p>
+          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Select Grade, Month and Exam Type</p>
         </div>
       ) : (
-        <div className="bg-white border rounded-2xl shadow-sm overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-slate-50 border-b">
-              <tr>
-                <th className="p-3 text-left font-semibold text-slate-700">Roll No</th>
-                <th className="p-3 text-left font-semibold text-slate-700">Name</th>
-                <th className="p-3 text-left font-semibold text-slate-700">Session</th>
-                <th className="p-3 text-left font-semibold text-slate-700">Month</th>
-                <th className="p-3 text-left font-semibold text-slate-700">Examination</th>
-                {subjectColumns.map((name) => (
-                  <th key={name} className="p-3 text-center font-semibold text-slate-700 min-w-[140px]">
-                    {name}
-                  </th>
-                ))}
-                <th className="p-3 text-center font-semibold text-slate-700">Total Marks</th>
-                <th className="p-3 text-center font-semibold text-slate-700">Obtained</th>
-                <th className="p-3 text-center font-semibold text-slate-700">Overall %</th>
-                <th className="p-3 text-center font-semibold text-slate-700">Status</th>
-                <th className="p-3 text-center font-semibold text-slate-700">Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((row) => {
-                const hasSubject = (name) => row.mySubjects.some((s) => s.name === name)
+        <>
+          <div className="flex justify-end mb-3">
+            <div className="flex items-center gap-2 border border-slate-200 dark:border-slate-600 rounded-xl px-4 py-2.5 shadow-sm bg-white dark:bg-slate-800 focus-within:border-purple-400 focus-within:ring-2 focus-within:ring-purple-100 dark:focus-within:ring-purple-900/40 transition-all">
+              <Search size={16} className="text-slate-400" />
+              <input
+                type="text"
+                placeholder="Search student..."
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
+                className="outline-none text-sm w-48 bg-transparent text-slate-800 dark:text-slate-100 placeholder:text-slate-400"
+              />
+            </div>
+          </div>
 
-                return (
-                  <tr key={row.student.id} className="border-b hover:bg-slate-50">
-                    <td className="p-3">{row.student.rollNo ?? "—"}</td>
-                    <td className="p-3 font-medium">{row.student.name}</td>
-                    <td className="p-3">{row.student.session || "—"}</td>
-                    <td className="p-3">{monthKey}</td>
-                    <td className="p-3">{examType}</td>
+          <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg border border-slate-100 dark:border-slate-700 overflow-hidden">
+            <div className="h-1 bg-gradient-to-r from-purple-500 via-pink-500 to-rose-500" />
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-slate-50 dark:bg-slate-900/60 border-b border-slate-200 dark:border-slate-700">
+                    {["Roll No","Name","Session","Month","Examination", ...subjectColumns, "Total Marks","Obtained","Overall %","Status","Action"].map((h) => (
+                      <th key={h} className={`px-4 py-3.5 font-bold text-slate-600 dark:text-slate-300 uppercase text-[11px] tracking-wider
+                        ${["Total Marks","Obtained","Overall %","Status","Action"].includes(h) ? "text-center" : "text-left"}`}>
+                        {h}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredRows.map((row) => {
+                    const hasSubject = (name) => row.mySubjects.some((s) => s.name === name)
+                    return (
+                      <tr key={row.student.id} className="border-b border-slate-100 dark:border-slate-700 hover:bg-purple-50/50 dark:hover:bg-slate-700/40 transition-colors">
+                        <td className="px-4 py-3 font-bold text-purple-600 dark:text-purple-400">{row.student.rollNo ?? "—"}</td>
+                        <td className="px-4 py-3 font-semibold text-slate-800 dark:text-slate-100">{row.student.name}</td>
+                        <td className="px-4 py-3 text-slate-600 dark:text-slate-300">{row.student.session || "—"}</td>
+                        <td className="px-4 py-3 text-slate-600 dark:text-slate-300">{monthKey}</td>
+                        <td className="px-4 py-3 text-slate-600 dark:text-slate-300">{examType}</td>
 
-                    {subjectColumns.map((name) => {
-                      if (!hasSubject(name)) {
-                        return <td key={name} className="p-2 text-center text-slate-300">—</td>
-                      }
-                      const cell = row.subjectMarks[name]
-                      const pct = cell?.percentage ?? 0
-                      return (
-                        <td key={name} className="p-2 text-center">
+                        {subjectColumns.map((name) => {
+                          if (!hasSubject(name)) {
+                            return <td key={name} className="px-4 py-3 text-center text-slate-300 dark:text-slate-600">—</td>
+                          }
+                          const cell = row.subjectMarks[name]
+                          const pct = cell?.percentage ?? 0
+                          return (
+                            <td key={name} className="px-2 py-2 text-center">
+                              <div className="flex items-center justify-center gap-1">
+                                <input
+                                  type="number" min="0"
+                                  value={cell?.obtained ?? ""}
+                                  onChange={(e) => handleMarksChange(row.student.id, name, "obtained", e.target.value)}
+                                  placeholder="obt"
+                                  className={`w-14 px-1 py-1.5 rounded-lg border text-center text-xs font-semibold outline-none transition
+                                    ${cell && pct < 50
+                                      ? "border-red-400 bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-300 dark:border-red-700"
+                                      : "border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100"}`}
+                                />
+                                <span className="text-slate-400 text-xs font-bold">/</span>
+                                <input
+                                  type="number" min="0"
+                                  value={cell?.total ?? ""}
+                                  onChange={(e) => handleMarksChange(row.student.id, name, "total", e.target.value)}
+                                  placeholder="tot"
+                                  className="w-14 px-1 py-1.5 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-center text-xs font-semibold text-slate-800 dark:text-slate-100 outline-none"
+                                />
+                                <button
+                                  onClick={() => handleRemoveSubject(row.student.id, name)}
+                                  title="Remove subject"
+                                  className="w-5 h-5 rounded text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 flex items-center justify-center transition"
+                                >
+                                  <X size={12} />
+                                </button>
+                              </div>
+                            </td>
+                          )
+                        })}
+
+                        <td className="px-4 py-3 text-center font-bold text-slate-700 dark:text-slate-200">{row.sumTotal}</td>
+                        <td className="px-4 py-3 text-center font-bold text-emerald-600 dark:text-emerald-400">{row.sumObtained}</td>
+                        <td className="px-4 py-3 text-center">
+                          <span className={`font-bold ${row.overallPct >= 50 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
+                            {row.overallPct}%
+                          </span>
+                        </td>
+
+                        <td className="px-4 py-3 text-center">
+                          <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide
+                            ${row.risk === "Risk"
+                              ? "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300"
+                              : row.risk === "Active"
+                                ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300"
+                                : "bg-slate-100 text-slate-500 dark:bg-slate-700 dark:text-slate-400"}`}>
+                            {row.risk}
+                          </span>
+                        </td>
+
+                        <td className="px-4 py-3">
                           <div className="flex items-center justify-center gap-1">
-                            <input
-                              type="number"
-                              min="0"
-                              value={cell?.obtained ?? ""}
-                              onChange={(e) => handleMarksChange(row.student.id, name, "obtained", e.target.value)}
-                              placeholder="obt"
-                              className={`w-14 px-1 py-1 rounded border text-center text-xs
-                                ${cell && pct < 50
-                                  ? "border-red-400 bg-red-50 text-red-700"
-                                  : "border-gray-300"}`}
-                            />
-                            <span className="text-slate-400 text-xs">/</span>
-                            <input
-                              type="number"
-                              min="0"
-                              value={cell?.total ?? ""}
-                              onChange={(e) => handleMarksChange(row.student.id, name, "total", e.target.value)}
-                              placeholder="tot"
-                              className="w-14 px-1 py-1 rounded border border-gray-300 text-center text-xs"
-                            />
                             <button
-                              onClick={() => handleRemoveSubject(row.student.id, name)}
-                              title="Remove subject"
-                              className="w-5 h-5 rounded text-slate-400 hover:text-red-600 hover:bg-red-50 flex items-center justify-center"
+                              onClick={() => handleSend(row)}
+                              disabled={row.lowSubjects.length === 0}
+                              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold
+                                bg-purple-600 hover:bg-purple-700 disabled:bg-slate-200 dark:disabled:bg-slate-700
+                                disabled:text-slate-400 text-white transition-all hover:scale-105 disabled:scale-100"
                             >
-                              <X size={12} />
+                              <Send size={12} /> Send
+                            </button>
+                            <button
+                              onClick={() => { setAddingFor(addingFor === row.student.id ? null : row.student.id); setNewSubjectName("") }}
+                              title="Add subject"
+                              className="w-7 h-7 rounded-lg bg-emerald-50 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300
+                                hover:bg-emerald-100 dark:hover:bg-emerald-900/60 flex items-center justify-center transition hover:scale-110"
+                            >
+                              <Plus size={14} />
                             </button>
                           </div>
+
+                          {addingFor === row.student.id && (
+                            <div className="mt-2 flex gap-1 justify-center animate-fade-in">
+                              <input
+                                autoFocus
+                                value={newSubjectName}
+                                onChange={(e) => setNewSubjectName(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') handleAddSubject(row.student.id)
+                                  if (e.key === 'Escape') { setAddingFor(null); setNewSubjectName("") }
+                                }}
+                                placeholder="Subject name"
+                                className="w-28 px-2 py-1 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-xs outline-none focus:border-purple-500"
+                              />
+                              <button onClick={() => handleAddSubject(row.student.id)}
+                                className="px-2 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold transition">
+                                Add
+                              </button>
+                            </div>
+                          )}
                         </td>
-                      )
-                    })}
-
-                    <td className="p-3 text-center font-semibold">{row.sumTotal}</td>
-                    <td className="p-3 text-center font-semibold">{row.sumObtained}</td>
-                    <td className="p-3 text-center font-semibold">{row.overallPct}%</td>
-
-                    <td className="p-3 text-center">
-                      <span className={`px-3 py-1 rounded-full text-xs font-semibold
-                        ${row.risk === "Risk"
-                          ? "bg-red-100 text-red-700"
-                          : row.risk === "Active"
-                            ? "bg-green-100 text-green-700"
-                            : "bg-slate-100 text-slate-500"}`}>
-                        {row.risk}
-                      </span>
-                    </td>
-
-                    <td className="p-3">
-                      <div className="flex items-center justify-center gap-1">
-                        <button
-                          onClick={() => handleSend(row)}
-                          disabled={row.lowSubjects.length === 0}
-                          className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold bg-blue-600 hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-400 text-white"
-                        >
-                          <Send size={12} /> Send
-                        </button>
-                        <button
-                          onClick={() => {
-                            setAddingFor(addingFor === row.student.id ? null : row.student.id)
-                            setNewSubjectName("")
-                          }}
-                          title="Add subject"
-                          className="w-7 h-7 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 flex items-center justify-center"
-                        >
-                          <Plus size={14} />
-                        </button>
-                      </div>
-
-                      {addingFor === row.student.id && (
-                        <div className="mt-2 flex gap-1 justify-center">
-                          <input
-                            autoFocus
-                            value={newSubjectName}
-                            onChange={(e) => setNewSubjectName(e.target.value)}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') handleAddSubject(row.student.id)
-                              if (e.key === 'Escape') { setAddingFor(null); setNewSubjectName("") }
-                            }}
-                            placeholder="Subject name"
-                            className="w-28 px-2 py-1 rounded border border-gray-300 text-xs"
-                          />
-                          <button
-                            onClick={() => handleAddSubject(row.student.id)}
-                            className="px-2 py-1 rounded bg-emerald-600 text-white text-xs"
-                          >
-                            Add
-                          </button>
-                        </div>
-                      )}
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
       )}
-
-      <style jsx>{`
-        .fi { padding: 8px 12px; border: 1px solid #d1d5db; border-radius: 8px; background: white; font-size: 14px; outline: none; }
-        .fi:focus { border-color: #3b82f6; box-shadow: 0 0 0 2px rgba(59,130,246,0.1); }
-      `}</style>
     </div>
   )
 }

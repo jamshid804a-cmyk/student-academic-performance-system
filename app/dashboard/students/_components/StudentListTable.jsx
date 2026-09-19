@@ -3,7 +3,7 @@
 import React, { useEffect, useState, useMemo } from 'react'
 import { AgGridReact } from 'ag-grid-react'
 import '@/utils/agGrid'
-import { Search, Trash2, Eye, Pencil, Users } from 'lucide-react'
+import { Search, Trash2, Eye, Pencil, Users, GraduationCap } from 'lucide-react'
 import {
     AlertDialog,
     AlertDialogAction,
@@ -37,13 +37,8 @@ function StudentListTable({ StudentList, refreshData }) {
     }, [StudentList])
 
     const DeleteRecord = async (id) => {
-        // 🔍 DEBUG — see what id is being sent
-        console.log("🗑️ Trying to delete id:", id, "type:", typeof id)
-
         try {
             const resp = await GlobalApi.DeleteStudentRecord(id)
-            console.log("🗑️ Delete response:", resp?.data)
-
             if (resp?.data?.success && (resp.data.deletedCount ?? 1) > 0) {
                 toast.success("Record Deleted Successfully")
                 refreshData()
@@ -56,167 +51,133 @@ function StudentListTable({ StudentList, refreshData }) {
         }
     }
 
-    const handleView = (data) => {
-        setSelectedStudent(data)
-        setViewOpen(true)
-    }
+    const handleView = (data) => { setSelectedStudent(data); setViewOpen(true) }
+    const handleEditClick = (data) => { setEditStudent(data); setEditOpen(true) }
 
-    const handleEditClick = (data) => {
-        // 🔍 DEBUG — see the full student object being edited
-        console.log("✏️ Editing student:", data)
-        setEditStudent(data)
-        setEditOpen(true)
-    }
+    const CustomButtons = (props) => (
+        <div className="flex items-center gap-1.5 h-full">
+            <button
+                onClick={() => handleView(props?.data)}
+                title="View details"
+                className="w-8 h-8 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-600
+                    dark:bg-blue-900/40 dark:hover:bg-blue-900/60 dark:text-blue-300
+                    flex items-center justify-center transition-all duration-200 hover:scale-110"
+            >
+                <Eye size={15} />
+            </button>
 
-    const CustomButtons = (props) => {
-        return (
-            <div className="flex items-center gap-1.5 h-full">
-                <button
-                    onClick={() => handleView(props?.data)}
-                    title="View details"
-                    className="w-8 h-8 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-600 flex items-center justify-center transition-colors"
-                >
-                    <Eye size={15} />
-                </button>
+            <button
+                onClick={() => handleEditClick(props?.data)}
+                title="Edit student"
+                className="w-8 h-8 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-600
+                    dark:bg-amber-900/40 dark:hover:bg-amber-900/60 dark:text-amber-300
+                    flex items-center justify-center transition-all duration-200 hover:scale-110"
+            >
+                <Pencil size={15} />
+            </button>
 
-                <button
-                    onClick={() => handleEditClick(props?.data)}
-                    title="Edit student"
-                    className="w-8 h-8 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-600 flex items-center justify-center transition-colors"
-                >
-                    <Pencil size={15} />
-                </button>
-
-                <AlertDialog>
-                    <AlertDialogTrigger asChild>
-                        <button
-                            title="Delete student"
-                            className="w-8 h-8 rounded-lg bg-red-50 hover:bg-red-100 text-red-600 flex items-center justify-center transition-colors"
+            <AlertDialog>
+                <AlertDialogTrigger asChild>
+                    <button
+                        title="Delete student"
+                        className="w-8 h-8 rounded-lg bg-red-50 hover:bg-red-100 text-red-600
+                            dark:bg-red-900/40 dark:hover:bg-red-900/60 dark:text-red-300
+                            flex items-center justify-center transition-all duration-200 hover:scale-110"
+                    >
+                        <Trash2 size={15} />
+                    </button>
+                </AlertDialogTrigger>
+                <AlertDialogContent className="dark:bg-slate-800 dark:text-slate-100 dark:border-slate-700">
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Delete this student?</AlertDialogTitle>
+                        <AlertDialogDescription className="dark:text-slate-400">
+                            This will permanently remove the student from the system.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel className="dark:bg-slate-700 dark:text-slate-100 dark:border-slate-600">
+                            Cancel
+                        </AlertDialogCancel>
+                        <AlertDialogAction
+                            onClick={() => DeleteRecord(props?.data?.id)}
+                            className="bg-red-600 hover:bg-red-700 text-white"
                         >
-                            <Trash2 size={15} />
-                        </button>
-                    </AlertDialogTrigger>
-                    <AlertDialogContent>
-                        <AlertDialogHeader>
-                            <AlertDialogTitle>Delete this student?</AlertDialogTitle>
-                            <AlertDialogDescription>
-                                This will permanently remove the student from the system.
-                            </AlertDialogDescription>
-                        </AlertDialogHeader>
-                        <AlertDialogFooter>
-                            <AlertDialogCancel>Cancel</AlertDialogCancel>
-                            <AlertDialogAction
-                                onClick={() => DeleteRecord(props?.data?.id)}
-                                className="bg-red-600 hover:bg-red-700 text-white"
-                            >
-                                Delete
-                            </AlertDialogAction>
-                        </AlertDialogFooter>
-                    </AlertDialogContent>
-                </AlertDialog>
-            </div>
-        )
-    }
+                            Delete
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
+        </div>
+    )
 
-    // Global cell style so EVERY cell is vertically centered
     const defaultColDef = useMemo(() => ({
         resizable: true,
         sortable: true,
         cellStyle: {
             display: 'flex',
             alignItems: 'center',
-            lineHeight: 'normal',
         },
     }), [])
 
     const colDefs = useMemo(() => [
-        // 1. ID
         {
             field: "id",
             headerName: "ID",
             width: 70,
             filter: true,
-            valueGetter: (params) => {
-                const v = params.data?.id
-                if (typeof v === "number") return v
-                return v ? String(v).slice(-4) : ""
+            cellStyle: {
+                display: 'flex',
+                alignItems: 'center',
+                fontWeight: '600',
+                color: '#6366f1',
             },
         },
-
-        // 2. Roll No
-        {
-            field: "rollNo",
-            headerName: "Roll No",
-            filter: true,
-            width: 100,
-        },
-
-        // 3. Admission No
-        {
-            field: "admissionNo",
-            headerName: "Admission No",
-            filter: true,
-            width: 150,
-        },
-
-        // 4. Student Name
+        { field: "rollNo", headerName: "Roll No", filter: true, width: 100 },
+        { field: "admissionNo", headerName: "Admission No", filter: true, width: 140 },
         {
             field: "name",
             headerName: "Student Name",
             filter: true,
             minWidth: 180,
             flex: 2,
-            wrapText: true,
             cellStyle: {
                 display: 'flex',
                 alignItems: 'center',
+                fontWeight: '600',
                 whiteSpace: 'normal',
                 lineHeight: '1.3',
-                paddingTop: '8px',
-                paddingBottom: '8px',
             },
         },
-
-        // 5. Father Name
         {
             field: "fatherName",
             headerName: "Father Name",
             filter: true,
             minWidth: 180,
             flex: 2,
-            wrapText: true,
             cellStyle: {
                 display: 'flex',
                 alignItems: 'center',
                 whiteSpace: 'normal',
                 lineHeight: '1.3',
-                paddingTop: '8px',
-                paddingBottom: '8px',
             },
         },
-
-        // 6. Grade
         { field: "grade", headerName: "Grade", filter: true, width: 100 },
-
-        // 7. Section
         { field: "section", headerName: "Section", filter: true, width: 100 },
-
-        // 8. Session
         { field: "session", headerName: "Session", filter: true, width: 130 },
-
-        // 9. Contact No
         { field: "contact", headerName: "Contact No", filter: true, width: 150 },
-
-        // 10. Fee
         {
             field: "fee",
             headerName: "Fee",
             filter: true,
             width: 110,
-            valueFormatter: (params) => (params.value ? `Rs. ${params.value}` : "N/A"),
+            cellStyle: {
+                display: 'flex',
+                alignItems: 'center',
+                fontWeight: '600',
+                color: '#059669',
+            },
+            valueFormatter: (params) => (params.value ? `Rs. ${params.value}` : "—"),
         },
-
-        // 11. Action
         {
             field: "action",
             headerName: "Action",
@@ -234,50 +195,59 @@ function StudentListTable({ StudentList, refreshData }) {
     ], [])
 
     return (
-        <div className="my-8">
+        <div className="my-6 animate-page-in">
 
-            {/* Header */}
-            <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+            {/* Header card */}
+            <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
                 <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 text-white flex items-center justify-center shadow-md">
-                        <Users size={20} />
+                    <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-indigo-500 to-blue-600 text-white flex items-center justify-center shadow-md hover:scale-110 transition-transform duration-300">
+                        <Users size={22} />
                     </div>
                     <div>
-                        <h2 className="text-xl font-bold text-gray-900">Student Records</h2>
-                        <p className="text-xs text-gray-500">
+                        <h2 className="text-xl font-bold text-slate-800 dark:text-slate-100">
+                            Student Records
+                        </h2>
+                        <p className="text-xs text-slate-500 dark:text-slate-400">
                             {rowData.length} {rowData.length === 1 ? "student" : "students"} in total
                         </p>
                     </div>
                 </div>
 
-                <div className="flex items-center gap-2 border border-gray-200 rounded-xl px-3 py-2 shadow-sm bg-white focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-100 transition">
-                    <Search size={18} className="text-gray-400" />
+                <div className="flex items-center gap-2 border border-slate-200 dark:border-slate-600 rounded-xl px-4 py-2.5 shadow-sm bg-white dark:bg-slate-800 focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-100 dark:focus-within:ring-blue-900/40 transition-all duration-200">
+                    <Search size={18} className="text-slate-400" />
                     <input
                         type="text"
                         placeholder="Search student..."
                         value={searchInput}
                         onChange={(e) => setSearchInput(e.target.value)}
-                        className="outline-none text-sm w-52 placeholder:text-gray-400"
+                        className="outline-none text-sm w-52 placeholder:text-slate-400 bg-transparent text-slate-800 dark:text-slate-100"
                     />
                 </div>
             </div>
 
-            {/* Table */}
-            <div
-                className="ag-theme-quartz rounded-2xl overflow-hidden shadow-lg border border-gray-100 bg-white"
-                style={{ height: 580 }}
-            >
-                <AgGridReact
-                    rowData={rowData}
-                    columnDefs={colDefs}
-                    defaultColDef={defaultColDef}
-                    quickFilterText={searchInput}
-                    pagination={pagination}
-                    paginationPageSize={paginationPageSize}
-                    paginationPageSizeSelector={paginationPageSizeSelector}
-                    rowHeight={60}
-                    headerHeight={48}
-                />
+            {/* Table card */}
+            <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg border border-slate-100 dark:border-slate-700 overflow-hidden">
+
+                {/* Top accent bar */}
+                <div className="h-1 bg-gradient-to-r from-indigo-500 via-blue-500 to-cyan-500" />
+
+                <div
+                    className="ag-theme-quartz"
+                    style={{ height: 580, width: '100%' }}
+                >
+                    <AgGridReact
+                        rowData={rowData}
+                        columnDefs={colDefs}
+                        defaultColDef={defaultColDef}
+                        quickFilterText={searchInput}
+                        pagination={pagination}
+                        paginationPageSize={paginationPageSize}
+                        paginationPageSizeSelector={paginationPageSizeSelector}
+                        rowHeight={58}
+                        headerHeight={52}
+                        animateRows={true}
+                    />
+                </div>
             </div>
 
             <StudentDetailsDialog
@@ -292,6 +262,98 @@ function StudentListTable({ StudentList, refreshData }) {
                 onOpenChange={setEditOpen}
                 refreshData={refreshData}
             />
+
+            <style jsx global>{`
+                /* ─── Ag Grid Quartz polish ─────────── */
+                .ag-theme-quartz {
+                    --ag-font-family: var(--font-inter), system-ui, sans-serif;
+                    --ag-font-size: 14px;
+                    --ag-row-height: 58px;
+                    --ag-header-height: 52px;
+                    --ag-border-color: #e2e8f0;
+                    --ag-header-background-color: #f8fafc;
+                    --ag-header-foreground-color: #475569;
+                    --ag-odd-row-background-color: #ffffff;
+                    --ag-even-row-background-color: #fafbfc;
+                    --ag-row-hover-color: #eef2ff;
+                    --ag-selected-row-background-color: #e0e7ff;
+                    --ag-borders: none;
+                }
+
+                .ag-theme-quartz .ag-header {
+                    border-bottom: 1px solid #e2e8f0 !important;
+                    font-weight: 700 !important;
+                    text-transform: uppercase;
+                    font-size: 11px !important;
+                    letter-spacing: 0.05em;
+                }
+
+                .ag-theme-quartz .ag-header-cell-text {
+                    color: #64748b;
+                }
+
+                .ag-theme-quartz .ag-row {
+                    border-bottom: 1px solid #f1f5f9 !important;
+                    transition: background-color 0.15s ease;
+                }
+
+                .ag-theme-quartz .ag-row:hover {
+                    background-color: #eef2ff !important;
+                }
+
+                .ag-theme-quartz .ag-cell {
+                    color: #334155;
+                    font-size: 13.5px;
+                }
+
+                .ag-theme-quartz .ag-paging-panel {
+                    border-top: 1px solid #e2e8f0 !important;
+                    padding: 12px 16px;
+                    color: #64748b;
+                    font-size: 13px;
+                }
+
+                .ag-theme-quartz .ag-paging-button {
+                    border-radius: 6px;
+                }
+
+                /* ─── Dark mode override ─────────── */
+                .dark .ag-theme-quartz {
+                    --ag-border-color: #334155;
+                    --ag-header-background-color: #0f172a;
+                    --ag-header-foreground-color: #cbd5e1;
+                    --ag-odd-row-background-color: #1e293b;
+                    --ag-even-row-background-color: #1a2536;
+                    --ag-row-hover-color: #334155;
+                    --ag-selected-row-background-color: #1e40af;
+                    --ag-foreground-color: #f1f5f9;
+                }
+
+                .dark .ag-theme-quartz .ag-header {
+                    border-bottom: 1px solid #334155 !important;
+                }
+
+                .dark .ag-theme-quartz .ag-header-cell-text {
+                    color: #94a3b8 !important;
+                }
+
+                .dark .ag-theme-quartz .ag-row {
+                    border-bottom: 1px solid #334155 !important;
+                }
+
+                .dark .ag-theme-quartz .ag-row:hover {
+                    background-color: #334155 !important;
+                }
+
+                .dark .ag-theme-quartz .ag-cell {
+                    color: #e2e8f0 !important;
+                }
+
+                .dark .ag-theme-quartz .ag-paging-panel {
+                    border-top: 1px solid #334155 !important;
+                    color: #94a3b8;
+                }
+            `}</style>
         </div>
     )
 }
