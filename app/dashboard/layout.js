@@ -1,10 +1,12 @@
 "use client"
-export const dynamic = 'force-dynamic'
 
 import React from 'react'
-import SideNav from './_component/SideNav'
-import Header from './_component/Header'
+import dynamic from 'next/dynamic'
 import { Toaster } from "sonner"
+
+// ✅ Load SideNav and Header ONLY on the client — they use Kinde/Theme contexts
+const SideNav = dynamic(() => import('./_component/SideNav'), { ssr: false })
+const Header = dynamic(() => import('./_component/Header'), { ssr: false })
 
 function DashboardLayout({ children }) {
   return (
