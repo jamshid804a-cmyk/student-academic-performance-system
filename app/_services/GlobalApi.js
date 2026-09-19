@@ -31,6 +31,15 @@ const GetAttendanceList = (grade, month, section, session) => {
     return axios.get('/api/attendance?' + params.toString());
 };
 
+const GetAttendanceFlat = (grade, month, section, session) => {
+    const params = new URLSearchParams();
+    params.append('grade', grade);
+    params.append('month', month);
+    if (section) params.append('section', section);
+    if (session) params.append('session', session);
+    return axios.get('/api/attendance/flat?' + params.toString());
+};
+
 const DeleteAttendance = (studentId, day, month) =>
     axios.delete(
         '/api/attendance?studentId=' + studentId +
@@ -90,6 +99,7 @@ export default {
     SaveAttendance,
     GetAttendance,
     GetAttendanceList,
+    GetAttendanceFlat,
     DeleteAttendance,
 
     // Parents
