@@ -1,7 +1,5 @@
 'use client'
 
-export const dynamic = 'force-dynamic'
-
 import GradeSelection from './_components/GradeSelection'
 import SectionSelection from './_components/SectionSelection'
 import SessionSelection from './_components/SessionSelection'

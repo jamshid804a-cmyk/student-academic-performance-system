@@ -1,5 +1,5 @@
 "use client"
-export const dynamic = 'force-dynamic'
+
 
 import React, { useEffect, useState, useMemo } from 'react'
 import { LoaderIcon, FlaskConical, Send, Plus, X, Search } from 'lucide-react'

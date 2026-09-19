@@ -1,5 +1,5 @@
 'use client'
-export const dynamic = 'force-dynamic'
+
 
 import { useEffect, useState } from 'react'
 import MonthSelection from '@/app/dashboard/attendance/_components/MonthSelection'

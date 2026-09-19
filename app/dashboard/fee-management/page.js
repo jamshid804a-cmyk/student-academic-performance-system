@@ -1,11 +1,14 @@
 "use client"
 
 import React, { useEffect, useState, useMemo, useRef } from 'react'
+import dynamic from 'next/dynamic'
 import { LoaderIcon, Wallet, Send, Printer, Trash2 } from 'lucide-react'
 import GlobalApi from '@/app/_services/GlobalApi'
 import { toast } from 'sonner'
-import PayDialog from './_components/PayDialog'
-import HistoryDialog from './_components/HistoryDialog'
+
+// ✅ Load dialogs ONLY on the client — avoids server-side useContext crash
+const PayDialog = dynamic(() => import('./_components/PayDialog'), { ssr: false })
+const HistoryDialog = dynamic(() => import('./_components/HistoryDialog'), { ssr: false })
 
 const GRADES = ["1st","2nd","3rd","4th","5th","6th","7th","8th","9th","10th"]
 const SECTIONS = ["A", "B", "C"]
@@ -27,6 +30,9 @@ const monthNameToKey = (name) => {
 }
 
 const MONTH_KEYS = ["01","02","03","04","05","06","07","08","09","10","11","12"]
+
+// Tailwind class for filter selects (replaces .fi)
+const FILTER_CLASS = "px-3 py-2 rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-sm text-slate-800 dark:text-slate-100 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 dark:focus:ring-blue-900/40 transition"
 
 export default function FeeManagementPage() {
   const [grade, setGrade] = useState("")
@@ -262,19 +268,19 @@ export default function FeeManagementPage() {
       <div className="bg-white border rounded-2xl shadow-sm p-5 mb-5">
         <h3 className="text-sm font-semibold text-slate-700 mb-3">Filters</h3>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <select className="fi" value={grade} onChange={(e) => setGrade(e.target.value)}>
+          <select className={FILTER_CLASS} value={grade} onChange={(e) => setGrade(e.target.value)}>
             <option value="">Grade</option>
             {GRADES.map(g => <option key={g}>{g}</option>)}
           </select>
-          <select className="fi" value={section} onChange={(e) => setSection(e.target.value)}>
+          <select className={FILTER_CLASS} value={section} onChange={(e) => setSection(e.target.value)}>
             <option value="">Section</option>
             {SECTIONS.map(s => <option key={s}>{s}</option>)}
           </select>
-          <select className="fi" value={session} onChange={(e) => setSession(e.target.value)}>
+          <select className={FILTER_CLASS} value={session} onChange={(e) => setSession(e.target.value)}>
             <option value="">Session</option>
             {SESSIONS.map(s => <option key={s}>{s}</option>)}
           </select>
-          <select className="fi" value={month} onChange={(e) => setMonth(e.target.value)}>
+          <select className={FILTER_CLASS} value={month} onChange={(e) => setMonth(e.target.value)}>
             <option value="">Month</option>
             {MONTHS.map(m => <option key={m}>{m}</option>)}
           </select>
@@ -400,11 +406,6 @@ export default function FeeManagementPage() {
           onClose={() => setHistoryDialog(null)}
         />
       )}
-
-      <style jsx>{`
-        .fi { padding: 8px 12px; border: 1px solid #d1d5db; border-radius: 8px; background: white; font-size: 14px; outline: none; }
-        .fi:focus { border-color: #3b82f6; box-shadow: 0 0 0 2px rgba(59,130,246,0.1); }
-      `}</style>
     </div>
   )
 }
