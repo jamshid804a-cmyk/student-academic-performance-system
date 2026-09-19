@@ -1,5 +1,4 @@
 "use client"
-export const dynamic = 'force-dynamic'
 
 import React, { useEffect, useState, useMemo, useRef } from 'react'
 import { LoaderIcon, Wallet, Send, Printer, Trash2 } from 'lucide-react'
@@ -36,8 +35,8 @@ export default function FeeManagementPage() {
   const [month, setMonth] = useState("")
 
   const [students, setStudents] = useState([])
-  const [payments, setPayments] = useState([])          // payments for the SELECTED month
-  const [allPayments, setAllPayments] = useState([])    // payments for ALL months in that session
+  const [payments, setPayments] = useState([])
+  const [allPayments, setAllPayments] = useState([])
   const [loading, setLoading] = useState(false)
   const [hydrated, setHydrated] = useState(false)
   const debounceRef = useRef(null)
@@ -75,7 +74,7 @@ export default function FeeManagementPage() {
       const [studentResp, monthFeeResp, allFeeResp] = await Promise.all([
         GlobalApi.GetAllStudents(params),
         GlobalApi.GetFees({ grade, section, session, month: monthKey }),
-        GlobalApi.GetFees({ grade, section, session }),   // all months
+        GlobalApi.GetFees({ grade, section, session }),
       ])
       setStudents(studentResp.data || [])
       setPayments(monthFeeResp.data || [])
@@ -126,7 +125,6 @@ export default function FeeManagementPage() {
       const pending = Math.max(0, fee - paid)
       const status = paid === 0 ? "Unpaid" : pending === 0 ? "Paid" : "Partial"
 
-      // Count months paid (out of 12)
       const all = allPaymentsByStudent[sid] || []
       const monthsPaid = new Set()
       all.forEach((p) => {
@@ -184,7 +182,6 @@ export default function FeeManagementPage() {
     }
   }
 
-  // ✅ Delete ONLY this month's fee records for the student
   const handleDeleteAll = async (row) => {
     if (!confirm(`Delete the ${month} fee records for "${row.student.name}"? This cannot be undone.`)) return
     try {
