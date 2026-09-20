@@ -24,7 +24,6 @@ function EditStudentDialog({ student, open, onOpenChange, refreshData }) {
     const [loading, setLoading] = useState(false)
     const { register, handleSubmit, reset } = useForm()
 
-    // Pre-fill form when a student is selected
     useEffect(() => {
         if (student) {
             reset({
@@ -105,7 +104,6 @@ function EditStudentDialog({ student, open, onOpenChange, refreshData }) {
 
                     <div className="grid grid-cols-2 gap-4">
 
-                        {/* Student Name */}
                         <div>
                             <label className={labelClass}>
                                 Student Name <span className="text-red-500">*</span>
@@ -113,25 +111,21 @@ function EditStudentDialog({ student, open, onOpenChange, refreshData }) {
                             <input className={inputClass} {...register("studentName", { required: true })} />
                         </div>
 
-                        {/* Father Name */}
                         <div>
                             <label className={labelClass}>Father Name</label>
                             <input className={inputClass} {...register("fatherName")} />
                         </div>
 
-                        {/* Admission No */}
                         <div>
                             <label className={labelClass}>Admission No</label>
                             <input className={inputClass} {...register("admissionNo")} />
                         </div>
 
-                        {/* Contact No */}
                         <div>
                             <label className={labelClass}>Contact No</label>
                             <input className={inputClass} {...register("contactNo")} />
                         </div>
 
-                        {/* Grade */}
                         <div>
                             <label className={labelClass}>
                                 Grade <span className="text-red-500">*</span>
@@ -151,7 +145,6 @@ function EditStudentDialog({ student, open, onOpenChange, refreshData }) {
                             </select>
                         </div>
 
-                        {/* Section */}
                         <div>
                             <label className={labelClass}>Section</label>
                             <select className={inputClass} {...register("section")}>
@@ -162,13 +155,11 @@ function EditStudentDialog({ student, open, onOpenChange, refreshData }) {
                             </select>
                         </div>
 
-                        {/* Roll No */}
                         <div>
                             <label className={labelClass}>Roll No</label>
                             <input type="number" className={inputClass} {...register("rollNo")} />
                         </div>
 
-                        {/* Session — DROPDOWN */}
                         <div>
                             <label className={labelClass}>Session</label>
                             <select className={inputClass} {...register("session")}>
@@ -181,7 +172,6 @@ function EditStudentDialog({ student, open, onOpenChange, refreshData }) {
                             </select>
                         </div>
 
-                        {/* Fee */}
                         <div>
                             <label className={labelClass}>Fee</label>
                             <div className="relative">
@@ -196,7 +186,6 @@ function EditStudentDialog({ student, open, onOpenChange, refreshData }) {
                             </div>
                         </div>
 
-                        {/* Address */}
                         <div>
                             <label className={labelClass}>Address</label>
                             <input className={inputClass} {...register("address")} />

@@ -35,7 +35,7 @@ export async function GET(req) {
   }
 }
 
-// ✅ POST - Add a new student (unchanged)
+// ✅ POST - Add a new student
 export async function POST(req) {
   try {
     const data = await req.json();
@@ -58,6 +58,7 @@ export async function POST(req) {
 
     const nextId = counter?.value?.seq ?? counter?.seq ?? 1;
 
+    // ✅ Only the fields you actually fill in the form
     const newStudent = {
       id: nextId,
       name: data.name,
@@ -70,11 +71,6 @@ export async function POST(req) {
       rollNo: data.rollNo ? Number(data.rollNo) : null,
       session: data.session || null,
       fee: data.fee ? Number(data.fee) : 0,
-      midMarks: 0,
-      finalMarks: 0,
-      gpa: "0",
-      cgpa: "0",
-      risk: "safe",
       createdAt: new Date(),
     };
 

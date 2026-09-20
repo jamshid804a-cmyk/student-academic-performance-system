@@ -47,11 +47,6 @@ function AddNewStudent({ refreshData }) {
                 session: data.session || null,
                 fee: data.fee ? Number(data.fee) : 0,
                 address: data.address || "",
-                midMarks: 0,
-                finalMarks: 0,
-                gpa: 0,
-                cgpa: 0,
-                risk: "safe",
             }
 
             console.log("Sending payload:", payload)
@@ -191,7 +186,7 @@ function AddNewStudent({ refreshData }) {
                                 />
                             </div>
 
-                            {/* Session — INFINITE-STYLE DROPDOWN */}
+                            {/* Session */}
                             <div>
                                 <label className={labelClass}>Session</label>
                                 <select
