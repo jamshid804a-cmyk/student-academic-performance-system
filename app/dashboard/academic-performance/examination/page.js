@@ -15,9 +15,12 @@ const MONTHS = [
 const EXAM_TYPES = ["Mid Term", "Final Term"]
 
 const STORAGE_KEY = "examination_filters_v1"
+const EXTRA_KEY = "examination_extra_subjects_v1"     // subjects added ONLY in Examination
+const HIDDEN_KEY = "examination_hidden_subjects_v1"   // subjects hidden ONLY in Examination
 
-// ✅ Subjects to hide from this page
+// Subjects to hide from this page
 const HIDDEN_SUBJECTS = ["english", "urdu"]
+const isExcluded = (name) => HIDDEN_SUBJECTS.includes(String(name || "").trim().toLowerCase())
 
 const monthNameToKey = (name) => {
   const map = {
@@ -44,6 +47,10 @@ export default function ExaminationPage() {
   const [newSubjectName, setNewSubjectName] = useState("")
   const [searchInput, setSearchInput] = useState("")
 
+  // Examination-only subject data (never touches the Testing section)
+  const [extraSubjects, setExtraSubjects] = useState({})   // { [studentId]: [names] }
+  const [hiddenSubjects, setHiddenSubjects] = useState({}) // { [studentId]: [names] }
+
   useEffect(() => {
     try {
       const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}")
@@ -53,6 +60,12 @@ export default function ExaminationPage() {
       if (saved.month) setMonth(saved.month)
       if (saved.examType) setExamType(saved.examType)
     } catch {}
+    try {
+      setExtraSubjects(JSON.parse(localStorage.getItem(EXTRA_KEY) || "{}"))
+    } catch {}
+    try {
+      setHiddenSubjects(JSON.parse(localStorage.getItem(HIDDEN_KEY) || "{}"))
+    } catch {}
     setHydrated(true)
   }, [])
 
@@ -60,6 +73,16 @@ export default function ExaminationPage() {
     if (!hydrated) return
     localStorage.setItem(STORAGE_KEY, JSON.stringify({ grade, section, session, month, examType }))
   }, [grade, section, session, month, examType, hydrated])
+
+  useEffect(() => {
+    if (!hydrated) return
+    localStorage.setItem(EXTRA_KEY, JSON.stringify(extraSubjects))
+  }, [extraSubjects, hydrated])
+
+  useEffect(() => {
+    if (!hydrated) return
+    localStorage.setItem(HIDDEN_KEY, JSON.stringify(hiddenSubjects))
+  }, [hiddenSubjects, hydrated])
 
   const fetchAll = async () => {
     if (!grade || !month || !examType) {
@@ -100,48 +123,69 @@ export default function ExaminationPage() {
 
   const monthKey = month ? monthNameToKey(month) : ""
 
-  // ✅ Filter out hidden subjects from the column list
-  const subjectColumns = useMemo(() => {
-    const names = new Set()
-    subjects.forEach((s) => {
-      const lower = String(s.name || "").toLowerCase().trim()
-      if (HIDDEN_SUBJECTS.includes(lower)) return
-      names.add(s.name)
-    })
-    return Array.from(names).sort()
-  }, [subjects])
-
+  // Per-student subjects: shared subjects (minus hidden / English / Urdu) + Examination-only extras
   const subjectsByStudent = useMemo(() => {
     const map = {}
-    subjects.forEach((s) => {
-      if (!map[s.studentId]) map[s.studentId] = []
-      map[s.studentId].push(s)
-    })
-    return map
-  }, [subjects])
 
-  const handleAddSubject = async (studentId) => {
+    subjects.forEach((s) => {
+      const sid = String(s.studentId)
+      if (isExcluded(s.name)) return
+      if ((hiddenSubjects[sid] || []).includes(s.name)) return
+      if (!map[sid]) map[sid] = []
+      if (!map[sid].some((x) => x.name === s.name)) map[sid].push({ name: s.name })
+    })
+
+    Object.entries(extraSubjects).forEach(([sid, names]) => {
+      names.forEach((name) => {
+        if (isExcluded(name)) return
+        if (!map[sid]) map[sid] = []
+        if (!map[sid].some((x) => x.name === name)) map[sid].push({ name })
+      })
+    })
+
+    return map
+  }, [subjects, extraSubjects, hiddenSubjects])
+
+  // Table columns: only subjects that belong to the students currently listed
+  const subjectColumns = useMemo(() => {
+    const names = new Set()
+    students.forEach((st) => {
+      ;(subjectsByStudent[String(st.id)] || []).forEach((s) => names.add(s.name))
+    })
+    return Array.from(names).sort()
+  }, [students, subjectsByStudent])
+
+  // Adds a subject for Examination ONLY (no API call -> Testing is not affected)
+  const handleAddSubject = (studentId) => {
     const name = newSubjectName.trim()
     if (!name) return
+    if (isExcluded(name)) { toast.error(`"${name}" is hidden on this page`); return }
 
-    // Prevent adding hidden subjects by accident
-    if (HIDDEN_SUBJECTS.includes(name.toLowerCase())) {
-      toast.error(`"${name}" is hidden on this page`)
-      return
-    }
+    const sid = String(studentId)
+    const alreadyExists = (subjectsByStudent[sid] || []).some(
+      (s) => s.name.toLowerCase() === name.toLowerCase()
+    )
+    if (alreadyExists) { toast.error("Subject already exists for this student"); return }
 
-    try {
-      await GlobalApi.CreateSubject({ name, studentId: String(studentId) })
-      setNewSubjectName(""); setAddingFor(null); toast.success("Subject added"); fetchAll()
-    } catch (err) { toast.error(err?.response?.data?.error || "Failed to add") }
+    setExtraSubjects((prev) => ({ ...prev, [sid]: [...(prev[sid] || []), name] }))
+    // if it was previously hidden, un-hide it
+    setHiddenSubjects((prev) => ({ ...prev, [sid]: (prev[sid] || []).filter((n) => n !== name) }))
+
+    setNewSubjectName(""); setAddingFor(null)
+    toast.success("Subject added (Examination only)")
   }
 
-  const handleRemoveSubject = async (studentId, subjectName) => {
-    const record = subjects.find((s) => s.studentId === String(studentId) && s.name === subjectName)
-    if (!record) return
-    if (!confirm(`Remove subject "${subjectName}"?`)) return
-    try { await GlobalApi.DeleteSubject(record.id); toast.success("Removed"); fetchAll() }
-    catch { toast.error("Failed to remove") }
+  // Removes a subject from Examination ONLY (does not delete anything from the database)
+  const handleRemoveSubject = (studentId, subjectName) => {
+    if (!confirm(`Remove subject "${subjectName}" from Examination for this student?`)) return
+    const sid = String(studentId)
+
+    setExtraSubjects((prev) => ({ ...prev, [sid]: (prev[sid] || []).filter((n) => n !== subjectName) }))
+    setHiddenSubjects((prev) => {
+      const list = prev[sid] || []
+      return list.includes(subjectName) ? prev : { ...prev, [sid]: [...list, subjectName] }
+    })
+    toast.success("Removed from Examination")
   }
 
   const handleMarksChange = async (studentId, subjectName, field, value) => {
@@ -166,11 +210,7 @@ export default function ExaminationPage() {
 
   const rows = useMemo(() => {
     return students.map((s) => {
-      const allSubjects = subjectsByStudent[String(s.id)] || []
-      // ✅ Only include subjects that are NOT hidden
-      const mySubjects = allSubjects.filter(
-        (sub) => !HIDDEN_SUBJECTS.includes(String(sub.name || "").toLowerCase().trim())
-      )
+      const mySubjects = subjectsByStudent[String(s.id)] || []
 
       const studentMarks = {}
       let sumObtained = 0, sumTotal = 0, hasLow = false
@@ -345,7 +385,7 @@ export default function ExaminationPage() {
                                 />
                                 <button
                                   onClick={() => handleRemoveSubject(row.student.id, name)}
-                                  title="Remove subject"
+                                  title="Remove subject from Examination"
                                   className="w-5 h-5 rounded text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 flex items-center justify-center transition"
                                 >
                                   <X size={12} />
@@ -387,7 +427,7 @@ export default function ExaminationPage() {
                             </button>
                             <button
                               onClick={() => { setAddingFor(addingFor === row.student.id ? null : row.student.id); setNewSubjectName("") }}
-                              title="Add subject"
+                              title="Add subject (Examination only)"
                               className="w-7 h-7 rounded-lg bg-emerald-50 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300
                                 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 flex items-center justify-center transition hover:scale-110"
                             >
