@@ -1,6 +1,5 @@
 "use client"
 
-
 import React, { useEffect, useState, useMemo } from 'react'
 import { LoaderIcon, FileText, Send, Plus, X, Search } from 'lucide-react'
 import GlobalApi from '@/app/_services/GlobalApi'
@@ -16,6 +15,9 @@ const MONTHS = [
 const EXAM_TYPES = ["Mid Term", "Final Term"]
 
 const STORAGE_KEY = "examination_filters_v1"
+
+// ✅ Subjects to hide from this page
+const HIDDEN_SUBJECTS = ["english", "urdu"]
 
 const monthNameToKey = (name) => {
   const map = {
@@ -98,9 +100,14 @@ export default function ExaminationPage() {
 
   const monthKey = month ? monthNameToKey(month) : ""
 
+  // ✅ Filter out hidden subjects from the column list
   const subjectColumns = useMemo(() => {
     const names = new Set()
-    subjects.forEach((s) => names.add(s.name))
+    subjects.forEach((s) => {
+      const lower = String(s.name || "").toLowerCase().trim()
+      if (HIDDEN_SUBJECTS.includes(lower)) return
+      names.add(s.name)
+    })
     return Array.from(names).sort()
   }, [subjects])
 
@@ -116,6 +123,13 @@ export default function ExaminationPage() {
   const handleAddSubject = async (studentId) => {
     const name = newSubjectName.trim()
     if (!name) return
+
+    // Prevent adding hidden subjects by accident
+    if (HIDDEN_SUBJECTS.includes(name.toLowerCase())) {
+      toast.error(`"${name}" is hidden on this page`)
+      return
+    }
+
     try {
       await GlobalApi.CreateSubject({ name, studentId: String(studentId) })
       setNewSubjectName(""); setAddingFor(null); toast.success("Subject added"); fetchAll()
@@ -152,7 +166,12 @@ export default function ExaminationPage() {
 
   const rows = useMemo(() => {
     return students.map((s) => {
-      const mySubjects = subjectsByStudent[String(s.id)] || []
+      const allSubjects = subjectsByStudent[String(s.id)] || []
+      // ✅ Only include subjects that are NOT hidden
+      const mySubjects = allSubjects.filter(
+        (sub) => !HIDDEN_SUBJECTS.includes(String(sub.name || "").toLowerCase().trim())
+      )
+
       const studentMarks = {}
       let sumObtained = 0, sumTotal = 0, hasLow = false
       const lowSubjects = []

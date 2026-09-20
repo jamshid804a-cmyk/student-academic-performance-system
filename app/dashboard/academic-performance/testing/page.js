@@ -103,7 +103,9 @@ export default function TestingPage() {
 
   const subjectColumns = useMemo(() => {
     const names = new Set()
-    subjects.forEach((s) => names.add(s.name))
+    subjects.forEach((s) => {
+      if (s.name !== "English" && s.name !== "Urdu") names.add(s.name)
+    })
     return Array.from(names).sort()
   }, [subjects])
 
