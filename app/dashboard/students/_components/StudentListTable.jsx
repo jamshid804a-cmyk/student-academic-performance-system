@@ -24,6 +24,14 @@ const pagination = true
 const paginationPageSize = 10
 const paginationPageSizeSelector = [10, 20, 25, 100]
 
+// ✅ Filter option lists
+const GRADES = ["1st","2nd","3rd","4th","5th","6th","7th","8th","9th","10th"]
+const SECTIONS = ["A", "B", "C"]
+const SESSIONS = Array.from({ length: 100 }, (_, i) => `${2025 + i}-${2026 + i}`)
+
+const FILTER_CLASS =
+  "px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-sm text-slate-800 dark:text-slate-100 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 dark:focus:ring-blue-900/40 transition-all"
+
 function StudentListTable({ StudentList, refreshData }) {
     const [rowData, setRowData] = useState([])
     const [searchInput, setSearchInput] = useState("")
@@ -32,9 +40,32 @@ function StudentListTable({ StudentList, refreshData }) {
     const [editStudent, setEditStudent] = useState(null)
     const [editOpen, setEditOpen] = useState(false)
 
+    // ✅ Filter state
+    const [gradeFilter, setGradeFilter] = useState("")
+    const [sectionFilter, setSectionFilter] = useState("")
+    const [sessionFilter, setSessionFilter] = useState("")
+
     useEffect(() => {
         if (StudentList) setRowData(StudentList)
     }, [StudentList])
+
+    // ✅ Apply grade/section/session filters client-side
+    const filteredData = useMemo(() => {
+        return rowData.filter((s) => {
+            if (gradeFilter && String(s.grade || "").trim() !== gradeFilter) return false
+            if (sectionFilter && String(s.section || "").trim() !== sectionFilter) return false
+            if (sessionFilter && String(s.session || "").trim() !== sessionFilter) return false
+            return true
+        })
+    }, [rowData, gradeFilter, sectionFilter, sessionFilter])
+
+    // ✅ Unique sessions present in the data (in case they differ from the default list)
+    const sessionOptions = useMemo(() => {
+        const set = new Set()
+        rowData.forEach((s) => { if (s.session) set.add(String(s.session).trim()) })
+        SESSIONS.forEach((s) => set.add(s))
+        return Array.from(set).sort()
+    }, [rowData])
 
     const DeleteRecord = async (id) => {
         try {
@@ -208,20 +239,74 @@ function StudentListTable({ StudentList, refreshData }) {
                             Student Records
                         </h2>
                         <p className="text-xs text-slate-500 dark:text-slate-400">
-                            {rowData.length} {rowData.length === 1 ? "student" : "students"} in total
+                            {filteredData.length} of {rowData.length}{" "}
+                            {rowData.length === 1 ? "student" : "students"}
                         </p>
                     </div>
                 </div>
 
-                <div className="flex items-center gap-2 border border-slate-200 dark:border-slate-600 rounded-xl px-4 py-2.5 shadow-sm bg-white dark:bg-slate-800 focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-100 dark:focus-within:ring-blue-900/40 transition-all duration-200">
-                    <Search size={18} className="text-slate-400" />
-                    <input
-                        type="text"
-                        placeholder="Search student..."
-                        value={searchInput}
-                        onChange={(e) => setSearchInput(e.target.value)}
-                        className="outline-none text-sm w-52 placeholder:text-slate-400 bg-transparent text-slate-800 dark:text-slate-100"
-                    />
+                {/* ✅ Filters + search */}
+                <div className="flex flex-wrap items-center gap-2">
+                    <div className="flex items-center gap-2">
+                        <GraduationCap size={16} className="text-slate-400" />
+                    </div>
+
+                    <select
+                        className={FILTER_CLASS}
+                        value={gradeFilter}
+                        onChange={(e) => setGradeFilter(e.target.value)}
+                    >
+                        <option value="">All Grades</option>
+                        {GRADES.map((g) => (
+                            <option key={g} value={g}>{g}</option>
+                        ))}
+                    </select>
+
+                    <select
+                        className={FILTER_CLASS}
+                        value={sectionFilter}
+                        onChange={(e) => setSectionFilter(e.target.value)}
+                    >
+                        <option value="">All Sections</option>
+                        {SECTIONS.map((s) => (
+                            <option key={s} value={s}>{s}</option>
+                        ))}
+                    </select>
+
+                    <select
+                        className={FILTER_CLASS}
+                        value={sessionFilter}
+                        onChange={(e) => setSessionFilter(e.target.value)}
+                    >
+                        <option value="">All Sessions</option>
+                        {sessionOptions.map((s) => (
+                            <option key={s} value={s}>{s}</option>
+                        ))}
+                    </select>
+
+                    {(gradeFilter || sectionFilter || sessionFilter) && (
+                        <button
+                            onClick={() => {
+                                setGradeFilter("")
+                                setSectionFilter("")
+                                setSessionFilter("")
+                            }}
+                            className="text-xs font-semibold text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 px-2"
+                        >
+                            Clear
+                        </button>
+                    )}
+
+                    <div className="flex items-center gap-2 border border-slate-200 dark:border-slate-600 rounded-xl px-4 py-2.5 shadow-sm bg-white dark:bg-slate-800 focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-100 dark:focus-within:ring-blue-900/40 transition-all duration-200">
+                        <Search size={18} className="text-slate-400" />
+                        <input
+                            type="text"
+                            placeholder="Search student..."
+                            value={searchInput}
+                            onChange={(e) => setSearchInput(e.target.value)}
+                            className="outline-none text-sm w-52 placeholder:text-slate-400 bg-transparent text-slate-800 dark:text-slate-100"
+                        />
+                    </div>
                 </div>
             </div>
 
@@ -236,7 +321,7 @@ function StudentListTable({ StudentList, refreshData }) {
                     style={{ height: 580, width: '100%' }}
                 >
                     <AgGridReact
-                        rowData={rowData}
+                        rowData={filteredData}
                         columnDefs={colDefs}
                         defaultColDef={defaultColDef}
                         quickFilterText={searchInput}
