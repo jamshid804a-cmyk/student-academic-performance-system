@@ -14,11 +14,18 @@ import GlobalApi from '@/app/_services/GlobalApi'
 import { toast } from 'sonner'
 import { LoaderIcon } from 'lucide-react'
 
-// Build session list: 2025-2026, 2026-2027, ... up to 2525-2526 (500 sessions)
+// Build session list: 2025-2026, 2026-2027, ...
 const SESSIONS = Array.from({ length: 500 }, (_, i) => {
     const start = 2025 + i
     return `${start}-${start + 1}`
 })
+
+// ✅ Grade list — Nursery, Prep, 1st..12th
+const GRADES = [
+    "Nursery",
+    "Prep",
+    "1st","2nd","3rd","4th","5th","6th","7th","8th","9th","10th","11th","12th",
+]
 
 function EditStudentDialog({ student, open, onOpenChange, refreshData }) {
     const [loading, setLoading] = useState(false)
@@ -132,16 +139,9 @@ function EditStudentDialog({ student, open, onOpenChange, refreshData }) {
                             </label>
                             <select className={inputClass} {...register("grade", { required: true })}>
                                 <option value="">Select Grade</option>
-                                <option value="1st">1st</option>
-                                <option value="2nd">2nd</option>
-                                <option value="3rd">3rd</option>
-                                <option value="4th">4th</option>
-                                <option value="5th">5th</option>
-                                <option value="6th">6th</option>
-                                <option value="7th">7th</option>
-                                <option value="8th">8th</option>
-                                <option value="9th">9th</option>
-                                <option value="10th">10th</option>
+                                {GRADES.map((g) => (
+                                    <option key={g} value={g}>{g}</option>
+                                ))}
                             </select>
                         </div>
 

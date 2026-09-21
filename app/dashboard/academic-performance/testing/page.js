@@ -6,7 +6,13 @@ import { LoaderIcon, FlaskConical, Send, Plus, X, Search } from 'lucide-react'
 import GlobalApi from '@/app/_services/GlobalApi'
 import { toast } from 'sonner'
 
-const GRADES = ["1st","2nd","3rd","4th","5th","6th","7th","8th","9th","10th"]
+const GRADES = [
+  "Nursery",
+  "Prep",
+  "1st", "2nd", "3rd", "4th", "5th",
+  "6th", "7th", "8th", "9th", "10th",
+  "11th", "12th",
+]
 const SECTIONS = ["A", "B", "C"]
 const SESSIONS = Array.from({ length: 100 }, (_, i) => `${2025 + i}-${2026 + i}`)
 const MONTHS = [

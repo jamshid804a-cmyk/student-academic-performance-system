@@ -5,7 +5,13 @@ import { LoaderIcon, FileText, Send, Plus, X, Search } from 'lucide-react'
 import GlobalApi from '@/app/_services/GlobalApi'
 import { toast } from 'sonner'
 
-const GRADES = ["1st","2nd","3rd","4th","5th","6th","7th","8th","9th","10th"]
+const GRADES = [
+  "Nursery",
+  "Prep",
+  "1st", "2nd", "3rd", "4th", "5th",
+  "6th", "7th", "8th", "9th", "10th",
+  "11th", "12th",
+]
 const SECTIONS = ["A", "B", "C"]
 const SESSIONS = Array.from({ length: 100 }, (_, i) => `${2025 + i}-${2026 + i}`)
 const MONTHS = [
@@ -123,7 +129,6 @@ export default function ExaminationPage() {
 
   const monthKey = month ? monthNameToKey(month) : ""
 
-  // Per-student subjects: shared subjects (minus hidden / English / Urdu) + Examination-only extras
   const subjectsByStudent = useMemo(() => {
     const map = {}
 
@@ -146,7 +151,6 @@ export default function ExaminationPage() {
     return map
   }, [subjects, extraSubjects, hiddenSubjects])
 
-  // Table columns: only subjects that belong to the students currently listed
   const subjectColumns = useMemo(() => {
     const names = new Set()
     students.forEach((st) => {
@@ -155,7 +159,6 @@ export default function ExaminationPage() {
     return Array.from(names).sort()
   }, [students, subjectsByStudent])
 
-  // Adds a subject for Examination ONLY (no API call -> Testing is not affected)
   const handleAddSubject = (studentId) => {
     const name = newSubjectName.trim()
     if (!name) return
@@ -168,14 +171,12 @@ export default function ExaminationPage() {
     if (alreadyExists) { toast.error("Subject already exists for this student"); return }
 
     setExtraSubjects((prev) => ({ ...prev, [sid]: [...(prev[sid] || []), name] }))
-    // if it was previously hidden, un-hide it
     setHiddenSubjects((prev) => ({ ...prev, [sid]: (prev[sid] || []).filter((n) => n !== name) }))
 
     setNewSubjectName(""); setAddingFor(null)
     toast.success("Subject added (Examination only)")
   }
 
-  // Removes a subject from Examination ONLY (does not delete anything from the database)
   const handleRemoveSubject = (studentId, subjectName) => {
     if (!confirm(`Remove subject "${subjectName}" from Examination for this student?`)) return
     const sid = String(studentId)

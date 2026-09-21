@@ -24,10 +24,31 @@ const pagination = true
 const paginationPageSize = 10
 const paginationPageSizeSelector = [10, 20, 25, 100]
 
-// ✅ Filter option lists
-const GRADES = ["1st","2nd","3rd","4th","5th","6th","7th","8th","9th","10th"]
+// ✅ Grade list — Nursery, Prep, 1st..12th
+const GRADES = [
+    "Nursery",
+    "Prep",
+    "1st","2nd","3rd","4th","5th","6th","7th","8th","9th","10th","11th","12th",
+]
 const SECTIONS = ["A", "B", "C"]
 const SESSIONS = Array.from({ length: 100 }, (_, i) => `${2025 + i}-${2026 + i}`)
+
+// ✅ Forgiving grade matcher: "1" ↔ "1st", "Nursery" ↔ "nursery", etc.
+function sameGrade(a, b) {
+    const x = String(a || "").trim().toLowerCase()
+    const y = String(b || "").trim().toLowerCase()
+    if (!x || !y) return false
+    if (x === y) return true
+    // compare leading number: "1" vs "1st"
+    const numX = x.match(/^(\d+)/)
+    const numY = y.match(/^(\d+)/)
+    if (numX && numY) return numX[1] === numY[1]
+    return false
+}
+
+function sameText(a, b) {
+    return String(a || "").trim().toLowerCase() === String(b || "").trim().toLowerCase()
+}
 
 const FILTER_CLASS =
   "px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-sm text-slate-800 dark:text-slate-100 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 dark:focus:ring-blue-900/40 transition-all"
@@ -40,7 +61,6 @@ function StudentListTable({ StudentList, refreshData }) {
     const [editStudent, setEditStudent] = useState(null)
     const [editOpen, setEditOpen] = useState(false)
 
-    // ✅ Filter state
     const [gradeFilter, setGradeFilter] = useState("")
     const [sectionFilter, setSectionFilter] = useState("")
     const [sessionFilter, setSessionFilter] = useState("")
@@ -49,17 +69,17 @@ function StudentListTable({ StudentList, refreshData }) {
         if (StudentList) setRowData(StudentList)
     }, [StudentList])
 
-    // ✅ Apply grade/section/session filters client-side
+    // ✅ Apply grade/section/session filters with forgiving matching
     const filteredData = useMemo(() => {
         return rowData.filter((s) => {
-            if (gradeFilter && String(s.grade || "").trim() !== gradeFilter) return false
-            if (sectionFilter && String(s.section || "").trim() !== sectionFilter) return false
-            if (sessionFilter && String(s.session || "").trim() !== sessionFilter) return false
+            if (gradeFilter && !sameGrade(s.grade, gradeFilter)) return false
+            if (sectionFilter && !sameText(s.section, sectionFilter)) return false
+            if (sessionFilter && !sameText(s.session, sessionFilter)) return false
             return true
         })
     }, [rowData, gradeFilter, sectionFilter, sessionFilter])
 
-    // ✅ Unique sessions present in the data (in case they differ from the default list)
+    // ✅ Unique sessions in data + default list
     const sessionOptions = useMemo(() => {
         const set = new Set()
         rowData.forEach((s) => { if (s.session) set.add(String(s.session).trim()) })
@@ -245,11 +265,9 @@ function StudentListTable({ StudentList, refreshData }) {
                     </div>
                 </div>
 
-                {/* ✅ Filters + search */}
+                {/* Filters + search */}
                 <div className="flex flex-wrap items-center gap-2">
-                    <div className="flex items-center gap-2">
-                        <GraduationCap size={16} className="text-slate-400" />
-                    </div>
+                    <GraduationCap size={16} className="text-slate-400" />
 
                     <select
                         className={FILTER_CLASS}
@@ -313,7 +331,6 @@ function StudentListTable({ StudentList, refreshData }) {
             {/* Table card */}
             <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg border border-slate-100 dark:border-slate-700 overflow-hidden">
 
-                {/* Top accent bar */}
                 <div className="h-1 bg-gradient-to-r from-indigo-500 via-blue-500 to-cyan-500" />
 
                 <div
@@ -349,7 +366,6 @@ function StudentListTable({ StudentList, refreshData }) {
             />
 
             <style jsx global>{`
-                /* ─── Ag Grid Quartz polish ─────────── */
                 .ag-theme-quartz {
                     --ag-font-family: var(--font-inter), system-ui, sans-serif;
                     --ag-font-size: 14px;
@@ -402,7 +418,6 @@ function StudentListTable({ StudentList, refreshData }) {
                     border-radius: 6px;
                 }
 
-                /* ─── Dark mode override ─────────── */
                 .dark .ag-theme-quartz {
                     --ag-border-color: #334155;
                     --ag-header-background-color: #0f172a;
