@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState, useMemo, useRef } from 'react'
 import dynamic from 'next/dynamic'
-import { LoaderIcon, Wallet, Send, Printer, Trash2 } from 'lucide-react'
+import { LoaderIcon, Wallet, Send, Printer, Trash2, BellRing } from 'lucide-react'
 import GlobalApi from '@/app/_services/GlobalApi'
 import { toast } from 'sonner'
 
@@ -188,6 +188,35 @@ export default function FeeManagementPage() {
     }
   }
 
+  // ✅ NEW: send a simple "fee is due" notice for the selected month
+  const handleNotifyDue = async (row) => {
+    if (!month) {
+      toast.error("Please select a month first")
+      return
+    }
+    const monthLabel = month
+    const message = `Dear Parent, the fee for ${monthLabel} is due. Please visit the school by the 5th of ${monthLabel} to pay. Thank you.`
+    try {
+      const res = await fetch("/api/notifications", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          studentId: row.student.id,
+          message,
+          blockNumber: 0,
+          weekStart: 0,
+          weekEnd: 0,
+          type: "fee",
+        }),
+      })
+      if (!res.ok) throw new Error("Failed")
+      toast.success(`Fee due notice sent to ${row.student.name}'s parent`)
+    } catch (err) {
+      console.error(err)
+      toast.error("Failed to send")
+    }
+  }
+
   const handleDeleteAll = async (row) => {
     if (!confirm(`Delete the ${month} fee records for "${row.student.name}"? This cannot be undone.`)) return
     try {
@@ -227,7 +256,7 @@ export default function FeeManagementPage() {
       </style></head><body>
         <h2>Fee Report — ${month}</h2>
         <p class="sub">Grade ${grade} • Section ${section || "All"} • Session ${session || "All"}</p>
-        <p class="sub">Expected: Rs. ${summary.expected} · Collected: Rs. ${summary.collected} · Pending: Rs. ${summary.pending}</p>
+        <p class="sub">Expected: Rs. ${summary.expected} · Collected: Rs. ${summary.collected} • Pending: Rs. ${summary.pending}</p>
         <table>
           <thead><tr>
             <th>Roll No</th><th style="text-align:left">Name</th>
@@ -309,6 +338,7 @@ export default function FeeManagementPage() {
                   <th className="p-3 text-center font-semibold text-slate-700">Months Paid</th>
                   <th className="p-3 text-center font-semibold text-slate-700">Status</th>
                   <th className="p-3 text-center font-semibold text-slate-700">Action</th>
+                  <th className="p-3 text-center font-semibold text-slate-700">Notify</th>
                   <th className="p-3 text-center font-semibold text-slate-700">Delete</th>
                 </tr>
               </thead>
@@ -350,6 +380,14 @@ export default function FeeManagementPage() {
                           Remind
                         </button>
                       </div>
+                    </td>
+                    <td className="p-3 text-center">
+                      <button
+                        onClick={() => handleNotifyDue(r)}
+                        title={`Send fee due notice for ${month}`}
+                        className="w-8 h-8 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-600 flex items-center justify-center mx-auto">
+                        <BellRing size={14} />
+                      </button>
                     </td>
                     <td className="p-3 text-center">
                       <button
