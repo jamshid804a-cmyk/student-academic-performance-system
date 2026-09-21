@@ -16,8 +16,8 @@ const MONTHS = [
 const TEST_TYPES = ["Monthly", "Weekly", "Daily"]
 
 const STORAGE_KEY = "testing_filters_v1"
-const EXTRA_KEY = "testing_extra_subjects_v1"     // subjects added ONLY in Testing
-const HIDDEN_KEY = "testing_hidden_subjects_v1"   // exam subjects hidden ONLY in Testing
+const EXTRA_KEY = "testing_extra_subjects_v1"
+const HIDDEN_KEY = "testing_hidden_subjects_v1"
 
 const EXCLUDED_SUBJECTS = ["english", "urdu"]
 const isExcluded = (name) => EXCLUDED_SUBJECTS.includes(String(name || "").trim().toLowerCase())
@@ -47,9 +47,8 @@ export default function TestingPage() {
   const [newSubjectName, setNewSubjectName] = useState("")
   const [searchInput, setSearchInput] = useState("")
 
-  // Testing-only subject data (never touches the Examination section)
-  const [extraSubjects, setExtraSubjects] = useState({})   // { [studentId]: [names] }
-  const [hiddenSubjects, setHiddenSubjects] = useState({}) // { [studentId]: [names] }
+  const [extraSubjects, setExtraSubjects] = useState({})
+  const [hiddenSubjects, setHiddenSubjects] = useState({})
 
   useEffect(() => {
     try {
@@ -126,7 +125,6 @@ export default function TestingPage() {
 
   const monthKey = month ? monthNameToKey(month) : ""
 
-  // Per-student subjects: exam subjects (minus hidden / English / Urdu) + Testing-only extras
   const subjectsByStudent = useMemo(() => {
     const map = {}
 
@@ -149,7 +147,6 @@ export default function TestingPage() {
     return map
   }, [subjects, extraSubjects, hiddenSubjects])
 
-  // Table columns: only subjects that belong to the students currently listed
   const subjectColumns = useMemo(() => {
     const names = new Set()
     students.forEach((st) => {
@@ -158,8 +155,8 @@ export default function TestingPage() {
     return Array.from(names).sort()
   }, [students, subjectsByStudent])
 
-  // Adds a subject for Testing ONLY (no API call -> Examination is not affected)
-  const handleAddSubject = (studentId) => {
+  // Add subject (Testing only) — clears any old marks for this student/subject/month/testType
+  const handleAddSubject = async (studentId) => {
     const name = newSubjectName.trim()
     if (!name) return
     if (isExcluded(name)) { toast.error(`${name} is not allowed in Testing`); return }
@@ -170,15 +167,31 @@ export default function TestingPage() {
     )
     if (alreadyExists) { toast.error("Subject already exists for this student"); return }
 
+    // 🔥 Clear old marks so the subject starts fresh when re-added
+    try {
+      await fetch(
+        `/api/tests/by-subject?studentId=${encodeURIComponent(studentId)}` +
+        `&subject=${encodeURIComponent(name)}` +
+        `&month=${encodeURIComponent(monthKey)}` +
+        `&testType=${encodeURIComponent(testType)}`,
+        { method: "DELETE" }
+      )
+      setTests((prev) => {
+        const copy = { ...prev }
+        delete copy[`${studentId}__${name}`]
+        return copy
+      })
+    } catch (e) {
+      console.error("Failed to clear old marks:", e)
+    }
+
     setExtraSubjects((prev) => ({ ...prev, [sid]: [...(prev[sid] || []), name] }))
-    // if it was previously hidden, un-hide it
     setHiddenSubjects((prev) => ({ ...prev, [sid]: (prev[sid] || []).filter((n) => n !== name) }))
 
     setNewSubjectName(""); setAddingFor(null)
     toast.success("Subject added (Testing only)")
   }
 
-  // Removes a subject from Testing ONLY (does not delete anything from the database)
   const handleRemoveSubject = (studentId, subjectName) => {
     if (!confirm(`Remove subject "${subjectName}" from Testing for this student?`)) return
     const sid = String(studentId)
@@ -191,20 +204,27 @@ export default function TestingPage() {
     toast.success("Removed from Testing")
   }
 
-  const handleMarksChange = async (studentId, subjectName, value) => {
+  // Save EITHER obtained marks or total marks
+  const handleMarksChange = async (studentId, subjectName, field, value) => {
     const key = `${studentId}__${subjectName}`
-    setTests((prev) => ({ ...prev, [key]: { ...(prev[key] || {}), marks: value, totalMarks: prev[key]?.totalMarks ?? 100 } }))
+    setTests((prev) => {
+      const prevRec = prev[key] || { marks: "", totalMarks: 100 }
+      return { ...prev, [key]: { ...prevRec, [field]: value } }
+    })
     try {
+      const current = tests[key] || {}
+      const marks = field === "marks" ? value : current.marks
+      const totalMarks = field === "totalMarks" ? value : current.totalMarks
       await GlobalApi.SaveTest({
         studentId, grade, section, session, month: monthKey, testType,
-        subject: subjectName, marks: value, totalMarks: 100,
+        subject: subjectName, marks, totalMarks,
       })
       const testResp = await GlobalApi.GetTests({ grade, section, session, month: monthKey, testType })
-      const marks = {}
+      const marksMap = {}
       ;(testResp.data || []).forEach((t) => {
-        marks[`${t.studentId}__${t.subject}`] = { marks: t.marks, totalMarks: t.totalMarks, percentage: t.percentage }
+        marksMap[`${t.studentId}__${t.subject}`] = { marks: t.marks, totalMarks: t.totalMarks, percentage: t.percentage }
       })
-      setTests(marks)
+      setTests(marksMap)
     } catch (err) { console.error(err); toast.error("Failed to save marks") }
   }
 
@@ -218,10 +238,11 @@ export default function TestingPage() {
       mySubjects.forEach((sub) => {
         const record = tests[`${s.id}__${sub.name}`]
         if (record && record.marks !== undefined && record.marks !== "") {
-          const pct = record.percentage ?? Math.round((record.marks / (record.totalMarks || 100)) * 100)
-          studentMarks[sub.name] = { marks: record.marks, percentage: pct }
+          const tot = Number(record.totalMarks) || 100
+          const pct = record.percentage ?? Math.round((Number(record.marks) / tot) * 100)
+          studentMarks[sub.name] = { marks: record.marks, totalMarks: record.totalMarks, percentage: pct }
           totalPct += pct; count++
-          if (pct < 50) { hasLow = true; lowSubjects.push({ subject: sub.name, percentage: pct, marks: record.marks }) }
+          if (pct < 50) { hasLow = true; lowSubjects.push({ subject: sub.name, percentage: pct, marks: record.marks, totalMarks: tot }) }
         } else { studentMarks[sub.name] = null }
       })
 
@@ -242,7 +263,9 @@ export default function TestingPage() {
 
   const handleSend = async (row) => {
     if (row.lowSubjects.length === 0) { toast.info("No subjects below 50%"); return }
-    const lines = row.lowSubjects.map((s) => `${s.subject}: ${s.marks}/100 (${s.percentage}%)`).join(", ")
+    const lines = row.lowSubjects
+      .map((s) => `${s.subject}: ${s.marks}/${s.totalMarks} (${s.percentage}%)`)
+      .join(", ")
     const message = `Dear Parent, your child ${row.student.name} scored below 50% in: ${lines} for the ${testType} test in ${month}.`
     try {
       await fetch("/api/notifications", {
@@ -259,7 +282,6 @@ export default function TestingPage() {
   return (
     <div className="p-7 animate-page-in">
 
-      {/* Header */}
       <div className="flex items-center gap-3 mb-6">
         <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-blue-500 to-cyan-600 text-white flex items-center justify-center shadow-md hover:scale-110 transition-transform duration-300">
           <FlaskConical size={24} />
@@ -270,7 +292,6 @@ export default function TestingPage() {
         </div>
       </div>
 
-      {/* Filters */}
       <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg border border-slate-100 dark:border-slate-700 p-5 mb-5">
         <div className="flex items-center gap-2 mb-3">
           <div className="w-1.5 h-5 rounded-full bg-gradient-to-b from-blue-500 to-cyan-500" />
@@ -299,7 +320,6 @@ export default function TestingPage() {
         </div>
       </div>
 
-      {/* Table */}
       {loading ? (
         <div className="flex justify-center py-16 text-slate-400">
           <LoaderIcon className="animate-spin mr-2" /> Loading...
@@ -314,7 +334,6 @@ export default function TestingPage() {
         </div>
       ) : (
         <>
-          {/* Search bar */}
           <div className="flex justify-end mb-3">
             <div className="flex items-center gap-2 border border-slate-200 dark:border-slate-600 rounded-xl px-4 py-2.5 shadow-sm bg-white dark:bg-slate-800 focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-100 dark:focus-within:ring-blue-900/40 transition-all">
               <Search size={16} className="text-slate-400" />
@@ -358,18 +377,27 @@ export default function TestingPage() {
                             return <td key={name} className="px-4 py-3 text-center text-slate-300 dark:text-slate-600">—</td>
                           }
                           const cell = row.subjectMarks[name]
+                          const pct = cell?.percentage ?? 0
                           return (
                             <td key={name} className="px-2 py-2 text-center">
                               <div className="flex items-center justify-center gap-1">
                                 <input
-                                  type="number" min="0" max="100"
+                                  type="number" min="0"
                                   value={cell?.marks ?? ""}
-                                  onChange={(e) => handleMarksChange(row.student.id, name, e.target.value)}
-                                  placeholder="—"
-                                  className={`w-16 px-2 py-1.5 rounded-lg border text-center text-sm font-semibold outline-none transition
-                                    ${cell && cell.percentage < 50
+                                  onChange={(e) => handleMarksChange(row.student.id, name, "marks", e.target.value)}
+                                  placeholder="obt"
+                                  className={`w-12 px-1 py-1.5 rounded-lg border text-center text-xs font-semibold outline-none transition
+                                    ${cell && pct < 50
                                       ? "border-red-400 bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-300 dark:border-red-700"
                                       : "border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:border-blue-500"}`}
+                                />
+                                <span className="text-slate-400 text-xs font-bold">/</span>
+                                <input
+                                  type="number" min="0"
+                                  value={cell?.totalMarks ?? ""}
+                                  onChange={(e) => handleMarksChange(row.student.id, name, "totalMarks", e.target.value)}
+                                  placeholder="tot"
+                                  className="w-12 px-1 py-1.5 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-center text-xs font-semibold text-slate-800 dark:text-slate-100 outline-none"
                                 />
                                 <button
                                   onClick={() => handleRemoveSubject(row.student.id, name)}
