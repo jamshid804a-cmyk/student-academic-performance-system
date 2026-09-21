@@ -33,7 +33,7 @@ export async function GET(req) {
   }
 }
 
-// ✅ POST — save notification (attendance or academic)
+// ✅ POST — save notification (attendance, academic, or fee)
 export async function POST(req) {
   try {
     const data = await req.json();
@@ -50,14 +50,14 @@ export async function POST(req) {
     const db = await getDb();
     const collection = db.collection("notifications");
 
-    // Duplicate check for attendance type
-    if (!isAcademic) {
+    // ✅ Duplicate check ONLY for attendance (not academic, not fee)
+    if (type === "attendance") {
       const existing = await collection.findOne({
         studentId: String(studentId),
         blockNumber: Number(blockNumber),
         weekStart: Number(weekStart),
         weekEnd: Number(weekEnd),
-        type: { $ne: "academic" },
+        type: "attendance",
       });
 
       if (existing) {
