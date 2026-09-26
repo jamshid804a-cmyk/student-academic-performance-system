@@ -137,6 +137,7 @@ function StudentListTable({ StudentList, refreshData, students }) {
     const [promoteLoading, setPromoteLoading] = useState(false)
     const [promoteSession, setPromoteSession] = useState("")
     const [promoteProgress, setPromoteProgress] = useState({ current: 0, total: 0 })
+    const [renumbering, setRenumbering] = useState(false)
 
     useEffect(() => {
         let mounted = true
@@ -190,8 +191,10 @@ function StudentListTable({ StudentList, refreshData, students }) {
     // When search box has text:
     //   → Search across ALL sessions, grades, sections
     //   → Ignore all dropdown filters
-    //   → Match against name, fatherName, admission no (any field-name
-    //     variant), roll no (any field-name variant), id / _id
+    //   → Match against EVERY top-level field on the student object
+    //     (name, admission no, roll no, contact, id, etc.) — this way
+    //     it doesn't matter what your database actually calls the
+    //     admission-number or roll-number field, it will still match.
     //
     // When search box is empty:
     //   → Apply grade / section / session filters
@@ -203,29 +206,11 @@ function StudentListTable({ StudentList, refreshData, students }) {
         // ─── SEARCH MODE ───
         if (q.length > 0) {
             return rowData.filter((s) => {
-                const fields = [
-                    s.name,
-                    s.fatherName,
-                    // admission number — cover every likely field-name spelling
-                    s.admissionNo,
-                    s.admissionNumber,
-                    s.admission_no,
-                    s.admission_number,
-                    s.AdmissionNo,
-                    // roll number — cover every likely field-name spelling
-                    s.rollNo,
-                    s.rollNumber,
-                    s.roll_no,
-                    s.roll_number,
-                    s.RollNo,
-                    // ids
-                    s.id,
-                    s._id,
-                ]
-                    .filter((v) => v !== null && v !== undefined && v !== "")
-                    .map((v) => String(v).toLowerCase().trim())
-
-                return fields.some((v) => v.includes(q))
+                return Object.values(s).some((v) => {
+                    if (v === null || v === undefined) return false
+                    if (typeof v === "object") return false // skip nested objects/arrays/images
+                    return String(v).toLowerCase().includes(q)
+                })
             })
         }
 
@@ -247,11 +232,50 @@ function StudentListTable({ StudentList, refreshData, students }) {
         return Array.from(set).sort()
     }, [rowData])
 
+    // ─────────────────────────────────────────────
+    // ✅ Keep admission numbers sequential (1, 2, 3...)
+    // Runs automatically right after any delete, so there are
+    // never gaps in the admission-number sequence.
+    // ─────────────────────────────────────────────
+    const renumberAdmissionNumbers = async (remainingStudents) => {
+        const sorted = [...remainingStudents].sort((a, b) => {
+            const an = Number(a.admissionNo) || 0
+            const bn = Number(b.admissionNo) || 0
+            return an - bn
+        })
+
+        const updates = []
+        sorted.forEach((s, idx) => {
+            const expected = idx + 1
+            if (Number(s.admissionNo) !== expected) {
+                updates.push(
+                    GlobalApi.UpdateStudentRecord(s.id, { admissionNo: expected })
+                )
+            }
+        })
+
+        if (updates.length > 0) {
+            setRenumbering(true)
+            try {
+                await Promise.all(updates)
+            } catch (err) {
+                console.error("Renumbering admission numbers failed:", err)
+                toast.error("Some admission numbers could not be renumbered")
+            } finally {
+                setRenumbering(false)
+            }
+        }
+    }
+
     const DeleteRecord = async (id) => {
         try {
             const resp = await GlobalApi.DeleteStudentRecord(id)
             if (resp?.data?.success && (resp.data.deletedCount ?? 1) > 0) {
                 toast.success("Record Deleted Successfully")
+
+                const remaining = rowData.filter((s) => s.id !== id)
+                await renumberAdmissionNumbers(remaining)
+
                 refreshData()
             } else {
                 toast.error(resp?.data?.error || "Student not found")
@@ -735,7 +759,14 @@ function StudentListTable({ StudentList, refreshData, students }) {
             cellStyle: { display: 'flex', alignItems: 'center', fontWeight: '600', color: '#6366f1' },
         },
         { field: "rollNo", headerName: "Roll No", filter: true, width: 100 },
-        { field: "admissionNo", headerName: "Admission No", filter: true, width: 140 },
+        {
+            field: "admissionNo",
+            headerName: "Admission No",
+            filter: true,
+            width: 140,
+            sort: 'asc',              // ← table opens sorted by admission no ascending
+            comparator: (a, b) => (Number(a) || 0) - (Number(b) || 0),
+        },
         {
             field: "name",
             headerName: "Student Name",
@@ -790,6 +821,7 @@ function StudentListTable({ StudentList, refreshData, students }) {
                             <p className="text-xs text-blue-100 mt-0.5">
                                 {filteredData.length} {filteredData.length === 1 ? "student" : "students"}
                                 {schoolName ? ` • ${schoolName}` : ""}
+                                {renumbering ? " • updating admission numbers…" : ""}
                             </p>
                         </div>
                     </div>
