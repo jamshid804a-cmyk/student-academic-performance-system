@@ -119,6 +119,7 @@ const ImageCellRenderer = (props) => {
 function StudentListTable({ StudentList, refreshData, students }) {
     const [rowData, setRowData] = useState([])
     const [searchInput, setSearchInput] = useState("")
+    const [debouncedSearch, setDebouncedSearch] = useState("")
     const [selectedStudent, setSelectedStudent] = useState(null)
     const [viewOpen, setViewOpen] = useState(false)
     const [editStudent, setEditStudent] = useState(null)
@@ -165,6 +166,12 @@ function StudentListTable({ StudentList, refreshData, students }) {
         if (StudentList) setRowData(StudentList)
     }, [StudentList])
 
+    // Debounce search input so we don't re-filter on every single keystroke
+    useEffect(() => {
+        const t = setTimeout(() => setDebouncedSearch(searchInput), 150)
+        return () => clearTimeout(t)
+    }, [searchInput])
+
     const newestSession = useMemo(() => {
         const sessions = rowData
             .map((s) => String(s.session || "").trim())
@@ -183,14 +190,15 @@ function StudentListTable({ StudentList, refreshData, students }) {
     // When search box has text:
     //   → Search across ALL sessions, grades, sections
     //   → Ignore all dropdown filters
-    //   → Match against name, fatherName, admissionNo, rollNo, id
+    //   → Match against name, fatherName, admission no (any field-name
+    //     variant), roll no (any field-name variant), id / _id
     //
     // When search box is empty:
     //   → Apply grade / section / session filters
     //   → Default to newest session
     // ─────────────────────────────────────────────
     const filteredData = useMemo(() => {
-        const q = searchInput.trim().toLowerCase()
+        const q = debouncedSearch.trim().toLowerCase()
 
         // ─── SEARCH MODE ───
         if (q.length > 0) {
@@ -198,12 +206,24 @@ function StudentListTable({ StudentList, refreshData, students }) {
                 const fields = [
                     s.name,
                     s.fatherName,
+                    // admission number — cover every likely field-name spelling
                     s.admissionNo,
+                    s.admissionNumber,
+                    s.admission_no,
+                    s.admission_number,
+                    s.AdmissionNo,
+                    // roll number — cover every likely field-name spelling
                     s.rollNo,
+                    s.rollNumber,
+                    s.roll_no,
+                    s.roll_number,
+                    s.RollNo,
+                    // ids
                     s.id,
+                    s._id,
                 ]
                     .filter((v) => v !== null && v !== undefined && v !== "")
-                    .map((v) => String(v).toLowerCase())
+                    .map((v) => String(v).toLowerCase().trim())
 
                 return fields.some((v) => v.includes(q))
             })
@@ -218,7 +238,7 @@ function StudentListTable({ StudentList, refreshData, students }) {
             if (effectiveSession && !sameText(s.session, effectiveSession)) return false
             return true
         })
-    }, [rowData, gradeFilter, sectionFilter, sessionFilter, newestSession, searchInput])
+    }, [rowData, gradeFilter, sectionFilter, sessionFilter, newestSession, debouncedSearch])
 
     const sessionOptions = useMemo(() => {
         const set = new Set()
@@ -888,6 +908,7 @@ function StudentListTable({ StudentList, refreshData, students }) {
 
                 <div className="ag-theme-quartz" style={{ height: 580, width: '100%' }}>
                     <AgGridReact
+                        getRowId={(params) => String(params.data?.id ?? params.data?._id)}
                         rowData={filteredData}
                         columnDefs={colDefs}
                         defaultColDef={defaultColDef}
