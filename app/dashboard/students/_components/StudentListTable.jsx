@@ -187,17 +187,26 @@ function StudentListTable({ StudentList, refreshData, students }) {
         })[0]
     }, [rowData])
 
-    // Filtered data — grade/section/session filters + smart search
+    // ─────────────────────────────────────────────
+    // ✅ Filtered data
+    //
+    // MODE 1 — SEARCHING (search box has text):
+    //   → Ignore grade/section/session filters
+    //   → Search across ALL records in ALL sessions
+    //   → Matches name, father name, father occupation,
+    //     admission no, roll no, id, session, grade,
+    //     section, contact, address
+    //
+    // MODE 2 — NOT SEARCHING:
+    //   → Apply grade + section + session filters
+    //   → If no session selected, show newest session only
+    // ─────────────────────────────────────────────
     const filteredData = useMemo(() => {
-        const effectiveSession = sessionFilter || newestSession
         const q = searchInput.trim().toLowerCase()
+        const isSearching = q.length > 0
 
-        return rowData.filter((s) => {
-            if (gradeFilter && !sameGrade(s.grade, gradeFilter)) return false
-            if (sectionFilter && !sameText(s.section, sectionFilter)) return false
-            if (effectiveSession && !sameText(s.session, effectiveSession)) return false
-
-            if (q) {
+        if (isSearching) {
+            return rowData.filter((s) => {
                 const haystack = [
                     s.name,
                     s.fatherName,
@@ -215,9 +224,16 @@ function StudentListTable({ StudentList, refreshData, students }) {
                     .map((v) => String(v).toLowerCase())
                     .join(" ")
 
-                if (!haystack.includes(q)) return false
-            }
+                return haystack.includes(q)
+            })
+        }
 
+        const effectiveSession = sessionFilter || newestSession
+
+        return rowData.filter((s) => {
+            if (gradeFilter && !sameGrade(s.grade, gradeFilter)) return false
+            if (sectionFilter && !sameText(s.section, sectionFilter)) return false
+            if (effectiveSession && !sameText(s.session, effectiveSession)) return false
             return true
         })
     }, [rowData, gradeFilter, sectionFilter, sessionFilter, newestSession, searchInput])
@@ -329,7 +345,7 @@ function StudentListTable({ StudentList, refreshData, students }) {
             }
 
             try {
-                const resp = await GlobalApi.CreateNewStudent(payload)
+                await GlobalApi.CreateNewStudent(payload)
                 if (nextGrade === "Graduated") graduated++
                 else created++
             } catch (err) {
@@ -372,12 +388,16 @@ function StudentListTable({ StudentList, refreshData, students }) {
 
     const reportTitle = useMemo(() => {
         const bits = []
-        if (gradeFilter) bits.push(`Grade: ${gradeFilter}`)
-        if (sectionFilter) bits.push(`Section: ${sectionFilter}`)
-        if (sessionFilter) bits.push(`Session: ${sessionFilter}`)
-        else if (newestSession) bits.push(`Session: ${newestSession}`)
+        if (searchInput) {
+            bits.push(`Search: "${searchInput}"`)
+        } else {
+            if (gradeFilter) bits.push(`Grade: ${gradeFilter}`)
+            if (sectionFilter) bits.push(`Section: ${sectionFilter}`)
+            if (sessionFilter) bits.push(`Session: ${sessionFilter}`)
+            else if (newestSession) bits.push(`Session: ${newestSession}`)
+        }
         return bits.length ? `Student Report — ${bits.join(" | ")}` : "Student Report"
-    }, [gradeFilter, sectionFilter, sessionFilter, newestSession])
+    }, [gradeFilter, sectionFilter, sessionFilter, newestSession, searchInput])
 
     const EXPORT_COLUMNS = [
         { key: "id",            label: "ID" },
@@ -809,9 +829,10 @@ function StudentListTable({ StudentList, refreshData, students }) {
                         <div>
                             <h2 className="text-xl font-bold tracking-tight">Student Records</h2>
                             <p className="text-xs text-blue-100 mt-0.5">
-                                {filteredData.length} {filteredData.length === 1 ? "student" : "students"}
-                                {searchInput ? ` (searching "${searchInput}")` : ""}
-                                {!searchInput && !sessionFilter && newestSession ? ` • Latest session (${newestSession})` : ""}
+                                {filteredData.length} {filteredData.length === 1 ? "record" : "records"}
+                                {searchInput
+                                    ? ` matching "${searchInput}" (all sessions)`
+                                    : (!sessionFilter && newestSession ? ` • Latest session (${newestSession})` : "")}
                                 {!searchInput && sessionFilter ? ` • ${sessionFilter}` : ""}
                                 {schoolName ? ` • ${schoolName}` : ""}
                             </p>
@@ -890,7 +911,13 @@ function StudentListTable({ StudentList, refreshData, students }) {
                         {SECTIONS.map((s) => (<option key={s} value={s}>{s}</option>))}
                     </select>
 
-                    <select className={FILTER_CLASS} value={sessionFilter} onChange={(e) => setSessionFilter(e.target.value)}>
+                    <select
+                        className={FILTER_CLASS}
+                        value={sessionFilter}
+                        onChange={(e) => setSessionFilter(e.target.value)}
+                        disabled={!!searchInput}
+                        title={searchInput ? "Session filter is disabled while searching" : ""}
+                    >
                         <option value="">
                             {newestSession ? `Latest (${newestSession})` : "All Sessions"}
                         </option>
@@ -906,7 +933,7 @@ function StudentListTable({ StudentList, refreshData, students }) {
                         </button>
                     )}
 
-                    {/* Working search box */}
+                    {/* Search box — searches across ALL sessions, grades, sections */}
                     <div className="ml-auto flex items-center gap-2 border border-slate-200 dark:border-slate-600 rounded-xl px-4 py-2.5 shadow-sm bg-white dark:bg-slate-800 focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-100 dark:focus-within:ring-blue-900/40 transition-all duration-200">
                         <Search size={18} className="text-slate-400" />
                         <input
@@ -927,6 +954,14 @@ function StudentListTable({ StudentList, refreshData, students }) {
                         )}
                     </div>
                 </div>
+
+                {/* Info banner when searching */}
+                {searchInput && (
+                    <div className="mt-3 px-3 py-2 rounded-lg bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 text-xs text-blue-700 dark:text-blue-300 flex items-center gap-2">
+                        <Search size={13} />
+                        Searching across <strong>all sessions, grades & sections</strong> — showing every record matching <strong>"{searchInput}"</strong>
+                    </div>
+                )}
             </div>
 
             {/* ─── Table card ─── */}
