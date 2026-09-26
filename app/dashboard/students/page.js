@@ -1,6 +1,5 @@
 'use client'
 
-
 import React, { useEffect, useState } from 'react'
 import AddNewStudent from './_components/AddNewStudent'
 import StudentListTable from './_components/StudentListTable'
@@ -16,10 +15,9 @@ function Students() {
 
             const students = Array.isArray(resp.data) ? resp.data : []
 
-            // ⚠️ DO NOT invent a fake id. Keep the real one from MongoDB.
+            // Keep the real id from MongoDB
             const processed = students.map((student) => ({
                 ...student,
-                // Prefer numeric id, then MongoDB _id as string
                 id: student.id ?? student._id ?? null,
                 contact: student.contact || '',
             }))
@@ -45,6 +43,7 @@ function Students() {
             <StudentListTable
                 StudentList={studentList}
                 refreshData={GetAllStudents}
+                students={studentList}
             />
         </div>
     )
