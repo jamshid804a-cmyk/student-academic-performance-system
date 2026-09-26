@@ -55,24 +55,23 @@ function AddNewStudent({ refreshData, students = [] }) {
         setImagePreview(null)
     }
 
-    // ✅ Check if roll number already exists for the same grade + section + session
+    // ✅ Client-side duplicate check: rollNo within grade+section+session
     const isRollNoDuplicate = (rollNo, grade, section, session) => {
         if (!rollNo || !grade) return false
         return students.some((s) => {
             const sameRoll = Number(s.rollNo) === Number(rollNo)
-            const sameGrade = s.grade === grade
-            // Section & session check — only compare if both are provided
-            const sameSection = section ? s.section === section : true
-            const sameSession = session ? s.session === session : true
+            const sameGrade = String(s.grade || "").trim().toLowerCase() === String(grade).trim().toLowerCase()
+            const sameSection = section ? String(s.section || "").trim() === String(section).trim() : true
+            const sameSession = session ? String(s.session || "").trim() === String(session).trim() : true
             return sameRoll && sameGrade && sameSection && sameSession
         })
     }
 
-    // ✅ Check if admission number already exists
+    // ✅ Client-side duplicate check: admissionNo
     const isAdmissionNoDuplicate = (admissionNo) => {
         if (!admissionNo) return false
         return students.some(
-            (s) => String(s.admissionNo).trim() === String(admissionNo).trim()
+            (s) => String(s.admissionNo || "").trim() === String(admissionNo).trim()
         )
     }
 
@@ -82,7 +81,7 @@ function AddNewStudent({ refreshData, students = [] }) {
             return
         }
 
-        // ✅ Duplicate Roll No check
+        // Client-side duplicate checks (instant feedback)
         if (data.rollNo && isRollNoDuplicate(data.rollNo, data.grade, data.section, data.session)) {
             toast.error(
                 `Roll No ${data.rollNo} already exists for Grade ${data.grade}` +
@@ -92,7 +91,6 @@ function AddNewStudent({ refreshData, students = [] }) {
             return
         }
 
-        // ✅ Duplicate Admission No check
         if (data.admissionNo && isAdmissionNoDuplicate(data.admissionNo)) {
             toast.error(`Admission No ${data.admissionNo} already exists`)
             return
@@ -114,7 +112,7 @@ function AddNewStudent({ refreshData, students = [] }) {
                 admissionDate: data.admissionDate || null,
                 fee: data.fee ? Number(data.fee) : 0,
                 address: data.address || "",
-                image: imageFile,
+                image: imagePreview, // ✅ base64 string
             }
 
             console.log("Sending payload:", payload)
@@ -210,6 +208,7 @@ function AddNewStudent({ refreshData, students = [] }) {
                         </div>
 
                         <div className="grid grid-cols-2 gap-4">
+
                             {/* Student Name */}
                             <div>
                                 <label className={labelClass}>
@@ -407,6 +406,7 @@ function AddNewStudent({ refreshData, students = [] }) {
                                     {...register("address")}
                                 />
                             </div>
+
                         </div>
 
                         {/* Footer */}
