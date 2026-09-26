@@ -30,9 +30,6 @@ const pagination = true
 const paginationPageSize = 10
 const paginationPageSizeSelector = [10, 20, 25, 100]
 
-// ─────────────────────────────────────────────
-// Constants
-// ─────────────────────────────────────────────
 const GRADES = [
     "Nursery",
     "Prep",
@@ -97,9 +94,6 @@ function sameText(a, b) {
 const FILTER_CLASS =
   "px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-sm text-slate-800 dark:text-slate-100 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 dark:focus:ring-blue-900/40 transition-all"
 
-// ─────────────────────────────────────────────
-// Image cell renderer
-// ─────────────────────────────────────────────
 const ImageCellRenderer = (props) => {
     const student = props.data
     const src = student?.image || null
@@ -138,13 +132,11 @@ function StudentListTable({ StudentList, refreshData, students }) {
     const [exportOpen, setExportOpen] = useState(false)
     const dropdownRef = useRef(null)
 
-    // Promote state
     const [promoteOpen, setPromoteOpen] = useState(false)
     const [promoteLoading, setPromoteLoading] = useState(false)
     const [promoteSession, setPromoteSession] = useState("")
     const [promoteProgress, setPromoteProgress] = useState({ current: 0, total: 0 })
 
-    // Load school info
     useEffect(() => {
         let mounted = true
         const load = async () => {
@@ -159,7 +151,6 @@ function StudentListTable({ StudentList, refreshData, students }) {
         return () => { mounted = false }
     }, [])
 
-    // Close dropdown on outside click
     useEffect(() => {
         const onClick = (e) => {
             if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
@@ -174,7 +165,6 @@ function StudentListTable({ StudentList, refreshData, students }) {
         if (StudentList) setRowData(StudentList)
     }, [StudentList])
 
-    // Find the newest session in the data
     const newestSession = useMemo(() => {
         const sessions = rowData
             .map((s) => String(s.session || "").trim())
@@ -188,26 +178,23 @@ function StudentListTable({ StudentList, refreshData, students }) {
     }, [rowData])
 
     // ─────────────────────────────────────────────
-    // Simple, clean filter
-    //   - Search term matches name, father name, admissionNo, rollNo, id
-    //   - Grade / Section / Session filters apply
+    // ✅ Filtering + Search
+    //
+    // When search box has text:
+    //   → Search across ALL sessions, grades, sections
+    //   → Ignore all dropdown filters
+    //   → Match against name, fatherName, admissionNo, rollNo, id
+    //
+    // When search box is empty:
+    //   → Apply grade / section / session filters
+    //   → Default to newest session
     // ─────────────────────────────────────────────
     const filteredData = useMemo(() => {
         const q = searchInput.trim().toLowerCase()
-        const effectiveSession = sessionFilter || newestSession
 
-        return rowData.filter((s) => {
-            // Grade filter
-            if (gradeFilter && !sameGrade(s.grade, gradeFilter)) return false
-
-            // Section filter
-            if (sectionFilter && !sameText(s.section, sectionFilter)) return false
-
-            // Session filter (default = newest)
-            if (effectiveSession && !sameText(s.session, effectiveSession)) return false
-
-            // Search: match against name, father name, admissionNo, rollNo, id
-            if (q) {
+        // ─── SEARCH MODE ───
+        if (q.length > 0) {
+            return rowData.filter((s) => {
                 const fields = [
                     s.name,
                     s.fatherName,
@@ -218,10 +205,17 @@ function StudentListTable({ StudentList, refreshData, students }) {
                     .filter((v) => v !== null && v !== undefined && v !== "")
                     .map((v) => String(v).toLowerCase())
 
-                const matches = fields.some((v) => v.includes(q))
-                if (!matches) return false
-            }
+                return fields.some((v) => v.includes(q))
+            })
+        }
 
+        // ─── NORMAL FILTER MODE ───
+        const effectiveSession = sessionFilter || newestSession
+
+        return rowData.filter((s) => {
+            if (gradeFilter && !sameGrade(s.grade, gradeFilter)) return false
+            if (sectionFilter && !sameText(s.section, sectionFilter)) return false
+            if (effectiveSession && !sameText(s.session, effectiveSession)) return false
             return true
         })
     }, [rowData, gradeFilter, sectionFilter, sessionFilter, newestSession, searchInput])
@@ -251,9 +245,6 @@ function StudentListTable({ StudentList, refreshData, students }) {
     const handleView = (data) => { setSelectedStudent(data); setViewOpen(true) }
     const handleEditClick = (data) => { setEditStudent(data); setEditOpen(true) }
 
-    // ─────────────────────────────────────────────
-    // Promote
-    // ─────────────────────────────────────────────
     const openPromoteDialog = () => {
         const sessions = rowData.map(s => s.session).filter(Boolean)
         const counts = {}
@@ -357,9 +348,6 @@ function StudentListTable({ StudentList, refreshData, students }) {
         setPromoteProgress({ current: 0, total: 0 })
     }
 
-    // ─────────────────────────────────────────────
-    // Export/Print
-    // ─────────────────────────────────────────────
     const schoolName = schoolInfo?.schoolName || schoolInfo?.name || "School"
     const schoolAddress = schoolInfo?.address || ""
     const schoolPhone = schoolInfo?.phone || schoolInfo?.contact || ""
@@ -367,11 +355,14 @@ function StudentListTable({ StudentList, refreshData, students }) {
 
     const reportTitle = useMemo(() => {
         const bits = []
-        if (gradeFilter) bits.push(`Grade: ${gradeFilter}`)
-        if (sectionFilter) bits.push(`Section: ${sectionFilter}`)
-        if (sessionFilter) bits.push(`Session: ${sessionFilter}`)
-        else if (newestSession) bits.push(`Session: ${newestSession}`)
-        if (searchInput) bits.push(`Search: "${searchInput}"`)
+        if (searchInput) {
+            bits.push(`Search: "${searchInput}"`)
+        } else {
+            if (gradeFilter) bits.push(`Grade: ${gradeFilter}`)
+            if (sectionFilter) bits.push(`Section: ${sectionFilter}`)
+            if (sessionFilter) bits.push(`Session: ${sessionFilter}`)
+            else if (newestSession) bits.push(`Session: ${newestSession}`)
+        }
         return bits.length ? `Student Report — ${bits.join(" | ")}` : "Student Report"
     }, [gradeFilter, sectionFilter, sessionFilter, newestSession, searchInput])
 
@@ -505,7 +496,6 @@ function StudentListTable({ StudentList, refreshData, students }) {
 
     const handleExportPDF = () => {
         setExportOpen(false)
-
         try {
             const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' })
             const pageWidth = doc.internal.pageSize.getWidth()
@@ -644,7 +634,6 @@ function StudentListTable({ StudentList, refreshData, students }) {
         toast.success("CSV file downloaded")
     }
 
-    // ─── Action buttons ───
     const CustomButtons = (props) => (
         <div className="flex items-center gap-1.5 h-full">
             <button
@@ -768,7 +757,6 @@ function StudentListTable({ StudentList, refreshData, students }) {
     return (
         <div className="my-6 animate-page-in">
 
-            {/* Header card */}
             <div className="bg-gradient-to-r from-indigo-500 via-blue-600 to-cyan-600 rounded-2xl shadow-lg p-5 mb-5 text-white relative z-20 overflow-visible">
                 <div className="absolute inset-0 opacity-10 bg-[radial-gradient(circle_at_20%_20%,white_0%,transparent_60%)] pointer-events-none" />
 
@@ -843,7 +831,6 @@ function StudentListTable({ StudentList, refreshData, students }) {
                 </div>
             </div>
 
-            {/* Filter bar */}
             <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 p-3 mb-4 relative z-0">
                 <div className="flex flex-wrap items-center gap-2">
                     <GraduationCap size={16} className="text-slate-400" />
@@ -874,7 +861,6 @@ function StudentListTable({ StudentList, refreshData, students }) {
                         </button>
                     )}
 
-                    {/* Search box */}
                     <div className="ml-auto flex items-center gap-2 border border-slate-200 dark:border-slate-600 rounded-xl px-4 py-2.5 shadow-sm bg-white dark:bg-slate-800 focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-100 dark:focus-within:ring-blue-900/40 transition-all duration-200">
                         <Search size={18} className="text-slate-400" />
                         <input
@@ -897,7 +883,6 @@ function StudentListTable({ StudentList, refreshData, students }) {
                 </div>
             </div>
 
-            {/* Table card */}
             <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg border border-slate-100 dark:border-slate-700 overflow-hidden relative z-0">
                 <div className="h-1 bg-gradient-to-r from-indigo-500 via-blue-500 to-cyan-500" />
 
@@ -930,7 +915,6 @@ function StudentListTable({ StudentList, refreshData, students }) {
                 students={students || rowData}
             />
 
-            {/* Promote dialog */}
             {promoteOpen && (
                 <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
                     <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden">
