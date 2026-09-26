@@ -38,12 +38,15 @@ export async function GET(req) {
 }
 
 // ─────────────────────────────────────────────
-// POST - Add a new student (with duplicate checks)
+// POST - Add a new student
+//   - Normal add: blocks duplicates
+//   - Promotion (isPromotion: true): skips duplicate checks
 // ─────────────────────────────────────────────
 export async function POST(req) {
   try {
     const data = await req.json();
     console.log("Received student data:", data);
+    console.log("isPromotion flag:", data.isPromotion);
 
     // ─── Basic validation ───
     if (!data.name || !data.grade) {
@@ -56,8 +59,9 @@ export async function POST(req) {
     const db = await getDb();
     const students = db.collection("students");
 
-    // ─── Duplicate Admission No check ───
+    // ─── Duplicate Admission No check (SKIP if promotion) ───
     if (
+      !data.isPromotion &&
       data.admissionNo !== null &&
       data.admissionNo !== undefined &&
       data.admissionNo !== ""
@@ -73,8 +77,9 @@ export async function POST(req) {
       }
     }
 
-    // ─── Duplicate Roll No check (same grade + section + session) ───
+    // ─── Duplicate Roll No check (SKIP if promotion) ───
     if (
+      !data.isPromotion &&
       data.rollNo !== null &&
       data.rollNo !== undefined &&
       data.rollNo !== ""
