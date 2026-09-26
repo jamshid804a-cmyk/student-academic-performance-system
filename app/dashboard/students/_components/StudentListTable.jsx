@@ -51,12 +51,10 @@ function getNextGrade(current) {
     if (!raw) return null
     if (raw === "graduated") return null
 
-    // Exact match first
     let i = PROMOTION_ORDER.findIndex(
         (g) => String(g).trim().toLowerCase() === raw
     )
 
-    // Fallback: match leading number ("1" → "1st", "12" → "12th")
     if (i === -1) {
         const numMatch = raw.match(/^(\d+)/)
         if (numMatch) {
@@ -175,14 +173,30 @@ function StudentListTable({ StudentList, refreshData, students }) {
         if (StudentList) setRowData(StudentList)
     }, [StudentList])
 
+    // ✅ Find the newest session in the data
+    const newestSession = useMemo(() => {
+        const sessions = rowData
+            .map((s) => String(s.session || "").trim())
+            .filter(Boolean)
+        if (sessions.length === 0) return ""
+        return sessions.sort((a, b) => {
+            const aYear = Number(String(a).match(/^(\d{4})/)?.[1] || 0)
+            const bYear = Number(String(b).match(/^(\d{4})/)?.[1] || 0)
+            return bYear - aYear
+        })[0]
+    }, [rowData])
+
+    // ✅ Filtered data — shows newest session when "All Sessions" is selected
     const filteredData = useMemo(() => {
+        const effectiveSession = sessionFilter || newestSession
+
         return rowData.filter((s) => {
             if (gradeFilter && !sameGrade(s.grade, gradeFilter)) return false
             if (sectionFilter && !sameText(s.section, sectionFilter)) return false
-            if (sessionFilter && !sameText(s.session, sessionFilter)) return false
+            if (effectiveSession && !sameText(s.session, effectiveSession)) return false
             return true
         })
-    }, [rowData, gradeFilter, sectionFilter, sessionFilter])
+    }, [rowData, gradeFilter, sectionFilter, sessionFilter, newestSession])
 
     const sessionOptions = useMemo(() => {
         const set = new Set()
@@ -227,13 +241,19 @@ function StudentListTable({ StudentList, refreshData, students }) {
             return
         }
 
-        if (!rowData || rowData.length === 0) {
+        // Only promote students from the newest/current session
+        const sourceSession = sessionFilter || newestSession
+        const studentsToPromote = rowData.filter(
+            (s) => !sourceSession || sameText(s.session, sourceSession)
+        )
+
+        if (studentsToPromote.length === 0) {
             toast.error("No students to promote")
             return
         }
 
         setPromoteLoading(true)
-        setPromoteProgress({ current: 0, total: rowData.length })
+        setPromoteProgress({ current: 0, total: studentsToPromote.length })
 
         let created = 0
         let graduated = 0
@@ -242,15 +262,15 @@ function StudentListTable({ StudentList, refreshData, students }) {
 
         const targetSession = String(promoteSession).trim()
 
-        for (let i = 0; i < rowData.length; i++) {
-            const s = rowData[i]
+        for (let i = 0; i < studentsToPromote.length; i++) {
+            const s = studentsToPromote[i]
 
             // Skip if already in the target session
             const currentSession = String(s.session || "").trim()
             if (currentSession === targetSession) {
                 skipped++
                 skipReasons.push(`${s.name}: already in ${targetSession}`)
-                setPromoteProgress({ current: i + 1, total: rowData.length })
+                setPromoteProgress({ current: i + 1, total: studentsToPromote.length })
                 continue
             }
 
@@ -258,20 +278,18 @@ function StudentListTable({ StudentList, refreshData, students }) {
             if (String(s.grade || "").trim().toLowerCase() === "graduated") {
                 skipped++
                 skipReasons.push(`${s.name}: already graduated`)
-                setPromoteProgress({ current: i + 1, total: rowData.length })
+                setPromoteProgress({ current: i + 1, total: studentsToPromote.length })
                 continue
             }
 
-            // Compute next grade
             const nextGrade = getNextGrade(s.grade)
             if (!nextGrade) {
                 skipped++
                 skipReasons.push(`${s.name}: unknown grade "${s.grade}"`)
-                setPromoteProgress({ current: i + 1, total: rowData.length })
+                setPromoteProgress({ current: i + 1, total: studentsToPromote.length })
                 continue
             }
 
-            // Build payload for the NEW record (old record stays)
             const payload = {
                 name: s.name,
                 fatherName: s.fatherName || null,
@@ -286,7 +304,7 @@ function StudentListTable({ StudentList, refreshData, students }) {
                 fee: s.fee || 0,
                 address: s.address || "",
                 image: s.image || null,
-                isPromotion: true,   // ✅ Skip backend duplicate checks
+                isPromotion: true,
             }
 
             console.log(`[PROMOTE] Creating for ${s.name}:`, payload)
@@ -303,10 +321,9 @@ function StudentListTable({ StudentList, refreshData, students }) {
                 skipReasons.push(`${s.name}: ${msg}`)
             }
 
-            setPromoteProgress({ current: i + 1, total: rowData.length })
+            setPromoteProgress({ current: i + 1, total: studentsToPromote.length })
         }
 
-        // Final toast
         if (created === 0 && graduated === 0) {
             toast.error(
                 `No students promoted. ${skipped} skipped. Check console for details.`
@@ -343,8 +360,9 @@ function StudentListTable({ StudentList, refreshData, students }) {
         if (gradeFilter) bits.push(`Grade: ${gradeFilter}`)
         if (sectionFilter) bits.push(`Section: ${sectionFilter}`)
         if (sessionFilter) bits.push(`Session: ${sessionFilter}`)
+        else if (newestSession) bits.push(`Session: ${newestSession}`)
         return bits.length ? `Student Report — ${bits.join(" | ")}` : "Student Report"
-    }, [gradeFilter, sectionFilter, sessionFilter])
+    }, [gradeFilter, sectionFilter, sessionFilter, newestSession])
 
     const EXPORT_COLUMNS = [
         { key: "id",            label: "ID" },
@@ -700,8 +718,9 @@ function StudentListTable({ StudentList, refreshData, students }) {
                         <div>
                             <h2 className="text-xl font-bold tracking-tight">Student Records</h2>
                             <p className="text-xs text-blue-100 mt-0.5">
-                                {filteredData.length} of {rowData.length}{" "}
-                                {rowData.length === 1 ? "student" : "students"}
+                                {filteredData.length} {filteredData.length === 1 ? "student" : "students"}
+                                {!sessionFilter && newestSession ? ` • Latest session (${newestSession})` : ""}
+                                {sessionFilter ? ` • ${sessionFilter}` : ""}
                                 {schoolName ? ` • ${schoolName}` : ""}
                             </p>
                         </div>
@@ -780,7 +799,9 @@ function StudentListTable({ StudentList, refreshData, students }) {
                     </select>
 
                     <select className={FILTER_CLASS} value={sessionFilter} onChange={(e) => setSessionFilter(e.target.value)}>
-                        <option value="">All Sessions</option>
+                        <option value="">
+                            {newestSession ? `Latest (${newestSession})` : "All Sessions"}
+                        </option>
                         {sessionOptions.map((s) => (<option key={s} value={s}>{s}</option>))}
                     </select>
 
@@ -861,7 +882,8 @@ function StudentListTable({ StudentList, refreshData, students }) {
                         <div className="p-6 space-y-4">
                             <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
                                 <p className="text-xs text-amber-800 font-medium leading-relaxed">
-                                    ⚠️ This will create <strong>{rowData.length} new record(s)</strong>:
+                                    ⚠️ This will promote students from the{' '}
+                                    <strong>{sessionFilter || newestSession || "current"}</strong> session:
                                 </p>
                                 <ul className="text-xs text-amber-800 mt-2 space-y-1 ml-4 list-disc">
                                     <li>Nursery → Prep → 1st → 2nd → ... → 11th → 12th</li>
@@ -969,7 +991,7 @@ function StudentListTable({ StudentList, refreshData, students }) {
                 .dark .ag-theme-quartz .ag-row { border-bottom: 1px solid #334155 !important; }
                 .dark .ag-theme-quartz .ag-row:hover { background-color: #334155 !important; }
                 .dark .ag-theme-quartz .ag-cell { color: #e2e8f0 !important; }
-                .dark .ag-theme-quartz .ag-paging-panel {
+                .dark .ag-theme-quartz .paging-panel {
                     border-top: 1px solid #334155 !important;
                     color: #94a3b8;
                 }
