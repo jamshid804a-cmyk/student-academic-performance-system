@@ -22,7 +22,7 @@ const getDaysInMonth = (monthName, year = new Date().getFullYear()) => {
   return new Date(year, m, 0).getDate()
 }
 
-// ─── Daily % summary cell (pinned top row) ───────────────
+// ─── Daily P / A / L % summary cell (pinned top row) ─────
 const DaySummaryCell = ({ value }) => {
   if (!value || value.marked === 0) {
     return (
@@ -36,23 +36,25 @@ const DaySummaryCell = ({ value }) => {
   }
 
   const { p, a, l, marked } = value
-  const presentPct = Math.round((p / marked) * 100)
+  const pPct = Math.round((p / marked) * 100)
+  const aPct = Math.round((a / marked) * 100)
+  const lPct = Math.round((l / marked) * 100)
 
-  let colorClass = "text-red-600 bg-red-50 dark:bg-red-900/30 dark:text-red-300"
-  if (presentPct >= 90) {
-    colorClass = "text-emerald-700 bg-emerald-50 dark:bg-emerald-900/30 dark:text-emerald-300"
-  } else if (presentPct >= 75) {
-    colorClass = "text-teal-700 bg-teal-50 dark:bg-teal-900/30 dark:text-teal-300"
-  } else if (presentPct >= 50) {
-    colorClass = "text-amber-700 bg-amber-50 dark:bg-amber-900/30 dark:text-amber-300"
-  }
-
-  const tooltip = `Present: ${p} (${presentPct}%) · Absent: ${a} · Leave: ${l} · Marked: ${marked}`
+  const tooltip = `Present: ${p} (${pPct}%) · Absent: ${a} (${aPct}%) · Leave: ${l} (${lPct}%) · Marked: ${marked}`
 
   return (
-    <div className="flex items-center justify-center h-full" title={tooltip}>
-      <span className={`text-[10px] font-bold px-1.5 py-1 rounded-md ${colorClass}`}>
-        {presentPct}%
+    <div
+      className="flex flex-col items-center justify-center h-full leading-tight gap-[1px] py-1"
+      title={tooltip}
+    >
+      <span className="text-[9px] font-bold text-emerald-700 dark:text-emerald-300">
+        {pPct}%
+      </span>
+      <span className="text-[9px] font-bold text-red-600 dark:text-red-300">
+        {aPct}%
+      </span>
+      <span className="text-[9px] font-bold text-amber-600 dark:text-amber-300">
+        {lPct}%
       </span>
     </div>
   )
@@ -114,7 +116,7 @@ export default function AttendanceGrid({
   }, [handleCellChange])
 
   // ─── Cell renderer: normal editable cell for data rows,
-  //     percentage summary for the pinned top row ───────
+  //     P/A/L percentage summary for the pinned top row ──
   const CellRenderer = useCallback((params) => {
     if (params.node.rowPinned) {
       return <DaySummaryCell value={params.value} />
@@ -194,7 +196,7 @@ export default function AttendanceGrid({
     setRowData(rows)
   }, [attendanceList, daysInMonth])
 
-  // ─── Pinned top row: daily P/A/L percentage summary ────
+  // ─── Pinned top row: daily P / A / L percentage summary ─
   const summaryRow = useMemo(() => {
     if (rowData.length === 0) return []
 
@@ -299,7 +301,7 @@ export default function AttendanceGrid({
             rowData={rowData}
             columnDefs={colDefs}
             pinnedTopRowData={summaryRow}
-            rowHeight={52}
+            getRowHeight={(params) => (params.node.rowPinned ? 56 : 52)}
             headerHeight={52}
             suppressCellFocus
             animateRows={true}
