@@ -39,7 +39,6 @@ function sameGrade(a, b) {
     const y = String(b || "").trim().toLowerCase()
     if (!x || !y) return false
     if (x === y) return true
-    // compare leading number: "1" vs "1st"
     const numX = x.match(/^(\d+)/)
     const numY = y.match(/^(\d+)/)
     if (numX && numY) return numX[1] === numY[1]
@@ -53,7 +52,35 @@ function sameText(a, b) {
 const FILTER_CLASS =
   "px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-sm text-slate-800 dark:text-slate-100 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 dark:focus:ring-blue-900/40 transition-all"
 
-function StudentListTable({ StudentList, refreshData }) {
+// ✅ Image cell renderer — shows photo or a fallback avatar with initials
+const ImageCellRenderer = (props) => {
+    const student = props.data
+    const src = student?.image || null
+    const initial = (student?.name || "?").trim().charAt(0).toUpperCase()
+
+    return (
+        <div className="flex items-center justify-center h-full">
+            {src ? (
+                <img
+                    src={src}
+                    alt={student?.name || "Student"}
+                    className="w-10 h-10 rounded-full object-cover border-2 border-white shadow ring-1 ring-slate-200 dark:ring-slate-600"
+                    onError={(e) => {
+                        e.currentTarget.style.display = 'none'
+                        e.currentTarget.nextSibling.style.display = 'flex'
+                    }}
+                />
+            ) : null}
+            {!src && (
+                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500 to-blue-600 text-white font-bold flex items-center justify-center text-sm shadow">
+                    {initial}
+                </div>
+            )}
+        </div>
+    )
+}
+
+function StudentListTable({ StudentList, refreshData, students }) {
     const [rowData, setRowData] = useState([])
     const [searchInput, setSearchInput] = useState("")
     const [selectedStudent, setSelectedStudent] = useState(null)
@@ -69,7 +96,6 @@ function StudentListTable({ StudentList, refreshData }) {
         if (StudentList) setRowData(StudentList)
     }, [StudentList])
 
-    // ✅ Apply grade/section/session filters with forgiving matching
     const filteredData = useMemo(() => {
         return rowData.filter((s) => {
             if (gradeFilter && !sameGrade(s.grade, gradeFilter)) return false
@@ -79,7 +105,6 @@ function StudentListTable({ StudentList, refreshData }) {
         })
     }, [rowData, gradeFilter, sectionFilter, sessionFilter])
 
-    // ✅ Unique sessions in data + default list
     const sessionOptions = useMemo(() => {
         const set = new Set()
         rowData.forEach((s) => { if (s.session) set.add(String(s.session).trim()) })
@@ -171,6 +196,21 @@ function StudentListTable({ StudentList, refreshData }) {
     }), [])
 
     const colDefs = useMemo(() => [
+        // ✅ NEW: Image column (first)
+        {
+            field: "image",
+            headerName: "Photo",
+            width: 90,
+            sortable: false,
+            filter: false,
+            pinned: "left",
+            cellRenderer: ImageCellRenderer,
+            cellStyle: {
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+            },
+        },
         {
             field: "id",
             headerName: "ID",
@@ -216,19 +256,7 @@ function StudentListTable({ StudentList, refreshData }) {
         { field: "section", headerName: "Section", filter: true, width: 100 },
         { field: "session", headerName: "Session", filter: true, width: 130 },
         { field: "contact", headerName: "Contact No", filter: true, width: 150 },
-        {
-            field: "fee",
-            headerName: "Fee",
-            filter: true,
-            width: 110,
-            cellStyle: {
-                display: 'flex',
-                alignItems: 'center',
-                fontWeight: '600',
-                color: '#059669',
-            },
-            valueFormatter: (params) => (params.value ? `Rs. ${params.value}` : "—"),
-        },
+        // ❌ REMOVED: Fee column
         {
             field: "action",
             headerName: "Action",
@@ -363,6 +391,7 @@ function StudentListTable({ StudentList, refreshData }) {
                 open={editOpen}
                 onOpenChange={setEditOpen}
                 refreshData={refreshData}
+                students={students || rowData}
             />
 
             <style jsx global>{`
