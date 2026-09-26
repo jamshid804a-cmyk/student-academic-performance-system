@@ -1,9 +1,12 @@
 "use client"
 
-import React, { useEffect, useState, useMemo } from 'react'
+import React, { useEffect, useState, useMemo, useRef } from 'react'
 import { AgGridReact } from 'ag-grid-react'
 import '@/utils/agGrid'
-import { Search, Trash2, Eye, Pencil, Users, GraduationCap } from 'lucide-react'
+import {
+    Search, Trash2, Eye, Pencil, Users, GraduationCap,
+    Printer, Download, FileText, FileSpreadsheet, ChevronDown, File
+} from 'lucide-react'
 import {
     AlertDialog,
     AlertDialogAction,
@@ -33,7 +36,7 @@ const GRADES = [
 const SECTIONS = ["A", "B", "C"]
 const SESSIONS = Array.from({ length: 100 }, (_, i) => `${2025 + i}-${2026 + i}`)
 
-// ✅ Forgiving grade matcher: "1" ↔ "1st", "Nursery" ↔ "nursery", etc.
+// ✅ Forgiving grade matcher
 function sameGrade(a, b) {
     const x = String(a || "").trim().toLowerCase()
     const y = String(b || "").trim().toLowerCase()
@@ -52,7 +55,7 @@ function sameText(a, b) {
 const FILTER_CLASS =
   "px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-sm text-slate-800 dark:text-slate-100 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 dark:focus:ring-blue-900/40 transition-all"
 
-// ✅ Image cell renderer — shows photo or a fallback avatar with initials
+// ✅ Image cell renderer
 const ImageCellRenderer = (props) => {
     const student = props.data
     const src = student?.image || null
@@ -65,13 +68,8 @@ const ImageCellRenderer = (props) => {
                     src={src}
                     alt={student?.name || "Student"}
                     className="w-10 h-10 rounded-full object-cover border-2 border-white shadow ring-1 ring-slate-200 dark:ring-slate-600"
-                    onError={(e) => {
-                        e.currentTarget.style.display = 'none'
-                        e.currentTarget.nextSibling.style.display = 'flex'
-                    }}
                 />
-            ) : null}
-            {!src && (
+            ) : (
                 <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500 to-blue-600 text-white font-bold flex items-center justify-center text-sm shadow">
                     {initial}
                 </div>
@@ -91,6 +89,36 @@ function StudentListTable({ StudentList, refreshData, students }) {
     const [gradeFilter, setGradeFilter] = useState("")
     const [sectionFilter, setSectionFilter] = useState("")
     const [sessionFilter, setSessionFilter] = useState("")
+
+    const [schoolInfo, setSchoolInfo] = useState(null)
+    const [exportOpen, setExportOpen] = useState(false)
+    const dropdownRef = useRef(null)
+
+    // Fetch school info for print/export header
+    useEffect(() => {
+        let mounted = true
+        const load = async () => {
+            try {
+                const res = await GlobalApi.GetSchoolInfo()
+                if (mounted) setSchoolInfo(res?.data || null)
+            } catch (e) {
+                console.warn("School info load failed:", e?.message)
+            }
+        }
+        load()
+        return () => { mounted = false }
+    }, [])
+
+    // Close dropdown on outside click
+    useEffect(() => {
+        const onClick = (e) => {
+            if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
+                setExportOpen(false)
+            }
+        }
+        document.addEventListener("mousedown", onClick)
+        return () => document.removeEventListener("mousedown", onClick)
+    }, [])
 
     useEffect(() => {
         if (StudentList) setRowData(StudentList)
@@ -130,6 +158,246 @@ function StudentListTable({ StudentList, refreshData, students }) {
     const handleView = (data) => { setSelectedStudent(data); setViewOpen(true) }
     const handleEditClick = (data) => { setEditStudent(data); setEditOpen(true) }
 
+    // ─────────────────────────────────────────────
+    // Export / Print helpers
+    // ─────────────────────────────────────────────
+    const schoolName = schoolInfo?.schoolName || schoolInfo?.name || "School"
+    const schoolAddress = schoolInfo?.address || ""
+    const schoolPhone = schoolInfo?.phone || schoolInfo?.contact || ""
+    const schoolEmail = schoolInfo?.email || ""
+
+    const reportTitle = useMemo(() => {
+        const bits = []
+        if (gradeFilter) bits.push(`Grade: ${gradeFilter}`)
+        if (sectionFilter) bits.push(`Section: ${sectionFilter}`)
+        if (sessionFilter) bits.push(`Session: ${sessionFilter}`)
+        return bits.length ? `Student Report — ${bits.join(" | ")}` : "Student Report"
+    }, [gradeFilter, sectionFilter, sessionFilter])
+
+    // Columns we want to export (skip Photo + Action)
+    const EXPORT_COLUMNS = [
+        { key: "id",            label: "ID" },
+        { key: "rollNo",        label: "Roll No" },
+        { key: "admissionNo",   label: "Admission No" },
+        { key: "name",          label: "Student Name" },
+        { key: "fatherName",    label: "Father Name" },
+        { key: "fatherOccupation", label: "Father Occupation" },
+        { key: "grade",         label: "Grade" },
+        { key: "section",       label: "Section" },
+        { key: "session",       label: "Session" },
+        { key: "contact",       label: "Contact No" },
+        { key: "admissionDate", label: "Admission Date" },
+        { key: "address",       label: "Address" },
+    ]
+
+    const headerHtml = `
+        <div class="header">
+            <h1>${schoolName}</h1>
+            ${schoolAddress ? `<p class="meta">${schoolAddress}</p>` : ""}
+            ${(schoolPhone || schoolEmail) ? `<p class="meta">${[schoolPhone, schoolEmail].filter(Boolean).join(" | ")}</p>` : ""}
+            <hr />
+            <h2>${reportTitle}</h2>
+            <p class="meta">Total Students: ${filteredData.length} &nbsp; | &nbsp; Generated: ${new Date().toLocaleString()}</p>
+        </div>
+    `
+
+    const tableHtml = (forWord = false) => {
+        const rows = filteredData.map((s) => `
+            <tr>
+                ${EXPORT_COLUMNS.map((c) => `<td>${s[c.key] ?? ""}</td>`).join("")}
+            </tr>
+        `).join("")
+
+        return `
+            <table>
+                <thead>
+                    <tr>${EXPORT_COLUMNS.map((c) => `<th>${c.label}</th>`).join("")}</tr>
+                </thead>
+                <tbody>${rows}</tbody>
+            </table>
+        `
+    }
+
+    const baseStyles = `
+        * { box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Arial, sans-serif;
+            padding: 30px;
+            color: #111;
+            background: #fff;
+        }
+        .header { text-align: center; margin-bottom: 20px; }
+        .header h1 { font-size: 24px; margin: 0 0 6px; color: #1e293b; letter-spacing: 0.5px; }
+        .header h2 { font-size: 15px; margin: 12px 0 6px; color: #334155; font-weight: 600; }
+        .header .meta { font-size: 12px; color: #64748b; margin: 2px 0; }
+        .header hr { border: none; border-top: 2px solid #3b82f6; margin: 12px auto; width: 60px; }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 14px;
+            font-size: 12px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+            border-radius: 6px;
+            overflow: hidden;
+        }
+        th {
+            background: #1e293b;
+            color: #fff;
+            padding: 10px 8px;
+            text-align: left;
+            font-weight: 600;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        td {
+            padding: 9px 8px;
+            border-bottom: 1px solid #e2e8f0;
+        }
+        tr:nth-child(even) td { background: #f8fafc; }
+        .footer {
+            margin-top: 40px;
+            display: flex;
+            justify-content: space-between;
+            font-size: 11px;
+            color: #555;
+        }
+        .footer .line {
+            border-top: 1px solid #333;
+            width: 180px;
+            text-align: center;
+            padding-top: 4px;
+        }
+    `
+
+    // ─── Print ───
+    const handlePrint = () => {
+        const printWindow = window.open("", "_blank", "width=1000,height=800")
+        if (!printWindow) return
+
+        const html = `
+            <html>
+            <head>
+                <title>${reportTitle}</title>
+                <style>
+                    ${baseStyles}
+                    @media print {
+                        body { padding: 10px; }
+                        th { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+                        tr:nth-child(even) td { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+                    }
+                </style>
+            </head>
+            <body>
+                ${headerHtml}
+                ${tableHtml()}
+                <div class="footer">
+                    <div class="line">Principal Signature</div>
+                    <div class="line">Date</div>
+                </div>
+                <script>window.onload = () => window.print();</script>
+            </body>
+            </html>
+        `
+        printWindow.document.open()
+        printWindow.document.write(html)
+        printWindow.document.close()
+    }
+
+    // ─── Export PDF (via print dialog → Save as PDF) ───
+    const handleExportPDF = () => {
+        setExportOpen(false)
+        const printWindow = window.open("", "_blank", "width=1000,height=800")
+        if (!printWindow) return
+
+        const html = `
+            <html>
+            <head>
+                <title>${reportTitle}</title>
+                <style>
+                    ${baseStyles}
+                    @page { size: A4 landscape; margin: 12mm; }
+                </style>
+            </head>
+            <body>
+                ${headerHtml}
+                ${tableHtml()}
+                <div class="footer">
+                    <div class="line">Principal Signature</div>
+                    <div class="line">Date</div>
+                </div>
+                <script>
+                    window.onload = () => {
+                        setTimeout(() => window.print(), 300);
+                    }
+                </script>
+            </body>
+            </html>
+        `
+        printWindow.document.open()
+        printWindow.document.write(html)
+        printWindow.document.close()
+        toast.info("Choose 'Save as PDF' in the print dialog")
+    }
+
+    // ─── Export Word (.doc via HTML) ───
+    const handleExportWord = () => {
+        setExportOpen(false)
+        const html = `
+            <html xmlns:o='urn:schemas-microsoft-com:office:office'
+                  xmlns:w='urn:schemas-microsoft-com:office:word'
+                  xmlns='http://www.w3.org/TR/REC-html40'>
+            <head>
+                <meta charset="utf-8">
+                <title>${reportTitle}</title>
+                <style>${baseStyles}</style>
+            </head>
+            <body>
+                ${headerHtml}
+                ${tableHtml(true)}
+                <div class="footer">
+                    <div class="line">Principal Signature</div>
+                    <div class="line">Date</div>
+                </div>
+            </body>
+            </html>
+        `
+        const blob = new Blob(["\ufeff", html], { type: "application/msword" })
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement("a")
+        a.href = url
+        a.download = `${reportTitle.replace(/[^\w\-]+/g, "_")}.doc`
+        document.body.appendChild(a)
+        a.click()
+        document.body.removeChild(a)
+        URL.revokeObjectURL(url)
+        toast.success("Word file downloaded")
+    }
+
+    // ─── Export CSV (opens in Excel) ───
+    const handleExportCSV = () => {
+        setExportOpen(false)
+        const headers = EXPORT_COLUMNS.map((c) => `"${c.label}"`).join(",")
+        const rows = filteredData.map((s) =>
+            EXPORT_COLUMNS.map((c) => {
+                const val = s[c.key] ?? ""
+                return `"${String(val).replace(/"/g, '""')}"`
+            }).join(",")
+        )
+        const csv = [headers, ...rows].join("\n")
+        const blob = new Blob(["\ufeff", csv], { type: "text/csv;charset=utf-8;" })
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement("a")
+        a.href = url
+        a.download = `${reportTitle.replace(/[^\w\-]+/g, "_")}.csv`
+        document.body.appendChild(a)
+        a.click()
+        document.body.removeChild(a)
+        URL.revokeObjectURL(url)
+        toast.success("CSV file downloaded")
+    }
+
+    // ─── Action buttons column ───
     const CustomButtons = (props) => (
         <div className="flex items-center gap-1.5 h-full">
             <button
@@ -189,14 +457,10 @@ function StudentListTable({ StudentList, refreshData, students }) {
     const defaultColDef = useMemo(() => ({
         resizable: true,
         sortable: true,
-        cellStyle: {
-            display: 'flex',
-            alignItems: 'center',
-        },
+        cellStyle: { display: 'flex', alignItems: 'center' },
     }), [])
 
     const colDefs = useMemo(() => [
-        // ✅ NEW: Image column (first)
         {
             field: "image",
             headerName: "Photo",
@@ -205,23 +469,14 @@ function StudentListTable({ StudentList, refreshData, students }) {
             filter: false,
             pinned: "left",
             cellRenderer: ImageCellRenderer,
-            cellStyle: {
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-            },
+            cellStyle: { display: 'flex', alignItems: 'center', justifyContent: 'center' },
         },
         {
             field: "id",
             headerName: "ID",
             width: 70,
             filter: true,
-            cellStyle: {
-                display: 'flex',
-                alignItems: 'center',
-                fontWeight: '600',
-                color: '#6366f1',
-            },
+            cellStyle: { display: 'flex', alignItems: 'center', fontWeight: '600', color: '#6366f1' },
         },
         { field: "rollNo", headerName: "Roll No", filter: true, width: 100 },
         { field: "admissionNo", headerName: "Admission No", filter: true, width: 140 },
@@ -232,11 +487,8 @@ function StudentListTable({ StudentList, refreshData, students }) {
             minWidth: 180,
             flex: 2,
             cellStyle: {
-                display: 'flex',
-                alignItems: 'center',
-                fontWeight: '600',
-                whiteSpace: 'normal',
-                lineHeight: '1.3',
+                display: 'flex', alignItems: 'center', fontWeight: '600',
+                whiteSpace: 'normal', lineHeight: '1.3',
             },
         },
         {
@@ -246,17 +498,14 @@ function StudentListTable({ StudentList, refreshData, students }) {
             minWidth: 180,
             flex: 2,
             cellStyle: {
-                display: 'flex',
-                alignItems: 'center',
-                whiteSpace: 'normal',
-                lineHeight: '1.3',
+                display: 'flex', alignItems: 'center',
+                whiteSpace: 'normal', lineHeight: '1.3',
             },
         },
         { field: "grade", headerName: "Grade", filter: true, width: 100 },
         { field: "section", headerName: "Section", filter: true, width: 100 },
         { field: "session", headerName: "Session", filter: true, width: 130 },
         { field: "contact", headerName: "Contact No", filter: true, width: 150 },
-        // ❌ REMOVED: Fee column
         {
             field: "action",
             headerName: "Action",
@@ -265,85 +514,113 @@ function StudentListTable({ StudentList, refreshData, students }) {
             pinned: "right",
             sortable: false,
             filter: false,
-            cellStyle: {
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-            },
+            cellStyle: { display: 'flex', alignItems: 'center', justifyContent: 'center' },
         },
     ], [])
 
     return (
         <div className="my-6 animate-page-in">
 
-            {/* Header card */}
-            <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-                <div className="flex items-center gap-3">
-                    <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-indigo-500 to-blue-600 text-white flex items-center justify-center shadow-md hover:scale-110 transition-transform duration-300">
-                        <Users size={22} />
+            {/* ─── Header card ─── */}
+            <div className="bg-gradient-to-r from-indigo-500 via-blue-600 to-cyan-600 rounded-2xl shadow-lg p-5 mb-5 text-white relative overflow-hidden">
+                <div className="absolute inset-0 opacity-10 bg-[radial-gradient(circle_at_20%_20%,white_0%,transparent_60%)]" />
+
+                <div className="relative flex flex-wrap items-center justify-between gap-4">
+                    {/* Left: title + stats */}
+                    <div className="flex items-center gap-4">
+                        <div className="w-12 h-12 rounded-xl bg-white/15 backdrop-blur-sm border border-white/20 flex items-center justify-center">
+                            <Users size={24} />
+                        </div>
+                        <div>
+                            <h2 className="text-xl font-bold tracking-tight">Student Records</h2>
+                            <p className="text-xs text-blue-100 mt-0.5">
+                                {filteredData.length} of {rowData.length}{" "}
+                                {rowData.length === 1 ? "student" : "students"}
+                                {schoolName ? ` • ${schoolName}` : ""}
+                            </p>
+                        </div>
                     </div>
-                    <div>
-                        <h2 className="text-xl font-bold text-slate-800 dark:text-slate-100">
-                            Student Records
-                        </h2>
-                        <p className="text-xs text-slate-500 dark:text-slate-400">
-                            {filteredData.length} of {rowData.length}{" "}
-                            {rowData.length === 1 ? "student" : "students"}
-                        </p>
+
+                    {/* Right: Print + Export */}
+                    <div className="flex items-center gap-2">
+                        <button
+                            onClick={handlePrint}
+                            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/15 hover:bg-white/25 border border-white/20 text-sm font-semibold transition-all backdrop-blur-sm"
+                        >
+                            <Printer size={15} />
+                            Print
+                        </button>
+
+                        <div className="relative" ref={dropdownRef}>
+                            <button
+                                onClick={() => setExportOpen((v) => !v)}
+                                className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white text-indigo-700 hover:bg-indigo-50 text-sm font-semibold transition-all shadow-md"
+                            >
+                                <Download size={15} />
+                                Export
+                                <ChevronDown size={14} className={`transition-transform ${exportOpen ? 'rotate-180' : ''}`} />
+                            </button>
+
+                            {exportOpen && (
+                                <div className="absolute right-0 mt-2 w-52 bg-white rounded-xl shadow-xl border border-slate-100 overflow-hidden z-50">
+                                    <button
+                                        onClick={handleExportPDF}
+                                        className="w-full flex items-center gap-3 px-4 py-3 text-sm text-slate-700 hover:bg-red-50 hover:text-red-600 transition-colors text-left"
+                                    >
+                                        <FileText size={16} className="text-red-500" />
+                                        Export as PDF
+                                    </button>
+                                    <button
+                                        onClick={handleExportWord}
+                                        className="w-full flex items-center gap-3 px-4 py-3 text-sm text-slate-700 hover:bg-blue-50 hover:text-blue-600 transition-colors text-left border-t border-slate-100"
+                                    >
+                                        <File size={16} className="text-blue-500" />
+                                        Export as Word
+                                    </button>
+                                    <button
+                                        onClick={handleExportCSV}
+                                        className="w-full flex items-center gap-3 px-4 py-3 text-sm text-slate-700 hover:bg-emerald-50 hover:text-emerald-600 transition-colors text-left border-t border-slate-100"
+                                    >
+                                        <FileSpreadsheet size={16} className="text-emerald-500" />
+                                        Export as Excel (CSV)
+                                    </button>
+                                </div>
+                            )}
+                        </div>
                     </div>
                 </div>
+            </div>
 
-                {/* Filters + search */}
+            {/* ─── Filter bar ─── */}
+            <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 p-3 mb-4">
                 <div className="flex flex-wrap items-center gap-2">
                     <GraduationCap size={16} className="text-slate-400" />
 
-                    <select
-                        className={FILTER_CLASS}
-                        value={gradeFilter}
-                        onChange={(e) => setGradeFilter(e.target.value)}
-                    >
+                    <select className={FILTER_CLASS} value={gradeFilter} onChange={(e) => setGradeFilter(e.target.value)}>
                         <option value="">All Grades</option>
-                        {GRADES.map((g) => (
-                            <option key={g} value={g}>{g}</option>
-                        ))}
+                        {GRADES.map((g) => (<option key={g} value={g}>{g}</option>))}
                     </select>
 
-                    <select
-                        className={FILTER_CLASS}
-                        value={sectionFilter}
-                        onChange={(e) => setSectionFilter(e.target.value)}
-                    >
+                    <select className={FILTER_CLASS} value={sectionFilter} onChange={(e) => setSectionFilter(e.target.value)}>
                         <option value="">All Sections</option>
-                        {SECTIONS.map((s) => (
-                            <option key={s} value={s}>{s}</option>
-                        ))}
+                        {SECTIONS.map((s) => (<option key={s} value={s}>{s}</option>))}
                     </select>
 
-                    <select
-                        className={FILTER_CLASS}
-                        value={sessionFilter}
-                        onChange={(e) => setSessionFilter(e.target.value)}
-                    >
+                    <select className={FILTER_CLASS} value={sessionFilter} onChange={(e) => setSessionFilter(e.target.value)}>
                         <option value="">All Sessions</option>
-                        {sessionOptions.map((s) => (
-                            <option key={s} value={s}>{s}</option>
-                        ))}
+                        {sessionOptions.map((s) => (<option key={s} value={s}>{s}</option>))}
                     </select>
 
                     {(gradeFilter || sectionFilter || sessionFilter) && (
                         <button
-                            onClick={() => {
-                                setGradeFilter("")
-                                setSectionFilter("")
-                                setSessionFilter("")
-                            }}
+                            onClick={() => { setGradeFilter(""); setSectionFilter(""); setSessionFilter("") }}
                             className="text-xs font-semibold text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 px-2"
                         >
                             Clear
                         </button>
                     )}
 
-                    <div className="flex items-center gap-2 border border-slate-200 dark:border-slate-600 rounded-xl px-4 py-2.5 shadow-sm bg-white dark:bg-slate-800 focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-100 dark:focus-within:ring-blue-900/40 transition-all duration-200">
+                    <div className="ml-auto flex items-center gap-2 border border-slate-200 dark:border-slate-600 rounded-xl px-4 py-2.5 shadow-sm bg-white dark:bg-slate-800 focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-100 dark:focus-within:ring-blue-900/40 transition-all duration-200">
                         <Search size={18} className="text-slate-400" />
                         <input
                             type="text"
@@ -356,15 +633,11 @@ function StudentListTable({ StudentList, refreshData, students }) {
                 </div>
             </div>
 
-            {/* Table card */}
+            {/* ─── Table card ─── */}
             <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg border border-slate-100 dark:border-slate-700 overflow-hidden">
-
                 <div className="h-1 bg-gradient-to-r from-indigo-500 via-blue-500 to-cyan-500" />
 
-                <div
-                    className="ag-theme-quartz"
-                    style={{ height: 580, width: '100%' }}
-                >
+                <div className="ag-theme-quartz" style={{ height: 580, width: '100%' }}>
                     <AgGridReact
                         rowData={filteredData}
                         columnDefs={colDefs}
@@ -409,7 +682,6 @@ function StudentListTable({ StudentList, refreshData, students }) {
                     --ag-selected-row-background-color: #e0e7ff;
                     --ag-borders: none;
                 }
-
                 .ag-theme-quartz .ag-header {
                     border-bottom: 1px solid #e2e8f0 !important;
                     font-weight: 700 !important;
@@ -417,36 +689,19 @@ function StudentListTable({ StudentList, refreshData, students }) {
                     font-size: 11px !important;
                     letter-spacing: 0.05em;
                 }
-
-                .ag-theme-quartz .ag-header-cell-text {
-                    color: #64748b;
-                }
-
+                .ag-theme-quartz .ag-header-cell-text { color: #64748b; }
                 .ag-theme-quartz .ag-row {
                     border-bottom: 1px solid #f1f5f9 !important;
                     transition: background-color 0.15s ease;
                 }
-
-                .ag-theme-quartz .ag-row:hover {
-                    background-color: #eef2ff !important;
-                }
-
-                .ag-theme-quartz .ag-cell {
-                    color: #334155;
-                    font-size: 13.5px;
-                }
-
+                .ag-theme-quartz .ag-row:hover { background-color: #eef2ff !important; }
+                .ag-theme-quartz .ag-cell { color: #334155; font-size: 13.5px; }
                 .ag-theme-quartz .ag-paging-panel {
                     border-top: 1px solid #e2e8f0 !important;
                     padding: 12px 16px;
                     color: #64748b;
                     font-size: 13px;
                 }
-
-                .ag-theme-quartz .ag-paging-button {
-                    border-radius: 6px;
-                }
-
                 .dark .ag-theme-quartz {
                     --ag-border-color: #334155;
                     --ag-header-background-color: #0f172a;
@@ -457,27 +712,11 @@ function StudentListTable({ StudentList, refreshData, students }) {
                     --ag-selected-row-background-color: #1e40af;
                     --ag-foreground-color: #f1f5f9;
                 }
-
-                .dark .ag-theme-quartz .ag-header {
-                    border-bottom: 1px solid #334155 !important;
-                }
-
-                .dark .ag-theme-quartz .ag-header-cell-text {
-                    color: #94a3b8 !important;
-                }
-
-                .dark .ag-theme-quartz .ag-row {
-                    border-bottom: 1px solid #334155 !important;
-                }
-
-                .dark .ag-theme-quartz .ag-row:hover {
-                    background-color: #334155 !important;
-                }
-
-                .dark .ag-theme-quartz .ag-cell {
-                    color: #e2e8f0 !important;
-                }
-
+                .dark .ag-theme-quartz .ag-header { border-bottom: 1px solid #334155 !important; }
+                .dark .ag-theme-quartz .ag-header-cell-text { color: #94a3b8 !important; }
+                .dark .ag-theme-quartz .ag-row { border-bottom: 1px solid #334155 !important; }
+                .dark .ag-theme-quartz .ag-row:hover { background-color: #334155 !important; }
+                .dark .ag-theme-quartz .ag-cell { color: #e2e8f0 !important; }
                 .dark .ag-theme-quartz .ag-paging-panel {
                     border-top: 1px solid #334155 !important;
                     color: #94a3b8;
