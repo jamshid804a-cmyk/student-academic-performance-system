@@ -31,7 +31,7 @@ const paginationPageSize = 10
 const paginationPageSizeSelector = [10, 20, 25, 100]
 
 // ─────────────────────────────────────────────
-// Grades & helpers
+// Constants
 // ─────────────────────────────────────────────
 const GRADES = [
     "Nursery",
@@ -188,52 +188,40 @@ function StudentListTable({ StudentList, refreshData, students }) {
     }, [rowData])
 
     // ─────────────────────────────────────────────
-    // ✅ Filtered data
-    //
-    // MODE 1 — SEARCHING (search box has text):
-    //   → Ignore grade/section/session filters
-    //   → Search across ALL records in ALL sessions
-    //   → Matches name, father name, father occupation,
-    //     admission no, roll no, id, session, grade,
-    //     section, contact, address
-    //
-    // MODE 2 — NOT SEARCHING:
-    //   → Apply grade + section + session filters
-    //   → If no session selected, show newest session only
+    // Simple, clean filter
+    //   - Search term matches name, father name, admissionNo, rollNo, id
+    //   - Grade / Section / Session filters apply
     // ─────────────────────────────────────────────
     const filteredData = useMemo(() => {
         const q = searchInput.trim().toLowerCase()
-        const isSearching = q.length > 0
-
-        if (isSearching) {
-            return rowData.filter((s) => {
-                const haystack = [
-                    s.name,
-                    s.fatherName,
-                    s.fatherOccupation,
-                    s.admissionNo,
-                    s.rollNo,
-                    s.id,
-                    s.session,
-                    s.grade,
-                    s.section,
-                    s.contact,
-                    s.address,
-                ]
-                    .filter((v) => v !== null && v !== undefined && v !== "")
-                    .map((v) => String(v).toLowerCase())
-                    .join(" ")
-
-                return haystack.includes(q)
-            })
-        }
-
         const effectiveSession = sessionFilter || newestSession
 
         return rowData.filter((s) => {
+            // Grade filter
             if (gradeFilter && !sameGrade(s.grade, gradeFilter)) return false
+
+            // Section filter
             if (sectionFilter && !sameText(s.section, sectionFilter)) return false
+
+            // Session filter (default = newest)
             if (effectiveSession && !sameText(s.session, effectiveSession)) return false
+
+            // Search: match against name, father name, admissionNo, rollNo, id
+            if (q) {
+                const fields = [
+                    s.name,
+                    s.fatherName,
+                    s.admissionNo,
+                    s.rollNo,
+                    s.id,
+                ]
+                    .filter((v) => v !== null && v !== undefined && v !== "")
+                    .map((v) => String(v).toLowerCase())
+
+                const matches = fields.some((v) => v.includes(q))
+                if (!matches) return false
+            }
+
             return true
         })
     }, [rowData, gradeFilter, sectionFilter, sessionFilter, newestSession, searchInput])
@@ -297,7 +285,6 @@ function StudentListTable({ StudentList, refreshData, students }) {
         let created = 0
         let graduated = 0
         let skipped = 0
-        const skipReasons = []
 
         const targetSession = String(promoteSession).trim()
 
@@ -307,14 +294,12 @@ function StudentListTable({ StudentList, refreshData, students }) {
             const currentSession = String(s.session || "").trim()
             if (currentSession === targetSession) {
                 skipped++
-                skipReasons.push(`${s.name}: already in ${targetSession}`)
                 setPromoteProgress({ current: i + 1, total: studentsToPromote.length })
                 continue
             }
 
             if (String(s.grade || "").trim().toLowerCase() === "graduated") {
                 skipped++
-                skipReasons.push(`${s.name}: already graduated`)
                 setPromoteProgress({ current: i + 1, total: studentsToPromote.length })
                 continue
             }
@@ -322,7 +307,6 @@ function StudentListTable({ StudentList, refreshData, students }) {
             const nextGrade = getNextGrade(s.grade)
             if (!nextGrade) {
                 skipped++
-                skipReasons.push(`${s.name}: unknown grade "${s.grade}"`)
                 setPromoteProgress({ current: i + 1, total: studentsToPromote.length })
                 continue
             }
@@ -349,20 +333,15 @@ function StudentListTable({ StudentList, refreshData, students }) {
                 if (nextGrade === "Graduated") graduated++
                 else created++
             } catch (err) {
-                const msg = err?.response?.data?.error || err?.message || "unknown error"
-                console.error(`[PROMOTE] Failed for ${s.name}:`, msg)
+                console.warn(`[PROMOTE] Failed for ${s.name}:`, err?.response?.data?.error)
                 skipped++
-                skipReasons.push(`${s.name}: ${msg}`)
             }
 
             setPromoteProgress({ current: i + 1, total: studentsToPromote.length })
         }
 
         if (created === 0 && graduated === 0) {
-            toast.error(
-                `No students promoted. ${skipped} skipped. Check console for details.`
-            )
-            console.warn("[PROMOTE] Skip reasons:", skipReasons)
+            toast.error(`No students promoted. ${skipped} skipped.`)
         } else {
             toast.success(
                 `Created ${created} new record(s)` +
@@ -379,7 +358,7 @@ function StudentListTable({ StudentList, refreshData, students }) {
     }
 
     // ─────────────────────────────────────────────
-    // Export/Print helpers
+    // Export/Print
     // ─────────────────────────────────────────────
     const schoolName = schoolInfo?.schoolName || schoolInfo?.name || "School"
     const schoolAddress = schoolInfo?.address || ""
@@ -388,14 +367,11 @@ function StudentListTable({ StudentList, refreshData, students }) {
 
     const reportTitle = useMemo(() => {
         const bits = []
-        if (searchInput) {
-            bits.push(`Search: "${searchInput}"`)
-        } else {
-            if (gradeFilter) bits.push(`Grade: ${gradeFilter}`)
-            if (sectionFilter) bits.push(`Section: ${sectionFilter}`)
-            if (sessionFilter) bits.push(`Session: ${sessionFilter}`)
-            else if (newestSession) bits.push(`Session: ${newestSession}`)
-        }
+        if (gradeFilter) bits.push(`Grade: ${gradeFilter}`)
+        if (sectionFilter) bits.push(`Section: ${sectionFilter}`)
+        if (sessionFilter) bits.push(`Session: ${sessionFilter}`)
+        else if (newestSession) bits.push(`Session: ${newestSession}`)
+        if (searchInput) bits.push(`Search: "${searchInput}"`)
         return bits.length ? `Student Report — ${bits.join(" | ")}` : "Student Report"
     }, [gradeFilter, sectionFilter, sessionFilter, newestSession, searchInput])
 
@@ -531,12 +507,7 @@ function StudentListTable({ StudentList, refreshData, students }) {
         setExportOpen(false)
 
         try {
-            const doc = new jsPDF({
-                orientation: 'landscape',
-                unit: 'mm',
-                format: 'a4',
-            })
-
+            const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' })
             const pageWidth = doc.internal.pageSize.getWidth()
 
             doc.setFont('helvetica', 'bold')
@@ -574,9 +545,7 @@ function StudentListTable({ StudentList, refreshData, students }) {
             doc.setTextColor(100, 116, 139)
             doc.text(
                 `Total Students: ${filteredData.length}   |   Generated: ${new Date().toLocaleString()}`,
-                pageWidth / 2,
-                yPos,
-                { align: 'center' }
+                pageWidth / 2, yPos, { align: 'center' }
             )
             yPos += 5
 
@@ -589,27 +558,10 @@ function StudentListTable({ StudentList, refreshData, students }) {
             )
 
             autoTable(doc, {
-                head,
-                body,
-                startY: yPos,
-                theme: 'grid',
-                styles: {
-                    fontSize: 8,
-                    cellPadding: 2,
-                    textColor: [51, 65, 85],
-                    lineColor: [226, 232, 240],
-                    lineWidth: 0.1,
-                },
-                headStyles: {
-                    fillColor: [30, 41, 59],
-                    textColor: [255, 255, 255],
-                    fontStyle: 'bold',
-                    fontSize: 8,
-                    halign: 'left',
-                },
-                alternateRowStyles: {
-                    fillColor: [248, 250, 252],
-                },
+                head, body, startY: yPos, theme: 'grid',
+                styles: { fontSize: 8, cellPadding: 2, textColor: [51, 65, 85], lineColor: [226, 232, 240], lineWidth: 0.1 },
+                headStyles: { fillColor: [30, 41, 59], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8, halign: 'left' },
+                alternateRowStyles: { fillColor: [248, 250, 252] },
                 margin: { left: 10, right: 10 },
             })
 
@@ -630,7 +582,6 @@ function StudentListTable({ StudentList, refreshData, students }) {
 
             const filename = `${reportTitle.replace(/[^\w\-]+/g, "_")}.pdf`
             doc.save(filename)
-
             toast.success("PDF downloaded")
         } catch (err) {
             console.error("PDF EXPORT ERROR:", err)
@@ -693,7 +644,7 @@ function StudentListTable({ StudentList, refreshData, students }) {
         toast.success("CSV file downloaded")
     }
 
-    // ─── Action buttons column ───
+    // ─── Action buttons ───
     const CustomButtons = (props) => (
         <div className="flex items-center gap-1.5 h-full">
             <button
@@ -817,7 +768,7 @@ function StudentListTable({ StudentList, refreshData, students }) {
     return (
         <div className="my-6 animate-page-in">
 
-            {/* ─── Header card ─── */}
+            {/* Header card */}
             <div className="bg-gradient-to-r from-indigo-500 via-blue-600 to-cyan-600 rounded-2xl shadow-lg p-5 mb-5 text-white relative z-20 overflow-visible">
                 <div className="absolute inset-0 opacity-10 bg-[radial-gradient(circle_at_20%_20%,white_0%,transparent_60%)] pointer-events-none" />
 
@@ -829,11 +780,7 @@ function StudentListTable({ StudentList, refreshData, students }) {
                         <div>
                             <h2 className="text-xl font-bold tracking-tight">Student Records</h2>
                             <p className="text-xs text-blue-100 mt-0.5">
-                                {filteredData.length} {filteredData.length === 1 ? "record" : "records"}
-                                {searchInput
-                                    ? ` matching "${searchInput}" (all sessions)`
-                                    : (!sessionFilter && newestSession ? ` • Latest session (${newestSession})` : "")}
-                                {!searchInput && sessionFilter ? ` • ${sessionFilter}` : ""}
+                                {filteredData.length} {filteredData.length === 1 ? "student" : "students"}
                                 {schoolName ? ` • ${schoolName}` : ""}
                             </p>
                         </div>
@@ -896,7 +843,7 @@ function StudentListTable({ StudentList, refreshData, students }) {
                 </div>
             </div>
 
-            {/* ─── Filter bar ─── */}
+            {/* Filter bar */}
             <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 p-3 mb-4 relative z-0">
                 <div className="flex flex-wrap items-center gap-2">
                     <GraduationCap size={16} className="text-slate-400" />
@@ -911,13 +858,7 @@ function StudentListTable({ StudentList, refreshData, students }) {
                         {SECTIONS.map((s) => (<option key={s} value={s}>{s}</option>))}
                     </select>
 
-                    <select
-                        className={FILTER_CLASS}
-                        value={sessionFilter}
-                        onChange={(e) => setSessionFilter(e.target.value)}
-                        disabled={!!searchInput}
-                        title={searchInput ? "Session filter is disabled while searching" : ""}
-                    >
+                    <select className={FILTER_CLASS} value={sessionFilter} onChange={(e) => setSessionFilter(e.target.value)}>
                         <option value="">
                             {newestSession ? `Latest (${newestSession})` : "All Sessions"}
                         </option>
@@ -933,12 +874,12 @@ function StudentListTable({ StudentList, refreshData, students }) {
                         </button>
                     )}
 
-                    {/* Search box — searches across ALL sessions, grades, sections */}
+                    {/* Search box */}
                     <div className="ml-auto flex items-center gap-2 border border-slate-200 dark:border-slate-600 rounded-xl px-4 py-2.5 shadow-sm bg-white dark:bg-slate-800 focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-100 dark:focus-within:ring-blue-900/40 transition-all duration-200">
                         <Search size={18} className="text-slate-400" />
                         <input
                             type="text"
-                            placeholder="Search name, f/name, adm no, roll no..."
+                            placeholder="Search name, adm no, roll no, ID..."
                             value={searchInput}
                             onChange={(e) => setSearchInput(e.target.value)}
                             className="outline-none text-sm w-64 placeholder:text-slate-400 bg-transparent text-slate-800 dark:text-slate-100"
@@ -954,17 +895,9 @@ function StudentListTable({ StudentList, refreshData, students }) {
                         )}
                     </div>
                 </div>
-
-                {/* Info banner when searching */}
-                {searchInput && (
-                    <div className="mt-3 px-3 py-2 rounded-lg bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 text-xs text-blue-700 dark:text-blue-300 flex items-center gap-2">
-                        <Search size={13} />
-                        Searching across <strong>all sessions, grades & sections</strong> — showing every record matching <strong>"{searchInput}"</strong>
-                    </div>
-                )}
             </div>
 
-            {/* ─── Table card ─── */}
+            {/* Table card */}
             <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg border border-slate-100 dark:border-slate-700 overflow-hidden relative z-0">
                 <div className="h-1 bg-gradient-to-r from-indigo-500 via-blue-500 to-cyan-500" />
 
@@ -997,7 +930,7 @@ function StudentListTable({ StudentList, refreshData, students }) {
                 students={students || rowData}
             />
 
-            {/* ─── Promote dialog ─── */}
+            {/* Promote dialog */}
             {promoteOpen && (
                 <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
                     <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden">
