@@ -174,7 +174,7 @@ function StudentListTable({ StudentList, refreshData, students }) {
         if (StudentList) setRowData(StudentList)
     }, [StudentList])
 
-    // ✅ Find the newest session in the data
+    // Find the newest session in the data
     const newestSession = useMemo(() => {
         const sessions = rowData
             .map((s) => String(s.session || "").trim())
@@ -187,22 +187,16 @@ function StudentListTable({ StudentList, refreshData, students }) {
         })[0]
     }, [rowData])
 
-    // ✅ Filtered data — grade/section/session filters + smart search
+    // Filtered data — grade/section/session filters + smart search
     const filteredData = useMemo(() => {
         const effectiveSession = sessionFilter || newestSession
         const q = searchInput.trim().toLowerCase()
 
         return rowData.filter((s) => {
-            // Grade filter
             if (gradeFilter && !sameGrade(s.grade, gradeFilter)) return false
-
-            // Section filter
             if (sectionFilter && !sameText(s.section, sectionFilter)) return false
-
-            // Session filter (or newest session when "All" is selected)
             if (effectiveSession && !sameText(s.session, effectiveSession)) return false
 
-            // ✅ Search across name, fatherName, admissionNo, rollNo, id, session, grade, section, contact
             if (q) {
                 const haystack = [
                     s.name,
@@ -525,7 +519,6 @@ function StudentListTable({ StudentList, refreshData, students }) {
 
             const pageWidth = doc.internal.pageSize.getWidth()
 
-            // Header
             doc.setFont('helvetica', 'bold')
             doc.setFontSize(18)
             doc.setTextColor(30, 41, 59)
@@ -913,7 +906,7 @@ function StudentListTable({ StudentList, refreshData, students }) {
                         </button>
                     )}
 
-                    {/* ✅ Working search box */}
+                    {/* Working search box */}
                     <div className="ml-auto flex items-center gap-2 border border-slate-200 dark:border-slate-600 rounded-xl px-4 py-2.5 shadow-sm bg-white dark:bg-slate-800 focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-100 dark:focus-within:ring-blue-900/40 transition-all duration-200">
                         <Search size={18} className="text-slate-400" />
                         <input
