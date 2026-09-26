@@ -45,10 +45,33 @@ const PROMOTION_ORDER = [
     "1st","2nd","3rd","4th","5th","6th","7th","8th","9th","10th","11th","12th",
 ]
 
+// ─────────────────────────────────────────────
+// Forgiving getNextGrade — handles "1", "1st", "1ST", etc.
+// ─────────────────────────────────────────────
 function getNextGrade(current) {
-    const i = PROMOTION_ORDER.findIndex(
-        (g) => String(g).trim().toLowerCase() === String(current || "").trim().toLowerCase()
+    const raw = String(current || "").trim().toLowerCase()
+    if (!raw) return null
+
+    // Already graduated
+    if (raw === "graduated") return null
+
+    // Try exact match first
+    let i = PROMOTION_ORDER.findIndex(
+        (g) => String(g).trim().toLowerCase() === raw
     )
+
+    // If not exact, try matching leading number ("1" → "1st", "12" → "12th")
+    if (i === -1) {
+        const numMatch = raw.match(/^(\d+)/)
+        if (numMatch) {
+            const num = Number(numMatch[1])
+            i = PROMOTION_ORDER.findIndex((g) => {
+                const gm = String(g).match(/^(\d+)/)
+                return gm && Number(gm[1]) === num
+            })
+        }
+    }
+
     if (i === -1) return null
     if (i === PROMOTION_ORDER.length - 1) return "Graduated"
     return PROMOTION_ORDER[i + 1]
@@ -191,13 +214,13 @@ function StudentListTable({ StudentList, refreshData, students }) {
     const handleEditClick = (data) => { setEditStudent(data); setEditOpen(true) }
 
     // ─────────────────────────────────────────────
-    // Promote: creates NEW records, keeps old sessions
+    // Promote: creates NEW records; keeps old sessions
     // ─────────────────────────────────────────────
     const openPromoteDialog = () => {
         const sessions = rowData.map(s => s.session).filter(Boolean)
         const counts = {}
         sessions.forEach(v => counts[v] = (counts[v] || 0) + 1)
-        const mostCommon = Object.keys(counts).sort((a,b) => counts[b] - counts[a])[0] || "2025-2026"
+        const mostCommon = Object.keys(counts).sort((a, b) => counts[b] - counts[a])[0] || "2025-2026"
         setPromoteSession(getNextSession(mostCommon))
         setPromoteOpen(true)
     }
@@ -208,82 +231,104 @@ function StudentListTable({ StudentList, refreshData, students }) {
             return
         }
 
+        if (!rowData || rowData.length === 0) {
+            toast.error("No students to promote")
+            return
+        }
+
         setPromoteLoading(true)
         setPromoteProgress({ current: 0, total: rowData.length })
 
         let created = 0
         let graduated = 0
         let skipped = 0
+        const skipReasons = []
 
-        try {
-            for (let i = 0; i < rowData.length; i++) {
-                const s = rowData[i]
+        const targetSession = String(promoteSession).trim()
 
-                // Skip students already in the new session
-                if (String(s.session || "").trim() === String(promoteSession).trim()) {
-                    skipped++
-                    setPromoteProgress({ current: i + 1, total: rowData.length })
-                    continue
-                }
+        for (let i = 0; i < rowData.length; i++) {
+            const s = rowData[i]
 
-                const nextGrade = getNextGrade(s.grade)
-                if (nextGrade === null) {
-                    skipped++
-                    setPromoteProgress({ current: i + 1, total: rowData.length })
-                    continue
-                }
-
-                // ✅ Build payload for a NEW record (old session stays)
-                const payload = {
-                    name: s.name,
-                    fatherName: s.fatherName || null,
-                    fatherOccupation: s.fatherOccupation || null,
-                    admissionNo: s.admissionNo || null,
-                    contact: s.contact || "",
-                    grade: nextGrade,
-                    section: s.section || null,
-                    rollNo: s.rollNo || null,
-                    session: promoteSession,
-                    admissionDate: s.admissionDate || null,
-                    fee: s.fee || 0,
-                    address: s.address || "",
-                    image: s.image || null,
-                }
-
-                try {
-                    await GlobalApi.CreateNewStudent(payload)
-                    if (nextGrade === "Graduated") graduated++
-                    else created++
-                } catch (err) {
-                    console.warn(`Skipped ${s.name}:`, err?.response?.data?.error)
-                    skipped++
-                }
-
+            // Skip if already in the target session
+            const currentSession = String(s.session || "").trim()
+            if (currentSession === targetSession) {
+                skipped++
+                skipReasons.push(`${s.name}: already in ${targetSession}`)
                 setPromoteProgress({ current: i + 1, total: rowData.length })
+                continue
             }
 
-            if (skipped > 0) {
-                toast.success(
-                    `Created ${created} records` +
-                    (graduated ? ` • ${graduated} graduated` : "") +
-                    ` • ${skipped} skipped`
-                )
-            } else {
-                toast.success(
-                    `Created ${created} new records` +
-                    (graduated ? ` • ${graduated} graduated` : "")
-                )
+            // Skip if already graduated
+            if (String(s.grade || "").trim().toLowerCase() === "graduated") {
+                skipped++
+                skipReasons.push(`${s.name}: already graduated`)
+                setPromoteProgress({ current: i + 1, total: rowData.length })
+                continue
             }
 
-            setPromoteOpen(false)
-            setPromoteSession("")
-            if (refreshData) await refreshData()
+            // Compute next grade
+            const nextGrade = getNextGrade(s.grade)
+            if (!nextGrade) {
+                skipped++
+                skipReasons.push(`${s.name}: unknown grade "${s.grade}"`)
+                setPromoteProgress({ current: i + 1, total: rowData.length })
+                continue
+            }
 
-        } catch (error) {
-            console.log("PROMOTE ERROR:", error?.response?.data || error)
-            toast.error(error?.response?.data?.error || "Promotion failed")
+            // Build payload for the NEW record (old record stays)
+            const payload = {
+                name: s.name,
+                fatherName: s.fatherName || null,
+                fatherOccupation: s.fatherOccupation || null,
+                admissionNo: s.admissionNo || null,
+                contact: s.contact || "",
+                grade: nextGrade,
+                section: s.section || null,
+                rollNo: s.rollNo || null,
+                session: targetSession,
+                admissionDate: s.admissionDate || null,
+                fee: s.fee || 0,
+                address: s.address || "",
+                image: s.image || null,
+            }
+
+            console.log(`[PROMOTE] Creating for ${s.name}:`, payload)
+
+            try {
+                const resp = await GlobalApi.CreateNewStudent(payload)
+                console.log(`[PROMOTE] Success:`, resp?.data)
+                if (nextGrade === "Graduated") graduated++
+                else created++
+            } catch (err) {
+                const msg = err?.response?.data?.error || err?.message || "unknown error"
+                console.error(`[PROMOTE] Failed for ${s.name}:`, msg)
+                skipped++
+                skipReasons.push(`${s.name}: ${msg}`)
+            }
+
+            setPromoteProgress({ current: i + 1, total: rowData.length })
         }
 
+        // Final toast
+        if (created === 0 && graduated === 0) {
+            toast.error(
+                `No students promoted. ${skipped} skipped. Check console for details.`
+            )
+            console.warn("[PROMOTE] Skip reasons:", skipReasons)
+        } else {
+            toast.success(
+                `Created ${created} new record(s)` +
+                (graduated ? ` • ${graduated} graduated` : "") +
+                (skipped ? ` • ${skipped} skipped` : "")
+            )
+            if (skipped > 0) {
+                console.warn("[PROMOTE] Skip reasons:", skipReasons)
+            }
+        }
+
+        setPromoteOpen(false)
+        setPromoteSession("")
+        if (refreshData) await refreshData()
         setPromoteLoading(false)
         setPromoteProgress({ current: 0, total: 0 })
     }
