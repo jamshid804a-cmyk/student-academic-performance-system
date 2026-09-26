@@ -45,22 +45,18 @@ const PROMOTION_ORDER = [
     "1st","2nd","3rd","4th","5th","6th","7th","8th","9th","10th","11th","12th",
 ]
 
-// ─────────────────────────────────────────────
-// Forgiving getNextGrade — handles "1", "1st", "1ST", etc.
-// ─────────────────────────────────────────────
+// Forgiving grade matcher: "1", "1st", "1ST", "Nursery", etc.
 function getNextGrade(current) {
     const raw = String(current || "").trim().toLowerCase()
     if (!raw) return null
-
-    // Already graduated
     if (raw === "graduated") return null
 
-    // Try exact match first
+    // Exact match first
     let i = PROMOTION_ORDER.findIndex(
         (g) => String(g).trim().toLowerCase() === raw
     )
 
-    // If not exact, try matching leading number ("1" → "1st", "12" → "12th")
+    // Fallback: match leading number ("1" → "1st", "12" → "12th")
     if (i === -1) {
         const numMatch = raw.match(/^(\d+)/)
         if (numMatch) {
@@ -290,6 +286,7 @@ function StudentListTable({ StudentList, refreshData, students }) {
                 fee: s.fee || 0,
                 address: s.address || "",
                 image: s.image || null,
+                isPromotion: true,   // ✅ Skip backend duplicate checks
             }
 
             console.log(`[PROMOTE] Creating for ${s.name}:`, payload)
