@@ -1,8 +1,7 @@
 "use client"
 
-
 import React, { useEffect, useState, useMemo } from 'react'
-import { LoaderIcon, FlaskConical, Send, Plus, X, Search } from 'lucide-react'
+import { LoaderIcon, FlaskConical, Send, Plus, X, Search, UserPlus, BookPlus } from 'lucide-react'
 import GlobalApi from '@/app/_services/GlobalApi'
 import { toast } from 'sonner'
 
@@ -25,7 +24,8 @@ const STORAGE_KEY = "testing_filters_v1"
 const EXTRA_KEY = "testing_extra_subjects_v1"
 const HIDDEN_KEY = "testing_hidden_subjects_v1"
 
-const EXCLUDED_SUBJECTS = ["english", "urdu"]
+// Only Urdu stays excluded — English is now allowed as a subject.
+const EXCLUDED_SUBJECTS = ["urdu"]
 const isExcluded = (name) => EXCLUDED_SUBJECTS.includes(String(name || "").trim().toLowerCase())
 
 const monthNameToKey = (name) => {
@@ -49,12 +49,16 @@ export default function TestingPage() {
   const [tests, setTests] = useState({})
   const [loading, setLoading] = useState(false)
   const [hydrated, setHydrated] = useState(false)
-  const [addingFor, setAddingFor] = useState(null)
-  const [newSubjectName, setNewSubjectName] = useState("")
   const [searchInput, setSearchInput] = useState("")
 
   const [extraSubjects, setExtraSubjects] = useState({})
   const [hiddenSubjects, setHiddenSubjects] = useState({})
+
+  // ─── Subject modal state ───
+  // mode: 'single' (one student) | 'bulk' (all students) | null (closed)
+  const [subjectModal, setSubjectModal] = useState(null)
+  const [newSubjectName, setNewSubjectName] = useState("")
+  const [bulkSaving, setBulkSaving] = useState(false)
 
   useEffect(() => {
     try {
@@ -161,8 +165,23 @@ export default function TestingPage() {
     return Array.from(names).sort()
   }, [students, subjectsByStudent])
 
-  // Add subject (Testing only) — clears any old marks for this student/subject/month/testType
-  const handleAddSubject = async (studentId) => {
+  // Clears old test marks for a student/subject combo before (re)adding it
+  const clearOldMarks = async (studentId, name) => {
+    try {
+      await fetch(
+        `/api/tests/by-subject?studentId=${encodeURIComponent(studentId)}` +
+        `&subject=${encodeURIComponent(name)}` +
+        `&month=${encodeURIComponent(monthKey)}` +
+        `&testType=${encodeURIComponent(testType)}`,
+        { method: "DELETE" }
+      )
+    } catch (e) {
+      console.error("Failed to clear old marks:", e)
+    }
+  }
+
+  // ─── Add subject to ONE student ───
+  const handleAddSubjectSingle = async (studentId) => {
     const name = newSubjectName.trim()
     if (!name) return
     if (isExcluded(name)) { toast.error(`${name} is not allowed in Testing`); return }
@@ -173,29 +192,77 @@ export default function TestingPage() {
     )
     if (alreadyExists) { toast.error("Subject already exists for this student"); return }
 
-    // 🔥 Clear old marks so the subject starts fresh when re-added
-    try {
-      await fetch(
-        `/api/tests/by-subject?studentId=${encodeURIComponent(studentId)}` +
-        `&subject=${encodeURIComponent(name)}` +
-        `&month=${encodeURIComponent(monthKey)}` +
-        `&testType=${encodeURIComponent(testType)}`,
-        { method: "DELETE" }
-      )
-      setTests((prev) => {
-        const copy = { ...prev }
-        delete copy[`${studentId}__${name}`]
-        return copy
-      })
-    } catch (e) {
-      console.error("Failed to clear old marks:", e)
-    }
+    await clearOldMarks(studentId, name)
+    setTests((prev) => {
+      const copy = { ...prev }
+      delete copy[`${studentId}__${name}`]
+      return copy
+    })
 
     setExtraSubjects((prev) => ({ ...prev, [sid]: [...(prev[sid] || []), name] }))
     setHiddenSubjects((prev) => ({ ...prev, [sid]: (prev[sid] || []).filter((n) => n !== name) }))
 
-    setNewSubjectName(""); setAddingFor(null)
-    toast.success("Subject added (Testing only)")
+    setNewSubjectName("")
+    setSubjectModal(null)
+    toast.success(`"${name}" added for this student`)
+  }
+
+  // ─── Add subject to ALL currently loaded students at once ───
+  const handleAddSubjectBulk = async () => {
+    const name = newSubjectName.trim()
+    if (!name) return
+    if (isExcluded(name)) { toast.error(`${name} is not allowed in Testing`); return }
+    if (students.length === 0) { toast.error("No students loaded"); return }
+
+    const targets = students.filter((st) => {
+      const sid = String(st.id)
+      return !(subjectsByStudent[sid] || []).some((s) => s.name.toLowerCase() === name.toLowerCase())
+    })
+
+    if (targets.length === 0) {
+      toast.info("Every student already has this subject")
+      setSubjectModal(null)
+      setNewSubjectName("")
+      return
+    }
+
+    setBulkSaving(true)
+    try {
+      await Promise.all(targets.map((st) => clearOldMarks(st.id, name)))
+
+      setTests((prev) => {
+        const copy = { ...prev }
+        targets.forEach((st) => { delete copy[`${st.id}__${name}`] })
+        return copy
+      })
+
+      setExtraSubjects((prev) => {
+        const copy = { ...prev }
+        targets.forEach((st) => {
+          const sid = String(st.id)
+          copy[sid] = [...(copy[sid] || []), name]
+        })
+        return copy
+      })
+
+      setHiddenSubjects((prev) => {
+        const copy = { ...prev }
+        targets.forEach((st) => {
+          const sid = String(st.id)
+          copy[sid] = (copy[sid] || []).filter((n) => n !== name)
+        })
+        return copy
+      })
+
+      toast.success(`"${name}" added to ${targets.length} student${targets.length === 1 ? "" : "s"}`)
+    } catch (err) {
+      console.error(err)
+      toast.error("Failed to add subject to all students")
+    }
+
+    setBulkSaving(false)
+    setNewSubjectName("")
+    setSubjectModal(null)
   }
 
   const handleRemoveSubject = (studentId, subjectName) => {
@@ -285,6 +352,21 @@ export default function TestingPage() {
 
   const filterClass = "px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 dark:focus:ring-blue-900/40 transition-all"
 
+  const closeModal = () => {
+    setSubjectModal(null)
+    setNewSubjectName("")
+  }
+
+  const handleModalSubmit = () => {
+    if (!subjectModal) return
+    if (subjectModal.mode === "bulk") handleAddSubjectBulk()
+    else handleAddSubjectSingle(subjectModal.studentId)
+  }
+
+  const modalStudentName = subjectModal?.mode === "single"
+    ? students.find((s) => s.id === subjectModal.studentId)?.name
+    : null
+
   return (
     <div className="p-7 animate-page-in">
 
@@ -340,7 +422,17 @@ export default function TestingPage() {
         </div>
       ) : (
         <>
-          <div className="flex justify-end mb-3">
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+            <button
+              onClick={() => { setSubjectModal({ mode: "bulk" }); setNewSubjectName("") }}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600
+                hover:from-indigo-700 hover:to-purple-700 text-white text-sm font-bold shadow-md
+                transition-all hover:scale-[1.03]"
+            >
+              <UserPlus size={18} />
+              Add Subject to All Students
+            </button>
+
             <div className="flex items-center gap-2 border border-slate-200 dark:border-slate-600 rounded-xl px-4 py-2.5 shadow-sm bg-white dark:bg-slate-800 focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-100 dark:focus-within:ring-blue-900/40 transition-all">
               <Search size={16} className="text-slate-400" />
               <input
@@ -385,32 +477,34 @@ export default function TestingPage() {
                           const cell = row.subjectMarks[name]
                           const pct = cell?.percentage ?? 0
                           return (
-                            <td key={name} className="px-2 py-2 text-center">
-                              <div className="flex items-center justify-center gap-1">
+                            <td key={name} className="px-2 py-2.5 text-center">
+                              <div className="flex items-center justify-center gap-1.5">
                                 <input
                                   type="number" min="0"
                                   value={cell?.marks ?? ""}
                                   onChange={(e) => handleMarksChange(row.student.id, name, "marks", e.target.value)}
-                                  placeholder="obt"
-                                  className={`w-12 px-1 py-1.5 rounded-lg border text-center text-xs font-semibold outline-none transition
+                                  placeholder="Obt"
+                                  className={`w-16 px-2 py-2 rounded-lg border text-center text-sm font-bold outline-none transition
                                     ${cell && pct < 50
                                       ? "border-red-400 bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-300 dark:border-red-700"
-                                      : "border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:border-blue-500"}`}
+                                      : "border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 dark:focus:ring-blue-900/40"}`}
                                 />
-                                <span className="text-slate-400 text-xs font-bold">/</span>
+                                <span className="text-slate-400 text-sm font-bold">/</span>
                                 <input
                                   type="number" min="0"
                                   value={cell?.totalMarks ?? ""}
                                   onChange={(e) => handleMarksChange(row.student.id, name, "totalMarks", e.target.value)}
-                                  placeholder="tot"
-                                  className="w-12 px-1 py-1.5 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-center text-xs font-semibold text-slate-800 dark:text-slate-100 outline-none"
+                                  placeholder="Tot"
+                                  className="w-16 px-2 py-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800
+                                    text-center text-sm font-bold text-slate-800 dark:text-slate-100 outline-none
+                                    focus:border-blue-500 focus:ring-2 focus:ring-blue-100 dark:focus:ring-blue-900/40 transition"
                                 />
                                 <button
                                   onClick={() => handleRemoveSubject(row.student.id, name)}
                                   title="Remove subject from Testing"
-                                  className="w-5 h-5 rounded text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 flex items-center justify-center transition"
+                                  className="w-6 h-6 rounded-md text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 flex items-center justify-center transition"
                                 >
-                                  <X size={12} />
+                                  <X size={13} />
                                 </button>
                               </div>
                             </td>
@@ -435,7 +529,7 @@ export default function TestingPage() {
                         </td>
 
                         <td className="px-4 py-3">
-                          <div className="flex items-center justify-center gap-1">
+                          <div className="flex items-center justify-center gap-2">
                             <button
                               onClick={() => handleSend(row)}
                               disabled={row.lowSubjects.length === 0}
@@ -446,34 +540,14 @@ export default function TestingPage() {
                               <Send size={12} /> Send
                             </button>
                             <button
-                              onClick={() => { setAddingFor(addingFor === row.student.id ? null : row.student.id); setNewSubjectName("") }}
-                              title="Add subject (Testing only)"
-                              className="w-7 h-7 rounded-lg bg-emerald-50 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300
-                                hover:bg-emerald-100 dark:hover:bg-emerald-900/60 flex items-center justify-center transition hover:scale-110"
+                              onClick={() => { setSubjectModal({ mode: "single", studentId: row.student.id }); setNewSubjectName("") }}
+                              title="Add subject for this student"
+                              className="w-9 h-9 rounded-lg bg-emerald-50 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300
+                                hover:bg-emerald-100 dark:hover:bg-emerald-900/60 flex items-center justify-center transition hover:scale-110 shadow-sm"
                             >
-                              <Plus size={14} />
+                              <Plus size={18} strokeWidth={2.5} />
                             </button>
                           </div>
-
-                          {addingFor === row.student.id && (
-                            <div className="mt-2 flex gap-1 justify-center animate-fade-in">
-                              <input
-                                autoFocus
-                                value={newSubjectName}
-                                onChange={(e) => setNewSubjectName(e.target.value)}
-                                onKeyDown={(e) => {
-                                  if (e.key === 'Enter') handleAddSubject(row.student.id)
-                                  if (e.key === 'Escape') { setAddingFor(null); setNewSubjectName("") }
-                                }}
-                                placeholder="Subject name"
-                                className="w-28 px-2 py-1 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-xs outline-none focus:border-blue-500"
-                              />
-                              <button onClick={() => handleAddSubject(row.student.id)}
-                                className="px-2 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold transition">
-                                Add
-                              </button>
-                            </div>
-                          )}
                         </td>
                       </tr>
                     )
@@ -483,6 +557,99 @@ export default function TestingPage() {
             </div>
           </div>
         </>
+      )}
+
+      {/* ─── Add Subject Modal (single student OR bulk) ─── */}
+      {subjectModal && (
+        <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl max-w-md w-full overflow-hidden animate-fade-in">
+
+            <div className={`px-6 py-5 ${subjectModal.mode === "bulk"
+              ? "bg-gradient-to-r from-indigo-600 to-purple-600"
+              : "bg-gradient-to-r from-emerald-500 to-teal-600"}`}
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-11 h-11 rounded-xl bg-white/20 border border-white/30 flex items-center justify-center text-white">
+                  {subjectModal.mode === "bulk" ? <UserPlus size={22} /> : <BookPlus size={22} />}
+                </div>
+                <div>
+                  <h3 className="text-white text-lg font-bold">
+                    {subjectModal.mode === "bulk" ? "Add Subject to All Students" : "Add Subject"}
+                  </h3>
+                  <p className="text-white/80 text-xs mt-0.5">
+                    {subjectModal.mode === "bulk"
+                      ? `Assigns a new subject to all ${students.length} loaded student(s)`
+                      : `For ${modalStudentName || "this student"}`}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-6 space-y-4">
+              {subjectModal.mode === "bulk" && (
+                <div className="bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 rounded-xl p-3">
+                  <p className="text-xs text-indigo-800 dark:text-indigo-300 leading-relaxed">
+                    This subject will be added to every student currently loaded by your filters.
+                    Students who already have this subject will be skipped automatically.
+                  </p>
+                </div>
+              )}
+
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1.5">
+                  Subject Name <span className="text-red-500">*</span>
+                </label>
+                <input
+                  autoFocus
+                  value={newSubjectName}
+                  onChange={(e) => setNewSubjectName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") handleModalSubmit()
+                    if (e.key === "Escape") closeModal()
+                  }}
+                  placeholder="e.g. Mathematics, Science, English..."
+                  disabled={bulkSaving}
+                  className="w-full px-4 py-3 rounded-xl border border-slate-300 dark:border-slate-600
+                    focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 dark:focus:ring-emerald-900/40
+                    outline-none transition text-base text-slate-800 dark:text-slate-100
+                    bg-white dark:bg-slate-900 disabled:opacity-60"
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3 px-6 py-4 border-t border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/40">
+              <button
+                onClick={closeModal}
+                disabled={bulkSaving}
+                className="px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 text-sm font-semibold
+                  text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 transition disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleModalSubmit}
+                disabled={bulkSaving || !newSubjectName.trim()}
+                className={`px-5 py-2.5 rounded-xl text-white text-sm font-semibold transition flex items-center gap-2
+                  disabled:opacity-50 hover:scale-[1.02]
+                  ${subjectModal.mode === "bulk"
+                    ? "bg-indigo-600 hover:bg-indigo-700"
+                    : "bg-emerald-600 hover:bg-emerald-700"}`}
+              >
+                {bulkSaving ? (
+                  <>
+                    <LoaderIcon size={16} className="animate-spin" />
+                    Adding...
+                  </>
+                ) : (
+                  <>
+                    {subjectModal.mode === "bulk" ? <UserPlus size={16} /> : <BookPlus size={16} />}
+                    {subjectModal.mode === "bulk" ? "Add to All" : "Add Subject"}
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )
