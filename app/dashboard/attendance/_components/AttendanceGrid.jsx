@@ -22,6 +22,42 @@ const getDaysInMonth = (monthName, year = new Date().getFullYear()) => {
   return new Date(year, m, 0).getDate()
 }
 
+// ─── Daily % summary cell (pinned top row) ───────────────
+const DaySummaryCell = ({ value }) => {
+  if (!value || value.marked === 0) {
+    return (
+      <div
+        className="flex items-center justify-center h-full text-[10px] text-slate-300 dark:text-slate-600"
+        title="No attendance marked yet"
+      >
+        —
+      </div>
+    )
+  }
+
+  const { p, a, l, marked } = value
+  const presentPct = Math.round((p / marked) * 100)
+
+  let colorClass = "text-red-600 bg-red-50 dark:bg-red-900/30 dark:text-red-300"
+  if (presentPct >= 90) {
+    colorClass = "text-emerald-700 bg-emerald-50 dark:bg-emerald-900/30 dark:text-emerald-300"
+  } else if (presentPct >= 75) {
+    colorClass = "text-teal-700 bg-teal-50 dark:bg-teal-900/30 dark:text-teal-300"
+  } else if (presentPct >= 50) {
+    colorClass = "text-amber-700 bg-amber-50 dark:bg-amber-900/30 dark:text-amber-300"
+  }
+
+  const tooltip = `Present: ${p} (${presentPct}%) · Absent: ${a} · Leave: ${l} · Marked: ${marked}`
+
+  return (
+    <div className="flex items-center justify-center h-full" title={tooltip}>
+      <span className={`text-[10px] font-bold px-1.5 py-1 rounded-md ${colorClass}`}>
+        {presentPct}%
+      </span>
+    </div>
+  )
+}
+
 export default function AttendanceGrid({
   attendanceList,
   selectedMonth,
@@ -77,17 +113,21 @@ export default function AttendanceGrid({
     onChangeRef.current = handleCellChange
   }, [handleCellChange])
 
-  const CellRenderer = useCallback(
-    (params) => (
+  // ─── Cell renderer: normal editable cell for data rows,
+  //     percentage summary for the pinned top row ───────
+  const CellRenderer = useCallback((params) => {
+    if (params.node.rowPinned) {
+      return <DaySummaryCell value={params.value} />
+    }
+    return (
       <AttendanceCell
         value={params.value}
         studentId={params.data.studentId}
         day={Number(params.colDef.field.slice(1))}
         onChange={(sid, day, status) => onChangeRef.current(sid, day, status)}
       />
-    ),
-    []
-  )
+    )
+  }, [])
 
   const colDefs = useMemo(() => {
     const base = [
@@ -153,6 +193,31 @@ export default function AttendanceGrid({
     })
     setRowData(rows)
   }, [attendanceList, daysInMonth])
+
+  // ─── Pinned top row: daily P/A/L percentage summary ────
+  const summaryRow = useMemo(() => {
+    if (rowData.length === 0) return []
+
+    const row = {
+      studentId: "__summary__",
+      rollNo: "",
+      name: "Daily %",
+    }
+
+    for (let d = 1; d <= daysInMonth; d++) {
+      let p = 0, a = 0, l = 0
+      rowData.forEach((r) => {
+        const v = r[`d${d}`]
+        if (v === "P") p++
+        else if (v === "A") a++
+        else if (v === "L") l++
+      })
+      const marked = p + a + l
+      row[`d${d}`] = { p, a, l, marked }
+    }
+
+    return [row]
+  }, [rowData, daysInMonth])
 
   const monthLabel = selectedMonth
     ? `${selectedMonth} ${new Date().getFullYear()}`
@@ -233,6 +298,7 @@ export default function AttendanceGrid({
           <AgGridReact
             rowData={rowData}
             columnDefs={colDefs}
+            pinnedTopRowData={summaryRow}
             rowHeight={52}
             headerHeight={52}
             suppressCellFocus
@@ -280,6 +346,12 @@ export default function AttendanceGrid({
           color: #334155;
         }
 
+        /* Pinned summary row styling */
+        .ag-theme-quartz .ag-floating-top {
+          background: #f8fafc;
+          border-bottom: 2px solid #e2e8f0 !important;
+        }
+
         /* Pinned columns get a subtle divider */
         .ag-theme-quartz .ag-pinned-left-cols-container {
           border-right: 2px solid #e2e8f0;
@@ -295,6 +367,11 @@ export default function AttendanceGrid({
           --ag-even-row-background-color: #1a2536;
           --ag-row-hover-color: #134e4a;
           --ag-foreground-color: #f1f5f9;
+        }
+
+        .dark .ag-theme-quartz .ag-floating-top {
+          background: #0f172a;
+          border-bottom: 2px solid #334155 !important;
         }
 
         .dark .ag-theme-quartz .ag-header {
