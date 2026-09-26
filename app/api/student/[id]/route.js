@@ -22,7 +22,9 @@ function buildIdMatchQuery(id) {
   return { $or: orConditions };
 }
 
-// ✅ GET one student
+// ─────────────────────────────────────────────
+// GET one student
+// ─────────────────────────────────────────────
 export async function GET(req, { params }) {
   try {
     const { id } = await params;
@@ -47,7 +49,9 @@ export async function GET(req, { params }) {
   }
 }
 
-// ✅ PUT — update a student
+// ─────────────────────────────────────────────
+// PUT — update a student (with duplicate checks)
+// ─────────────────────────────────────────────
 export async function PUT(req, { params }) {
   try {
     const { id } = await params;
@@ -58,23 +62,85 @@ export async function PUT(req, { params }) {
     }
 
     const db = await getDb();
+    const students = db.collection("students");
 
+    // Find the current student first
+    const query = buildIdMatchQuery(id);
+    const currentStudent = await students.findOne(query);
+    if (!currentStudent) {
+      return NextResponse.json({ error: "Student not found" }, { status: 404 });
+    }
+
+    // ─── Duplicate Admission No check (excluding self) ───
+    if (
+      data.admissionNo !== null &&
+      data.admissionNo !== undefined &&
+      data.admissionNo !== ""
+    ) {
+      const existingAdmission = await students.findOne({
+        admissionNo: String(data.admissionNo).trim(),
+        _id: { $ne: currentStudent._id },
+      });
+      if (existingAdmission) {
+        return NextResponse.json(
+          { error: `Admission No ${data.admissionNo} already exists` },
+          { status: 409 }
+        );
+      }
+    }
+
+    // ─── Duplicate Roll No check (excluding self) ───
+    if (
+      data.rollNo !== null &&
+      data.rollNo !== undefined &&
+      data.rollNo !== ""
+    ) {
+      const rollQuery = {
+        grade: String(data.grade).trim(),
+        rollNo: Number(data.rollNo),
+        _id: { $ne: currentStudent._id },
+      };
+      if (data.section) rollQuery.section = String(data.section).trim();
+      if (data.session) rollQuery.session = String(data.session).trim();
+
+      const existingRoll = await students.findOne(rollQuery);
+      if (existingRoll) {
+        return NextResponse.json(
+          {
+            error:
+              `Roll No ${data.rollNo} already exists for Grade ${data.grade}` +
+              (data.section ? ` - Section ${data.section}` : "") +
+              (data.session ? ` (${data.session})` : ""),
+          },
+          { status: 409 }
+        );
+      }
+    }
+
+    // ─── Build the update object (includes ALL fields) ───
     const update = {
-      name: data.name,
-      fatherName: data.fatherName || null,
-      admissionNo: data.admissionNo || null,
+      name: String(data.name).trim(),
+      fatherName: data.fatherName ? String(data.fatherName).trim() : null,
+      fatherOccupation: data.fatherOccupation
+        ? String(data.fatherOccupation).trim()
+        : null,
+      admissionNo: data.admissionNo ? String(data.admissionNo).trim() : null,
       contact: data.contact || "",
-      grade: data.grade,
-      section: data.section || null,
+      grade: String(data.grade).trim(),
+      section: data.section ? String(data.section).trim() : null,
       rollNo: data.rollNo ? Number(data.rollNo) : null,
-      session: data.session || null,
+      session: data.session ? String(data.session).trim() : null,
+      admissionDate: data.admissionDate || null,
       fee: data.fee ? Number(data.fee) : 0,
       address: data.address || "",
+      image: data.image || null, // ✅ handles image update (base64 or URL)
       updatedAt: new Date(),
     };
 
-    const query = buildIdMatchQuery(id);
-    const result = await db.collection("students").updateOne(query, { $set: update });
+    const result = await students.updateOne(
+      { _id: currentStudent._id },
+      { $set: update }
+    );
 
     if (result.matchedCount === 0) {
       return NextResponse.json({ error: "Student not found" }, { status: 404 });
@@ -83,11 +149,23 @@ export async function PUT(req, { params }) {
     return NextResponse.json({ success: true });
   } catch (err) {
     console.error("❌ PUT /api/student/[id]:", err.message);
+
+    // Safety net for unique index errors
+    if (err.code === 11000) {
+      const field = Object.keys(err.keyPattern || {})[0] || "field";
+      return NextResponse.json(
+        { error: `Duplicate value for ${field}` },
+        { status: 409 }
+      );
+    }
+
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }
 
-// ✅ DELETE — remove a student
+// ─────────────────────────────────────────────
+// DELETE — remove a student
+// ─────────────────────────────────────────────
 export async function DELETE(req, { params }) {
   try {
     const { id } = await params;
@@ -96,10 +174,6 @@ export async function DELETE(req, { params }) {
     console.log("🔍 DELETE called with raw id:", id, "| typeof:", typeof id);
 
     const db = await getDb();
-
-    // DEBUG: log a sample document so we can compare field types if this still fails
-    const sample = await db.collection("students").findOne({});
-    console.log("🔍 Sample student document in DB:", sample);
 
     const query = buildIdMatchQuery(id);
     console.log("🔍 Delete query being used:", JSON.stringify(query));
