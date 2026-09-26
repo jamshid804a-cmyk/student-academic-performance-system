@@ -5,7 +5,8 @@ import { AgGridReact } from 'ag-grid-react'
 import '@/utils/agGrid'
 import {
     Search, Trash2, Eye, Pencil, Users, GraduationCap,
-    Printer, Download, FileText, FileSpreadsheet, ChevronDown, File
+    Printer, Download, FileText, FileSpreadsheet, ChevronDown, File,
+    ArrowUpCircle, Loader2
 } from 'lucide-react'
 import {
     AlertDialog,
@@ -27,7 +28,9 @@ const pagination = true
 const paginationPageSize = 10
 const paginationPageSizeSelector = [10, 20, 25, 100]
 
-// ✅ Grade list — Nursery, Prep, 1st..12th
+// ─────────────────────────────────────────────
+// Grades & helper functions
+// ─────────────────────────────────────────────
 const GRADES = [
     "Nursery",
     "Prep",
@@ -36,7 +39,28 @@ const GRADES = [
 const SECTIONS = ["A", "B", "C"]
 const SESSIONS = Array.from({ length: 100 }, (_, i) => `${2025 + i}-${2026 + i}`)
 
-// ✅ Forgiving grade matcher
+const PROMOTION_ORDER = [
+    "Nursery",
+    "Prep",
+    "1st","2nd","3rd","4th","5th","6th","7th","8th","9th","10th","11th","12th",
+]
+
+function getNextGrade(current) {
+    const i = PROMOTION_ORDER.findIndex(
+        (g) => String(g).trim().toLowerCase() === String(current || "").trim().toLowerCase()
+    )
+    if (i === -1) return null
+    if (i === PROMOTION_ORDER.length - 1) return "Graduated"
+    return PROMOTION_ORDER[i + 1]
+}
+
+function getNextSession(current) {
+    if (!current) return ""
+    const m = String(current).match(/^(\d{4})-(\d{4})$/)
+    if (!m) return ""
+    return `${Number(m[1]) + 1}-${Number(m[2]) + 1}`
+}
+
 function sameGrade(a, b) {
     const x = String(a || "").trim().toLowerCase()
     const y = String(b || "").trim().toLowerCase()
@@ -55,7 +79,9 @@ function sameText(a, b) {
 const FILTER_CLASS =
   "px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-sm text-slate-800 dark:text-slate-100 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 dark:focus:ring-blue-900/40 transition-all"
 
-// ✅ Image cell renderer
+// ─────────────────────────────────────────────
+// Image cell renderer
+// ─────────────────────────────────────────────
 const ImageCellRenderer = (props) => {
     const student = props.data
     const src = student?.image || null
@@ -94,7 +120,13 @@ function StudentListTable({ StudentList, refreshData, students }) {
     const [exportOpen, setExportOpen] = useState(false)
     const dropdownRef = useRef(null)
 
-    // Fetch school info for print/export header
+    // Promote state
+    const [promoteOpen, setPromoteOpen] = useState(false)
+    const [promoteLoading, setPromoteLoading] = useState(false)
+    const [promoteSession, setPromoteSession] = useState("")
+    const [promoteProgress, setPromoteProgress] = useState({ current: 0, total: 0 })
+
+    // Load school info for print/export header
     useEffect(() => {
         let mounted = true
         const load = async () => {
@@ -159,7 +191,93 @@ function StudentListTable({ StudentList, refreshData, students }) {
     const handleEditClick = (data) => { setEditStudent(data); setEditOpen(true) }
 
     // ─────────────────────────────────────────────
-    // Export / Print helpers
+    // Promote All (uses existing UpdateStudentRecord)
+    // ─────────────────────────────────────────────
+    const openPromoteDialog = () => {
+        const sessions = rowData.map(s => s.session).filter(Boolean)
+        const counts = {}
+        sessions.forEach(v => counts[v] = (counts[v] || 0) + 1)
+        const mostCommon = Object.keys(counts).sort((a,b) => counts[b] - counts[a])[0] || "2025-2026"
+        setPromoteSession(getNextSession(mostCommon))
+        setPromoteOpen(true)
+    }
+
+    const handlePromoteAll = async () => {
+        if (!promoteSession) {
+            toast.error("Please select the new session")
+            return
+        }
+
+        setPromoteLoading(true)
+        setPromoteProgress({ current: 0, total: rowData.length })
+
+        let promoted = 0
+        let graduated = 0
+        let failed = 0
+
+        try {
+            for (let i = 0; i < rowData.length; i++) {
+                const s = rowData[i]
+                const nextGrade = getNextGrade(s.grade)
+                if (nextGrade === null) {
+                    setPromoteProgress({ current: i + 1, total: rowData.length })
+                    continue
+                }
+
+                const payload = {
+                    name: s.name,
+                    fatherName: s.fatherName || null,
+                    fatherOccupation: s.fatherOccupation || null,
+                    admissionNo: s.admissionNo || null,
+                    contact: s.contact || "",
+                    grade: nextGrade,
+                    section: s.section || null,
+                    rollNo: s.rollNo || null,
+                    session: promoteSession,
+                    admissionDate: s.admissionDate || null,
+                    fee: s.fee || 0,
+                    address: s.address || "",
+                    image: s.image || null,
+                }
+
+                try {
+                    await GlobalApi.UpdateStudentRecord(s.id, payload)
+                    if (nextGrade === "Graduated") graduated++
+                    else promoted++
+                } catch (err) {
+                    console.warn(`Skipped ${s.name}:`, err?.response?.data?.error)
+                    failed++
+                }
+
+                setPromoteProgress({ current: i + 1, total: rowData.length })
+            }
+
+            if (failed > 0) {
+                toast.warning(
+                    `Promoted ${promoted} • Graduated ${graduated} • Skipped ${failed}`
+                )
+            } else {
+                toast.success(
+                    `Promoted ${promoted} students` +
+                    (graduated ? ` • ${graduated} graduated (Grade 12)` : "")
+                )
+            }
+
+            setPromoteOpen(false)
+            setPromoteSession("")
+            if (refreshData) await refreshData()
+
+        } catch (error) {
+            console.log("PROMOTE ERROR:", error?.response?.data || error)
+            toast.error(error?.response?.data?.error || "Promotion failed")
+        }
+
+        setPromoteLoading(false)
+        setPromoteProgress({ current: 0, total: 0 })
+    }
+
+    // ─────────────────────────────────────────────
+    // Export/Print helpers
     // ─────────────────────────────────────────────
     const schoolName = schoolInfo?.schoolName || schoolInfo?.name || "School"
     const schoolAddress = schoolInfo?.address || ""
@@ -174,7 +292,6 @@ function StudentListTable({ StudentList, refreshData, students }) {
         return bits.length ? `Student Report — ${bits.join(" | ")}` : "Student Report"
     }, [gradeFilter, sectionFilter, sessionFilter])
 
-    // Columns we want to export (skip Photo + Action)
     const EXPORT_COLUMNS = [
         { key: "id",            label: "ID" },
         { key: "rollNo",        label: "Roll No" },
@@ -201,7 +318,7 @@ function StudentListTable({ StudentList, refreshData, students }) {
         </div>
     `
 
-    const tableHtml = (forWord = false) => {
+    const tableHtml = () => {
         const rows = filteredData.map((s) => `
             <tr>
                 ${EXPORT_COLUMNS.map((c) => `<td>${s[c.key] ?? ""}</td>`).join("")}
@@ -270,7 +387,6 @@ function StudentListTable({ StudentList, refreshData, students }) {
         }
     `
 
-    // ─── Print ───
     const handlePrint = () => {
         const printWindow = window.open("", "_blank", "width=1000,height=800")
         if (!printWindow) return
@@ -304,7 +420,6 @@ function StudentListTable({ StudentList, refreshData, students }) {
         printWindow.document.close()
     }
 
-    // ─── Export PDF (via print dialog → Save as PDF) ───
     const handleExportPDF = () => {
         setExportOpen(false)
         const printWindow = window.open("", "_blank", "width=1000,height=800")
@@ -340,7 +455,6 @@ function StudentListTable({ StudentList, refreshData, students }) {
         toast.info("Choose 'Save as PDF' in the print dialog")
     }
 
-    // ─── Export Word (.doc via HTML) ───
     const handleExportWord = () => {
         setExportOpen(false)
         const html = `
@@ -354,7 +468,7 @@ function StudentListTable({ StudentList, refreshData, students }) {
             </head>
             <body>
                 ${headerHtml}
-                ${tableHtml(true)}
+                ${tableHtml()}
                 <div class="footer">
                     <div class="line">Principal Signature</div>
                     <div class="line">Date</div>
@@ -374,7 +488,6 @@ function StudentListTable({ StudentList, refreshData, students }) {
         toast.success("Word file downloaded")
     }
 
-    // ─── Export CSV (opens in Excel) ───
     const handleExportCSV = () => {
         setExportOpen(false)
         const headers = EXPORT_COLUMNS.map((c) => `"${c.label}"`).join(",")
@@ -522,11 +635,10 @@ function StudentListTable({ StudentList, refreshData, students }) {
         <div className="my-6 animate-page-in">
 
             {/* ─── Header card ─── */}
-            <div className="bg-gradient-to-r from-indigo-500 via-blue-600 to-cyan-600 rounded-2xl shadow-lg p-5 mb-5 text-white relative overflow-hidden">
-                <div className="absolute inset-0 opacity-10 bg-[radial-gradient(circle_at_20%_20%,white_0%,transparent_60%)]" />
+            <div className="bg-gradient-to-r from-indigo-500 via-blue-600 to-cyan-600 rounded-2xl shadow-lg p-5 mb-5 text-white relative z-20 overflow-visible">
+                <div className="absolute inset-0 opacity-10 bg-[radial-gradient(circle_at_20%_20%,white_0%,transparent_60%)] pointer-events-none" />
 
                 <div className="relative flex flex-wrap items-center justify-between gap-4">
-                    {/* Left: title + stats */}
                     <div className="flex items-center gap-4">
                         <div className="w-12 h-12 rounded-xl bg-white/15 backdrop-blur-sm border border-white/20 flex items-center justify-center">
                             <Users size={24} />
@@ -541,7 +653,6 @@ function StudentListTable({ StudentList, refreshData, students }) {
                         </div>
                     </div>
 
-                    {/* Right: Print + Export */}
                     <div className="flex items-center gap-2">
                         <button
                             onClick={handlePrint}
@@ -551,7 +662,15 @@ function StudentListTable({ StudentList, refreshData, students }) {
                             Print
                         </button>
 
-                        <div className="relative" ref={dropdownRef}>
+                        <button
+                            onClick={openPromoteDialog}
+                            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/15 hover:bg-white/25 border border-white/20 text-sm font-semibold transition-all backdrop-blur-sm"
+                        >
+                            <ArrowUpCircle size={15} />
+                            Promote
+                        </button>
+
+                        <div className="relative z-30" ref={dropdownRef}>
                             <button
                                 onClick={() => setExportOpen((v) => !v)}
                                 className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white text-indigo-700 hover:bg-indigo-50 text-sm font-semibold transition-all shadow-md"
@@ -562,7 +681,7 @@ function StudentListTable({ StudentList, refreshData, students }) {
                             </button>
 
                             {exportOpen && (
-                                <div className="absolute right-0 mt-2 w-52 bg-white rounded-xl shadow-xl border border-slate-100 overflow-hidden z-50">
+                                <div className="absolute right-0 mt-2 w-52 bg-white rounded-xl shadow-2xl border border-slate-100 overflow-hidden z-[9999]">
                                     <button
                                         onClick={handleExportPDF}
                                         className="w-full flex items-center gap-3 px-4 py-3 text-sm text-slate-700 hover:bg-red-50 hover:text-red-600 transition-colors text-left"
@@ -592,7 +711,7 @@ function StudentListTable({ StudentList, refreshData, students }) {
             </div>
 
             {/* ─── Filter bar ─── */}
-            <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 p-3 mb-4">
+            <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 p-3 mb-4 relative z-0">
                 <div className="flex flex-wrap items-center gap-2">
                     <GraduationCap size={16} className="text-slate-400" />
 
@@ -634,7 +753,7 @@ function StudentListTable({ StudentList, refreshData, students }) {
             </div>
 
             {/* ─── Table card ─── */}
-            <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg border border-slate-100 dark:border-slate-700 overflow-hidden">
+            <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg border border-slate-100 dark:border-slate-700 overflow-hidden relative z-0">
                 <div className="h-1 bg-gradient-to-r from-indigo-500 via-blue-500 to-cyan-500" />
 
                 <div className="ag-theme-quartz" style={{ height: 580, width: '100%' }}>
@@ -666,6 +785,85 @@ function StudentListTable({ StudentList, refreshData, students }) {
                 refreshData={refreshData}
                 students={students || rowData}
             />
+
+            {/* ─── Promote dialog ─── */}
+            {promoteOpen && (
+                <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+                    <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden">
+                        <div className="bg-gradient-to-r from-emerald-500 to-teal-600 px-6 py-5">
+                            <div className="flex items-center gap-3">
+                                <div className="w-11 h-11 rounded-xl bg-white/20 border border-white/30 flex items-center justify-center text-white">
+                                    <ArrowUpCircle size={22} />
+                                </div>
+                                <div>
+                                    <h3 className="text-white text-lg font-bold">Promote All Students</h3>
+                                    <p className="text-emerald-100 text-xs mt-0.5">
+                                        Move every student to the next grade & session
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="p-6 space-y-4">
+                            <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
+                                <p className="text-xs text-amber-800 font-medium leading-relaxed">
+                                    ⚠️ This will update <strong>{rowData.length} student(s)</strong>:
+                                </p>
+                                <ul className="text-xs text-amber-800 mt-2 space-y-1 ml-4 list-disc">
+                                    <li>Nursery → Prep → 1st → 2nd → ... → 11th → 12th</li>
+                                    <li>Grade 12 students will be marked as <strong>Graduated</strong></li>
+                                    <li>Session changes to the one you select below</li>
+                                    <li>All other information stays the same</li>
+                                </ul>
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-semibold text-slate-700 mb-1.5">
+                                    New Session <span className="text-red-500">*</span>
+                                </label>
+                                <select
+                                    value={promoteSession}
+                                    onChange={(e) => setPromoteSession(e.target.value)}
+                                    disabled={promoteLoading}
+                                    className="w-full px-3 py-2.5 rounded-lg border border-slate-300 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 outline-none transition text-slate-800 bg-white disabled:opacity-60"
+                                >
+                                    <option value="">Select Session</option>
+                                    {sessionOptions.map((s) => (
+                                        <option key={s} value={s}>{s}</option>
+                                    ))}
+                                </select>
+                            </div>
+                        </div>
+
+                        <div className="flex justify-end gap-3 px-6 py-4 border-t border-slate-100 bg-slate-50">
+                            <button
+                                onClick={() => { setPromoteOpen(false); setPromoteSession("") }}
+                                disabled={promoteLoading}
+                                className="px-4 py-2 rounded-lg border border-slate-200 text-sm font-semibold text-slate-700 hover:bg-slate-100 transition disabled:opacity-50"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={handlePromoteAll}
+                                disabled={promoteLoading || !promoteSession}
+                                className="px-5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-sm font-semibold transition flex items-center gap-2"
+                            >
+                                {promoteLoading ? (
+                                    <>
+                                        <Loader2 className="w-4 h-4 animate-spin" />
+                                        Promoting {promoteProgress.current}/{promoteProgress.total}...
+                                    </>
+                                ) : (
+                                    <>
+                                        <ArrowUpCircle size={15} />
+                                        Promote All
+                                    </>
+                                )}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             <style jsx global>{`
                 .ag-theme-quartz {
