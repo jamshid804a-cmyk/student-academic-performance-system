@@ -29,7 +29,7 @@ const paginationPageSize = 10
 const paginationPageSizeSelector = [10, 20, 25, 100]
 
 // ─────────────────────────────────────────────
-// Grades & helper functions
+// Grades & helpers
 // ─────────────────────────────────────────────
 const GRADES = [
     "Nursery",
@@ -126,7 +126,7 @@ function StudentListTable({ StudentList, refreshData, students }) {
     const [promoteSession, setPromoteSession] = useState("")
     const [promoteProgress, setPromoteProgress] = useState({ current: 0, total: 0 })
 
-    // Load school info for print/export header
+    // Load school info
     useEffect(() => {
         let mounted = true
         const load = async () => {
@@ -191,7 +191,7 @@ function StudentListTable({ StudentList, refreshData, students }) {
     const handleEditClick = (data) => { setEditStudent(data); setEditOpen(true) }
 
     // ─────────────────────────────────────────────
-    // Promote All (uses existing UpdateStudentRecord)
+    // Promote: creates NEW records, keeps old sessions
     // ─────────────────────────────────────────────
     const openPromoteDialog = () => {
         const sessions = rowData.map(s => s.session).filter(Boolean)
@@ -211,19 +211,29 @@ function StudentListTable({ StudentList, refreshData, students }) {
         setPromoteLoading(true)
         setPromoteProgress({ current: 0, total: rowData.length })
 
-        let promoted = 0
+        let created = 0
         let graduated = 0
-        let failed = 0
+        let skipped = 0
 
         try {
             for (let i = 0; i < rowData.length; i++) {
                 const s = rowData[i]
-                const nextGrade = getNextGrade(s.grade)
-                if (nextGrade === null) {
+
+                // Skip students already in the new session
+                if (String(s.session || "").trim() === String(promoteSession).trim()) {
+                    skipped++
                     setPromoteProgress({ current: i + 1, total: rowData.length })
                     continue
                 }
 
+                const nextGrade = getNextGrade(s.grade)
+                if (nextGrade === null) {
+                    skipped++
+                    setPromoteProgress({ current: i + 1, total: rowData.length })
+                    continue
+                }
+
+                // ✅ Build payload for a NEW record (old session stays)
                 const payload = {
                     name: s.name,
                     fatherName: s.fatherName || null,
@@ -241,25 +251,27 @@ function StudentListTable({ StudentList, refreshData, students }) {
                 }
 
                 try {
-                    await GlobalApi.UpdateStudentRecord(s.id, payload)
+                    await GlobalApi.CreateNewStudent(payload)
                     if (nextGrade === "Graduated") graduated++
-                    else promoted++
+                    else created++
                 } catch (err) {
                     console.warn(`Skipped ${s.name}:`, err?.response?.data?.error)
-                    failed++
+                    skipped++
                 }
 
                 setPromoteProgress({ current: i + 1, total: rowData.length })
             }
 
-            if (failed > 0) {
-                toast.warning(
-                    `Promoted ${promoted} • Graduated ${graduated} • Skipped ${failed}`
+            if (skipped > 0) {
+                toast.success(
+                    `Created ${created} records` +
+                    (graduated ? ` • ${graduated} graduated` : "") +
+                    ` • ${skipped} skipped`
                 )
             } else {
                 toast.success(
-                    `Promoted ${promoted} students` +
-                    (graduated ? ` • ${graduated} graduated (Grade 12)` : "")
+                    `Created ${created} new records` +
+                    (graduated ? ` • ${graduated} graduated` : "")
                 )
             }
 
@@ -798,7 +810,7 @@ function StudentListTable({ StudentList, refreshData, students }) {
                                 <div>
                                     <h3 className="text-white text-lg font-bold">Promote All Students</h3>
                                     <p className="text-emerald-100 text-xs mt-0.5">
-                                        Move every student to the next grade & session
+                                        Creates new records for the next session
                                     </p>
                                 </div>
                             </div>
@@ -807,13 +819,13 @@ function StudentListTable({ StudentList, refreshData, students }) {
                         <div className="p-6 space-y-4">
                             <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
                                 <p className="text-xs text-amber-800 font-medium leading-relaxed">
-                                    ⚠️ This will update <strong>{rowData.length} student(s)</strong>:
+                                    ⚠️ This will create <strong>{rowData.length} new record(s)</strong>:
                                 </p>
                                 <ul className="text-xs text-amber-800 mt-2 space-y-1 ml-4 list-disc">
                                     <li>Nursery → Prep → 1st → 2nd → ... → 11th → 12th</li>
                                     <li>Grade 12 students will be marked as <strong>Graduated</strong></li>
                                     <li>Session changes to the one you select below</li>
-                                    <li>All other information stays the same</li>
+                                    <li><strong>Old session records are kept</strong> for history</li>
                                 </ul>
                             </div>
 
