@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/dialog"
 import GlobalApi from '@/app/_services/GlobalApi'
 import { toast } from 'sonner'
-import { LoaderIcon, Upload, X, Calendar, User, Phone, BookOpen, Home } from 'lucide-react'
+import { LoaderIcon, Upload, X, User } from 'lucide-react'
 
 // Build session list: 2025-2026, 2026-2027, ...
 const SESSIONS = Array.from({ length: 500 }, (_, i) => {
@@ -27,7 +27,7 @@ const GRADES = [
     "1st","2nd","3rd","4th","5th","6th","7th","8th","9th","10th","11th","12th",
 ]
 
-function AddNewStudent({ refreshData }) {
+function AddNewStudent({ refreshData, students = [] }) {
     const [open, setOpen] = useState(false)
     const [loading, setLoading] = useState(false)
     const [imagePreview, setImagePreview] = useState(null)
@@ -55,9 +55,46 @@ function AddNewStudent({ refreshData }) {
         setImagePreview(null)
     }
 
+    // ✅ Check if roll number already exists for the same grade + section + session
+    const isRollNoDuplicate = (rollNo, grade, section, session) => {
+        if (!rollNo || !grade) return false
+        return students.some((s) => {
+            const sameRoll = Number(s.rollNo) === Number(rollNo)
+            const sameGrade = s.grade === grade
+            // Section & session check — only compare if both are provided
+            const sameSection = section ? s.section === section : true
+            const sameSession = session ? s.session === session : true
+            return sameRoll && sameGrade && sameSection && sameSession
+        })
+    }
+
+    // ✅ Check if admission number already exists
+    const isAdmissionNoDuplicate = (admissionNo) => {
+        if (!admissionNo) return false
+        return students.some(
+            (s) => String(s.admissionNo).trim() === String(admissionNo).trim()
+        )
+    }
+
     const onSubmit = async (data) => {
         if (!data.studentName || !data.grade) {
             toast.error("Student Name and Grade are required")
+            return
+        }
+
+        // ✅ Duplicate Roll No check
+        if (data.rollNo && isRollNoDuplicate(data.rollNo, data.grade, data.section, data.session)) {
+            toast.error(
+                `Roll No ${data.rollNo} already exists for Grade ${data.grade}` +
+                (data.section ? ` - Section ${data.section}` : "") +
+                (data.session ? ` (${data.session})` : "")
+            )
+            return
+        }
+
+        // ✅ Duplicate Admission No check
+        if (data.admissionNo && isAdmissionNoDuplicate(data.admissionNo)) {
+            toast.error(`Admission No ${data.admissionNo} already exists`)
             return
         }
 
@@ -77,7 +114,7 @@ function AddNewStudent({ refreshData }) {
                 admissionDate: data.admissionDate || null,
                 fee: data.fee ? Number(data.fee) : 0,
                 address: data.address || "",
-                image: imageFile, // send the file for upload
+                image: imageFile,
             }
 
             console.log("Sending payload:", payload)
@@ -265,7 +302,6 @@ function AddNewStudent({ refreshData }) {
                                         }
                                     })}
                                     onInput={(e) => {
-                                        // allow only positive integers (no leading zeros, no minus)
                                         e.target.value = e.target.value.replace(/[^0-9]/g, '').replace(/^0+/, '')
                                     }}
                                 />
@@ -321,6 +357,9 @@ function AddNewStudent({ refreshData }) {
                                     {...register("rollNo", {
                                         min: { value: 1, message: "Roll No must be positive" }
                                     })}
+                                    onInput={(e) => {
+                                        e.target.value = e.target.value.replace(/[^0-9]/g, '').replace(/^0+/, '')
+                                    }}
                                 />
                                 {errors.rollNo && (
                                     <p className="text-red-500 text-xs mt-1">{errors.rollNo.message}</p>
