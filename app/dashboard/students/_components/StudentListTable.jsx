@@ -1,5 +1,6 @@
 "use client"
-
+import jsPDF from 'jspdf'
+import autoTable from 'jspdf-autotable'
 import React, { useEffect, useState, useMemo, useRef } from 'react'
 import { AgGridReact } from 'ag-grid-react'
 import '@/utils/agGrid'
@@ -493,39 +494,123 @@ function StudentListTable({ StudentList, refreshData, students }) {
     }
 
     const handleExportPDF = () => {
-        setExportOpen(false)
-        const printWindow = window.open("", "_blank", "width=1000,height=800")
-        if (!printWindow) return
+    setExportOpen(false)
 
-        const html = `
-            <html>
-            <head>
-                <title>${reportTitle}</title>
-                <style>
-                    ${baseStyles}
-                    @page { size: A4 landscape; margin: 12mm; }
-                </style>
-            </head>
-            <body>
-                ${headerHtml}
-                ${tableHtml()}
-                <div class="footer">
-                    <div class="line">Principal Signature</div>
-                    <div class="line">Date</div>
-                </div>
-                <script>
-                    window.onload = () => {
-                        setTimeout(() => window.print(), 300);
-                    }
-                </script>
-            </body>
-            </html>
-        `
-        printWindow.document.open()
-        printWindow.document.write(html)
-        printWindow.document.close()
-        toast.info("Choose 'Save as PDF' in the print dialog")
+    try {
+        const doc = new jsPDF({
+            orientation: 'landscape',
+            unit: 'mm',
+            format: 'a4',
+        })
+
+        const pageWidth = doc.internal.pageSize.getWidth()
+
+        // ─── Header: School Name ───
+        doc.setFont('helvetica', 'bold')
+        doc.setFontSize(18)
+        doc.setTextColor(30, 41, 59) // slate-800
+        doc.text(schoolName, pageWidth / 2, 15, { align: 'center' })
+
+        // ─── School Address ───
+        let yPos = 22
+        doc.setFont('helvetica', 'normal')
+        doc.setFontSize(9)
+        doc.setTextColor(100, 116, 139) // slate-500
+        if (schoolAddress) {
+            doc.text(schoolAddress, pageWidth / 2, yPos, { align: 'center' })
+            yPos += 5
+        }
+        if (schoolPhone || schoolEmail) {
+            const contact = [schoolPhone, schoolEmail].filter(Boolean).join('  |  ')
+            doc.text(contact, pageWidth / 2, yPos, { align: 'center' })
+            yPos += 5
+        }
+
+        // ─── Horizontal line ───
+        doc.setDrawColor(59, 130, 246) // blue-500
+        doc.setLineWidth(0.5)
+        doc.line(pageWidth / 2 - 15, yPos, pageWidth / 2 + 15, yPos)
+        yPos += 6
+
+        // ─── Report title ───
+        doc.setFont('helvetica', 'bold')
+        doc.setFontSize(12)
+        doc.setTextColor(51, 65, 85) // slate-700
+        doc.text(reportTitle, pageWidth / 2, yPos, { align: 'center' })
+        yPos += 5
+
+        // ─── Total + timestamp ───
+        doc.setFont('helvetica', 'normal')
+        doc.setFontSize(8)
+        doc.setTextColor(100, 116, 139)
+        doc.text(
+            `Total Students: ${filteredData.length}   |   Generated: ${new Date().toLocaleString()}`,
+            pageWidth / 2,
+            yPos,
+            { align: 'center' }
+        )
+        yPos += 5
+
+        // ─── Table ───
+        const head = [EXPORT_COLUMNS.map((c) => c.label)]
+        const body = filteredData.map((s) =>
+            EXPORT_COLUMNS.map((c) => {
+                const val = s[c.key]
+                return val !== null && val !== undefined && val !== "" ? String(val) : "—"
+            })
+        )
+
+        autoTable(doc, {
+            head,
+            body,
+            startY: yPos,
+            theme: 'grid',
+            styles: {
+                fontSize: 8,
+                cellPadding: 2,
+                textColor: [51, 65, 85],
+                lineColor: [226, 232, 240],
+                lineWidth: 0.1,
+            },
+            headStyles: {
+                fillColor: [30, 41, 59],
+                textColor: [255, 255, 255],
+                fontStyle: 'bold',
+                fontSize: 8,
+                halign: 'left',
+            },
+            alternateRowStyles: {
+                fillColor: [248, 250, 252],
+            },
+            margin: { left: 10, right: 10 },
+        })
+
+        // ─── Footer signatures ───
+        const finalY = doc.lastAutoTable.finalY + 20
+        const footerLeft = 40
+        const footerRight = pageWidth - 40
+
+        doc.setDrawColor(51, 65, 85)
+        doc.setLineWidth(0.3)
+        doc.line(footerLeft - 25, finalY, footerLeft + 25, finalY)
+        doc.line(footerRight - 25, finalY, footerRight + 25, finalY)
+
+        doc.setFont('helvetica', 'normal')
+        doc.setFontSize(9)
+        doc.setTextColor(85, 85, 85)
+        doc.text('Principal Signature', footerLeft, finalY + 4, { align: 'center' })
+        doc.text('Date', footerRight, finalY + 4, { align: 'center' })
+
+        // ─── Download ───
+        const filename = `${reportTitle.replace(/[^\w\-]+/g, "_")}.pdf`
+        doc.save(filename)
+
+        toast.success("PDF downloaded")
+    } catch (err) {
+        console.error("PDF EXPORT ERROR:", err)
+        toast.error("Failed to generate PDF")
     }
+}
 
     const handleExportWord = () => {
         setExportOpen(false)
