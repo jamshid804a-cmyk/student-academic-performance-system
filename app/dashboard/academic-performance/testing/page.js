@@ -1,7 +1,7 @@
 "use client"
 
 import React, { useEffect, useState, useMemo } from 'react'
-import { LoaderIcon, FlaskConical, Send, Plus, X, Search, UserPlus, BookPlus } from 'lucide-react'
+import { LoaderIcon, FlaskConical, Send, Plus, X, Search, UserPlus, BookPlus, Trash2 } from 'lucide-react'
 import GlobalApi from '@/app/_services/GlobalApi'
 import { toast } from 'sonner'
 
@@ -24,7 +24,7 @@ const STORAGE_KEY = "testing_filters_v1"
 const EXTRA_KEY = "testing_extra_subjects_v1"
 const HIDDEN_KEY = "testing_hidden_subjects_v1"
 
-// Only Urdu stays excluded — English is now allowed as a subject.
+// Only Urdu stays excluded — English is allowed as a subject.
 const EXCLUDED_SUBJECTS = ["urdu"]
 const isExcluded = (name) => EXCLUDED_SUBJECTS.includes(String(name || "").trim().toLowerCase())
 
@@ -59,6 +59,7 @@ export default function TestingPage() {
   const [subjectModal, setSubjectModal] = useState(null)
   const [newSubjectName, setNewSubjectName] = useState("")
   const [bulkSaving, setBulkSaving] = useState(false)
+  const [deletingSubject, setDeletingSubject] = useState(null) // subject name currently being bulk-deleted
 
   useEffect(() => {
     try {
@@ -165,7 +166,7 @@ export default function TestingPage() {
     return Array.from(names).sort()
   }, [students, subjectsByStudent])
 
-  // Clears old test marks for a student/subject combo before (re)adding it
+  // Clears old test marks for a student/subject combo before (re)adding or removing it
   const clearOldMarks = async (studentId, name) => {
     try {
       await fetch(
@@ -265,6 +266,7 @@ export default function TestingPage() {
     setSubjectModal(null)
   }
 
+  // ─── Remove subject from ONE student ───
   const handleRemoveSubject = (studentId, subjectName) => {
     if (!confirm(`Remove subject "${subjectName}" from Testing for this student?`)) return
     const sid = String(studentId)
@@ -275,6 +277,60 @@ export default function TestingPage() {
       return list.includes(subjectName) ? prev : { ...prev, [sid]: [...list, subjectName] }
     })
     toast.success("Removed from Testing")
+  }
+
+  // ─── Remove a subject from ALL students at once ───
+  const handleRemoveSubjectAll = async (subjectName) => {
+    const affected = students.filter((st) => {
+      const sid = String(st.id)
+      return (subjectsByStudent[sid] || []).some((s) => s.name === subjectName)
+    })
+
+    if (affected.length === 0) return
+
+    const ok = confirm(
+      `Remove "${subjectName}" from ALL ${affected.length} student(s)? ` +
+      `This also deletes any marks already entered for this subject. This cannot be undone.`
+    )
+    if (!ok) return
+
+    setDeletingSubject(subjectName)
+    try {
+      await Promise.all(affected.map((st) => clearOldMarks(st.id, subjectName)))
+
+      setTests((prev) => {
+        const copy = { ...prev }
+        affected.forEach((st) => { delete copy[`${st.id}__${subjectName}`] })
+        return copy
+      })
+
+      // Remove from extraSubjects for anyone who had it as an extra subject
+      setExtraSubjects((prev) => {
+        const copy = { ...prev }
+        affected.forEach((st) => {
+          const sid = String(st.id)
+          if (copy[sid]) copy[sid] = copy[sid].filter((n) => n !== subjectName)
+        })
+        return copy
+      })
+
+      // Hide it for anyone who had it as a base subject (from GetAllSubjects)
+      setHiddenSubjects((prev) => {
+        const copy = { ...prev }
+        affected.forEach((st) => {
+          const sid = String(st.id)
+          const list = copy[sid] || []
+          if (!list.includes(subjectName)) copy[sid] = [...list, subjectName]
+        })
+        return copy
+      })
+
+      toast.success(`"${subjectName}" removed from ${affected.length} student(s)`)
+    } catch (err) {
+      console.error(err)
+      toast.error("Failed to remove subject from all students")
+    }
+    setDeletingSubject(null)
   }
 
   // Save EITHER obtained marks or total marks
@@ -451,9 +507,33 @@ export default function TestingPage() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="bg-slate-50 dark:bg-slate-900/60 border-b border-slate-200 dark:border-slate-700">
-                    {["Roll No","Name","Session","Month","Test", ...subjectColumns, "Overall %","Status","Action"].map((h) => (
-                      <th key={h} className={`px-4 py-3.5 font-bold text-slate-600 dark:text-slate-300 uppercase text-[11px] tracking-wider
-                        ${["Overall %","Status","Action"].includes(h) ? "text-center" : "text-left"}`}>
+                    {["Roll No","Name","Session","Month","Test"].map((h) => (
+                      <th key={h} className="px-4 py-3.5 font-bold text-slate-600 dark:text-slate-300 uppercase text-[11px] tracking-wider text-left">
+                        {h}
+                      </th>
+                    ))}
+
+                    {subjectColumns.map((name) => (
+                      <th key={name} className="px-4 py-3.5 font-bold text-slate-600 dark:text-slate-300 uppercase text-[11px] tracking-wider text-left">
+                        <div className="flex items-center gap-1.5">
+                          <span>{name}</span>
+                          <button
+                            onClick={() => handleRemoveSubjectAll(name)}
+                            disabled={deletingSubject === name}
+                            title={`Remove "${name}" from all students`}
+                            className="w-5 h-5 rounded text-slate-400 hover:text-red-600 hover:bg-red-50
+                              dark:hover:bg-red-900/30 flex items-center justify-center transition disabled:opacity-50 normal-case"
+                          >
+                            {deletingSubject === name
+                              ? <LoaderIcon size={11} className="animate-spin" />
+                              : <Trash2 size={11} />}
+                          </button>
+                        </div>
+                      </th>
+                    ))}
+
+                    {["Overall %","Status","Action"].map((h) => (
+                      <th key={h} className="px-4 py-3.5 font-bold text-slate-600 dark:text-slate-300 uppercase text-[11px] tracking-wider text-center">
                         {h}
                       </th>
                     ))}
@@ -501,7 +581,7 @@ export default function TestingPage() {
                                 />
                                 <button
                                   onClick={() => handleRemoveSubject(row.student.id, name)}
-                                  title="Remove subject from Testing"
+                                  title="Remove subject from this student"
                                   className="w-6 h-6 rounded-md text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 flex items-center justify-center transition"
                                 >
                                   <X size={13} />
