@@ -1,13 +1,12 @@
 "use client"
-import jsPDF from 'jspdf'
-import autoTable from 'jspdf-autotable'
+
 import React, { useEffect, useState, useMemo, useRef } from 'react'
 import { AgGridReact } from 'ag-grid-react'
 import '@/utils/agGrid'
 import {
     Search, Trash2, Eye, Pencil, Users, GraduationCap,
     Printer, Download, FileText, FileSpreadsheet, ChevronDown, File,
-    ArrowUpCircle, Loader2
+    ArrowUpCircle, Loader2, X
 } from 'lucide-react'
 import {
     AlertDialog,
@@ -24,6 +23,8 @@ import GlobalApi from '@/app/_services/GlobalApi'
 import { toast } from 'sonner'
 import StudentDetailsDialog from './StudentDetailsDialog'
 import EditStudentDialog from './EditStudentDialog'
+import jsPDF from 'jspdf'
+import autoTable from 'jspdf-autotable'
 
 const pagination = true
 const paginationPageSize = 10
@@ -46,7 +47,6 @@ const PROMOTION_ORDER = [
     "1st","2nd","3rd","4th","5th","6th","7th","8th","9th","10th","11th","12th",
 ]
 
-// Forgiving grade matcher: "1", "1st", "1ST", "Nursery", etc.
 function getNextGrade(current) {
     const raw = String(current || "").trim().toLowerCase()
     if (!raw) return null
@@ -187,17 +187,46 @@ function StudentListTable({ StudentList, refreshData, students }) {
         })[0]
     }, [rowData])
 
-    // ✅ Filtered data — shows newest session when "All Sessions" is selected
+    // ✅ Filtered data — grade/section/session filters + smart search
     const filteredData = useMemo(() => {
         const effectiveSession = sessionFilter || newestSession
+        const q = searchInput.trim().toLowerCase()
 
         return rowData.filter((s) => {
+            // Grade filter
             if (gradeFilter && !sameGrade(s.grade, gradeFilter)) return false
+
+            // Section filter
             if (sectionFilter && !sameText(s.section, sectionFilter)) return false
+
+            // Session filter (or newest session when "All" is selected)
             if (effectiveSession && !sameText(s.session, effectiveSession)) return false
+
+            // ✅ Search across name, fatherName, admissionNo, rollNo, id, session, grade, section, contact
+            if (q) {
+                const haystack = [
+                    s.name,
+                    s.fatherName,
+                    s.fatherOccupation,
+                    s.admissionNo,
+                    s.rollNo,
+                    s.id,
+                    s.session,
+                    s.grade,
+                    s.section,
+                    s.contact,
+                    s.address,
+                ]
+                    .filter((v) => v !== null && v !== undefined && v !== "")
+                    .map((v) => String(v).toLowerCase())
+                    .join(" ")
+
+                if (!haystack.includes(q)) return false
+            }
+
             return true
         })
-    }, [rowData, gradeFilter, sectionFilter, sessionFilter, newestSession])
+    }, [rowData, gradeFilter, sectionFilter, sessionFilter, newestSession, searchInput])
 
     const sessionOptions = useMemo(() => {
         const set = new Set()
@@ -225,7 +254,7 @@ function StudentListTable({ StudentList, refreshData, students }) {
     const handleEditClick = (data) => { setEditStudent(data); setEditOpen(true) }
 
     // ─────────────────────────────────────────────
-    // Promote: creates NEW records; keeps old sessions
+    // Promote
     // ─────────────────────────────────────────────
     const openPromoteDialog = () => {
         const sessions = rowData.map(s => s.session).filter(Boolean)
@@ -242,7 +271,6 @@ function StudentListTable({ StudentList, refreshData, students }) {
             return
         }
 
-        // Only promote students from the newest/current session
         const sourceSession = sessionFilter || newestSession
         const studentsToPromote = rowData.filter(
             (s) => !sourceSession || sameText(s.session, sourceSession)
@@ -266,7 +294,6 @@ function StudentListTable({ StudentList, refreshData, students }) {
         for (let i = 0; i < studentsToPromote.length; i++) {
             const s = studentsToPromote[i]
 
-            // Skip if already in the target session
             const currentSession = String(s.session || "").trim()
             if (currentSession === targetSession) {
                 skipped++
@@ -275,7 +302,6 @@ function StudentListTable({ StudentList, refreshData, students }) {
                 continue
             }
 
-            // Skip if already graduated
             if (String(s.grade || "").trim().toLowerCase() === "graduated") {
                 skipped++
                 skipReasons.push(`${s.name}: already graduated`)
@@ -308,11 +334,8 @@ function StudentListTable({ StudentList, refreshData, students }) {
                 isPromotion: true,
             }
 
-            console.log(`[PROMOTE] Creating for ${s.name}:`, payload)
-
             try {
                 const resp = await GlobalApi.CreateNewStudent(payload)
-                console.log(`[PROMOTE] Success:`, resp?.data)
                 if (nextGrade === "Graduated") graduated++
                 else created++
             } catch (err) {
@@ -336,9 +359,6 @@ function StudentListTable({ StudentList, refreshData, students }) {
                 (graduated ? ` • ${graduated} graduated` : "") +
                 (skipped ? ` • ${skipped} skipped` : "")
             )
-            if (skipped > 0) {
-                console.warn("[PROMOTE] Skip reasons:", skipReasons)
-            }
         }
 
         setPromoteOpen(false)
@@ -494,123 +514,116 @@ function StudentListTable({ StudentList, refreshData, students }) {
     }
 
     const handleExportPDF = () => {
-    setExportOpen(false)
+        setExportOpen(false)
 
-    try {
-        const doc = new jsPDF({
-            orientation: 'landscape',
-            unit: 'mm',
-            format: 'a4',
-        })
-
-        const pageWidth = doc.internal.pageSize.getWidth()
-
-        // ─── Header: School Name ───
-        doc.setFont('helvetica', 'bold')
-        doc.setFontSize(18)
-        doc.setTextColor(30, 41, 59) // slate-800
-        doc.text(schoolName, pageWidth / 2, 15, { align: 'center' })
-
-        // ─── School Address ───
-        let yPos = 22
-        doc.setFont('helvetica', 'normal')
-        doc.setFontSize(9)
-        doc.setTextColor(100, 116, 139) // slate-500
-        if (schoolAddress) {
-            doc.text(schoolAddress, pageWidth / 2, yPos, { align: 'center' })
-            yPos += 5
-        }
-        if (schoolPhone || schoolEmail) {
-            const contact = [schoolPhone, schoolEmail].filter(Boolean).join('  |  ')
-            doc.text(contact, pageWidth / 2, yPos, { align: 'center' })
-            yPos += 5
-        }
-
-        // ─── Horizontal line ───
-        doc.setDrawColor(59, 130, 246) // blue-500
-        doc.setLineWidth(0.5)
-        doc.line(pageWidth / 2 - 15, yPos, pageWidth / 2 + 15, yPos)
-        yPos += 6
-
-        // ─── Report title ───
-        doc.setFont('helvetica', 'bold')
-        doc.setFontSize(12)
-        doc.setTextColor(51, 65, 85) // slate-700
-        doc.text(reportTitle, pageWidth / 2, yPos, { align: 'center' })
-        yPos += 5
-
-        // ─── Total + timestamp ───
-        doc.setFont('helvetica', 'normal')
-        doc.setFontSize(8)
-        doc.setTextColor(100, 116, 139)
-        doc.text(
-            `Total Students: ${filteredData.length}   |   Generated: ${new Date().toLocaleString()}`,
-            pageWidth / 2,
-            yPos,
-            { align: 'center' }
-        )
-        yPos += 5
-
-        // ─── Table ───
-        const head = [EXPORT_COLUMNS.map((c) => c.label)]
-        const body = filteredData.map((s) =>
-            EXPORT_COLUMNS.map((c) => {
-                const val = s[c.key]
-                return val !== null && val !== undefined && val !== "" ? String(val) : "—"
+        try {
+            const doc = new jsPDF({
+                orientation: 'landscape',
+                unit: 'mm',
+                format: 'a4',
             })
-        )
 
-        autoTable(doc, {
-            head,
-            body,
-            startY: yPos,
-            theme: 'grid',
-            styles: {
-                fontSize: 8,
-                cellPadding: 2,
-                textColor: [51, 65, 85],
-                lineColor: [226, 232, 240],
-                lineWidth: 0.1,
-            },
-            headStyles: {
-                fillColor: [30, 41, 59],
-                textColor: [255, 255, 255],
-                fontStyle: 'bold',
-                fontSize: 8,
-                halign: 'left',
-            },
-            alternateRowStyles: {
-                fillColor: [248, 250, 252],
-            },
-            margin: { left: 10, right: 10 },
-        })
+            const pageWidth = doc.internal.pageSize.getWidth()
 
-        // ─── Footer signatures ───
-        const finalY = doc.lastAutoTable.finalY + 20
-        const footerLeft = 40
-        const footerRight = pageWidth - 40
+            // Header
+            doc.setFont('helvetica', 'bold')
+            doc.setFontSize(18)
+            doc.setTextColor(30, 41, 59)
+            doc.text(schoolName, pageWidth / 2, 15, { align: 'center' })
 
-        doc.setDrawColor(51, 65, 85)
-        doc.setLineWidth(0.3)
-        doc.line(footerLeft - 25, finalY, footerLeft + 25, finalY)
-        doc.line(footerRight - 25, finalY, footerRight + 25, finalY)
+            let yPos = 22
+            doc.setFont('helvetica', 'normal')
+            doc.setFontSize(9)
+            doc.setTextColor(100, 116, 139)
+            if (schoolAddress) {
+                doc.text(schoolAddress, pageWidth / 2, yPos, { align: 'center' })
+                yPos += 5
+            }
+            if (schoolPhone || schoolEmail) {
+                const contact = [schoolPhone, schoolEmail].filter(Boolean).join('  |  ')
+                doc.text(contact, pageWidth / 2, yPos, { align: 'center' })
+                yPos += 5
+            }
 
-        doc.setFont('helvetica', 'normal')
-        doc.setFontSize(9)
-        doc.setTextColor(85, 85, 85)
-        doc.text('Principal Signature', footerLeft, finalY + 4, { align: 'center' })
-        doc.text('Date', footerRight, finalY + 4, { align: 'center' })
+            doc.setDrawColor(59, 130, 246)
+            doc.setLineWidth(0.5)
+            doc.line(pageWidth / 2 - 15, yPos, pageWidth / 2 + 15, yPos)
+            yPos += 6
 
-        // ─── Download ───
-        const filename = `${reportTitle.replace(/[^\w\-]+/g, "_")}.pdf`
-        doc.save(filename)
+            doc.setFont('helvetica', 'bold')
+            doc.setFontSize(12)
+            doc.setTextColor(51, 65, 85)
+            doc.text(reportTitle, pageWidth / 2, yPos, { align: 'center' })
+            yPos += 5
 
-        toast.success("PDF downloaded")
-    } catch (err) {
-        console.error("PDF EXPORT ERROR:", err)
-        toast.error("Failed to generate PDF")
+            doc.setFont('helvetica', 'normal')
+            doc.setFontSize(8)
+            doc.setTextColor(100, 116, 139)
+            doc.text(
+                `Total Students: ${filteredData.length}   |   Generated: ${new Date().toLocaleString()}`,
+                pageWidth / 2,
+                yPos,
+                { align: 'center' }
+            )
+            yPos += 5
+
+            const head = [EXPORT_COLUMNS.map((c) => c.label)]
+            const body = filteredData.map((s) =>
+                EXPORT_COLUMNS.map((c) => {
+                    const val = s[c.key]
+                    return val !== null && val !== undefined && val !== "" ? String(val) : "—"
+                })
+            )
+
+            autoTable(doc, {
+                head,
+                body,
+                startY: yPos,
+                theme: 'grid',
+                styles: {
+                    fontSize: 8,
+                    cellPadding: 2,
+                    textColor: [51, 65, 85],
+                    lineColor: [226, 232, 240],
+                    lineWidth: 0.1,
+                },
+                headStyles: {
+                    fillColor: [30, 41, 59],
+                    textColor: [255, 255, 255],
+                    fontStyle: 'bold',
+                    fontSize: 8,
+                    halign: 'left',
+                },
+                alternateRowStyles: {
+                    fillColor: [248, 250, 252],
+                },
+                margin: { left: 10, right: 10 },
+            })
+
+            const finalY = doc.lastAutoTable.finalY + 20
+            const footerLeft = 40
+            const footerRight = pageWidth - 40
+
+            doc.setDrawColor(51, 65, 85)
+            doc.setLineWidth(0.3)
+            doc.line(footerLeft - 25, finalY, footerLeft + 25, finalY)
+            doc.line(footerRight - 25, finalY, footerRight + 25, finalY)
+
+            doc.setFont('helvetica', 'normal')
+            doc.setFontSize(9)
+            doc.setTextColor(85, 85, 85)
+            doc.text('Principal Signature', footerLeft, finalY + 4, { align: 'center' })
+            doc.text('Date', footerRight, finalY + 4, { align: 'center' })
+
+            const filename = `${reportTitle.replace(/[^\w\-]+/g, "_")}.pdf`
+            doc.save(filename)
+
+            toast.success("PDF downloaded")
+        } catch (err) {
+            console.error("PDF EXPORT ERROR:", err)
+            toast.error("Failed to generate PDF")
+        }
     }
-}
 
     const handleExportWord = () => {
         setExportOpen(false)
@@ -804,8 +817,9 @@ function StudentListTable({ StudentList, refreshData, students }) {
                             <h2 className="text-xl font-bold tracking-tight">Student Records</h2>
                             <p className="text-xs text-blue-100 mt-0.5">
                                 {filteredData.length} {filteredData.length === 1 ? "student" : "students"}
-                                {!sessionFilter && newestSession ? ` • Latest session (${newestSession})` : ""}
-                                {sessionFilter ? ` • ${sessionFilter}` : ""}
+                                {searchInput ? ` (searching "${searchInput}")` : ""}
+                                {!searchInput && !sessionFilter && newestSession ? ` • Latest session (${newestSession})` : ""}
+                                {!searchInput && sessionFilter ? ` • ${sessionFilter}` : ""}
                                 {schoolName ? ` • ${schoolName}` : ""}
                             </p>
                         </div>
@@ -899,15 +913,25 @@ function StudentListTable({ StudentList, refreshData, students }) {
                         </button>
                     )}
 
+                    {/* ✅ Working search box */}
                     <div className="ml-auto flex items-center gap-2 border border-slate-200 dark:border-slate-600 rounded-xl px-4 py-2.5 shadow-sm bg-white dark:bg-slate-800 focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-100 dark:focus-within:ring-blue-900/40 transition-all duration-200">
                         <Search size={18} className="text-slate-400" />
                         <input
                             type="text"
-                            placeholder="Search student..."
+                            placeholder="Search name, f/name, adm no, roll no..."
                             value={searchInput}
                             onChange={(e) => setSearchInput(e.target.value)}
-                            className="outline-none text-sm w-52 placeholder:text-slate-400 bg-transparent text-slate-800 dark:text-slate-100"
+                            className="outline-none text-sm w-64 placeholder:text-slate-400 bg-transparent text-slate-800 dark:text-slate-100"
                         />
+                        {searchInput && (
+                            <button
+                                onClick={() => setSearchInput("")}
+                                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"
+                                title="Clear search"
+                            >
+                                <X size={16} />
+                            </button>
+                        )}
                     </div>
                 </div>
             </div>
@@ -921,7 +945,6 @@ function StudentListTable({ StudentList, refreshData, students }) {
                         rowData={filteredData}
                         columnDefs={colDefs}
                         defaultColDef={defaultColDef}
-                        quickFilterText={searchInput}
                         pagination={pagination}
                         paginationPageSize={paginationPageSize}
                         paginationPageSizeSelector={paginationPageSizeSelector}
@@ -1076,7 +1099,7 @@ function StudentListTable({ StudentList, refreshData, students }) {
                 .dark .ag-theme-quartz .ag-row { border-bottom: 1px solid #334155 !important; }
                 .dark .ag-theme-quartz .ag-row:hover { background-color: #334155 !important; }
                 .dark .ag-theme-quartz .ag-cell { color: #e2e8f0 !important; }
-                .dark .ag-theme-quartz .paging-panel {
+                .dark .ag-theme-quartz .ag-paging-panel {
                     border-top: 1px solid #334155 !important;
                     color: #94a3b8;
                 }
