@@ -179,46 +179,33 @@ function StudentListTable({ StudentList, refreshData, students }) {
     }, [rowData])
 
     // ─────────────────────────────────────────────
-    // ✅ SEARCH + FILTER
+    // SEARCH + FILTER
     // ─────────────────────────────────────────────
     const filteredData = useMemo(() => {
         const q = String(searchInput || "").trim().toLowerCase()
 
+        // Debug — visible in F12 console
+        console.log("[SEARCH] q =", JSON.stringify(q), "| rowData length =", rowData.length)
+
         // ─── SEARCH MODE ───
         if (q.length > 0) {
             return rowData.filter((student) => {
-                // Check each field explicitly + every other field via loop
-                const checkFields = [
-                    student.name,
-                    student.fatherName,
-                    student.fatherOccupation,
-                    student.admissionNo,
-                    student.rollNo,
-                    student.id,
-                    student.contact,
-                    student.session,
-                    student.grade,
-                    student.section,
-                    student.address,
-                    student.admissionDate,
-                ]
-
-                // Direct field match
-                for (const v of checkFields) {
-                    if (v === null || v === undefined || v === "") continue
-                    if (String(v).toLowerCase().includes(q)) return true
-                }
-
-                // Fallback: check every property on the object
+                // Build a string from EVERY field of the student
+                let haystack = ""
                 for (const key in student) {
-                    if (key === "image" || key === "_id" || key === "__v") continue
-                    const v = student[key]
-                    if (v === null || v === undefined) continue
-                    if (typeof v === "object") continue
-                    if (String(v).toLowerCase().includes(q)) return true
+                    if (key === "image") continue
+                    if (key === "_id") continue
+                    if (key === "__v") continue
+                    const val = student[key]
+                    if (val === null || val === undefined) continue
+                    if (typeof val === "object") continue
+                    haystack += " " + String(val).toLowerCase()
                 }
-
-                return false
+                const matched = haystack.includes(q)
+                if (matched) {
+                    console.log("[SEARCH] MATCH:", student.name, "| haystack:", haystack.trim())
+                }
+                return matched
             })
         }
 
