@@ -22,6 +22,19 @@ const monthNameToKey = (name) => {
   return map[name] || null
 }
 
+// Find the newest session in an array of students (e.g. "2027-2028" > "2026-2027")
+const getNewestSession = (students) => {
+  const sessions = students
+    .map((s) => String(s.session || "").trim())
+    .filter(Boolean)
+  if (sessions.length === 0) return ""
+  return sessions.sort((a, b) => {
+    const aYear = Number(String(a).match(/^(\d{4})/)?.[1] || 0)
+    const bYear = Number(String(b).match(/^(\d{4})/)?.[1] || 0)
+    return bYear - aYear
+  })[0]
+}
+
 export default function Dashboard() {
   const [selectedMonth, setSelectedMonth] = useState('')       // "January" or "01/2026"
   const [selectedGrade, setSelectedGrade] = useState('')
@@ -56,12 +69,40 @@ export default function Dashboard() {
     }))
   }, [selectedMonth, selectedGrade, selectedSection, selectedSession, hydrated])
 
-  // Total students (whole school)
+  // ─────────────────────────────────────────────
+  // ✅ Total students — SESSION-AWARE
+  //    - If session is selected → count students in that session
+  //    - If no session selected → default to the NEWEST session
+  //      (so the number reflects the "current" school roster)
+  // ─────────────────────────────────────────────
   useEffect(() => {
-    GlobalApi.GetAllStudents()
-      .then(resp => setAllStudents(resp.data || []))
-      .catch(err => console.error("Students error:", err))
-  }, [])
+    if (!hydrated) return
+
+    const load = async () => {
+      try {
+        // If a session is selected, filter by it
+        if (selectedSession) {
+          const resp = await GlobalApi.GetAllStudents({ session: selectedSession })
+          setAllStudents(resp.data || [])
+          return
+        }
+
+        // No session selected → fetch everything, then keep only the newest session
+        const resp = await GlobalApi.GetAllStudents()
+        const all = resp.data || []
+        const newest = getNewestSession(all)
+        if (!newest) {
+          setAllStudents(all)
+          return
+        }
+        setAllStudents(all.filter((s) => String(s.session || "").trim() === newest))
+      } catch (err) {
+        console.error("Students error:", err)
+      }
+    }
+
+    load()
+  }, [selectedSession, hydrated])
 
   // Class students
   useEffect(() => {
