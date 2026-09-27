@@ -119,7 +119,6 @@ const ImageCellRenderer = (props) => {
 function StudentListTable({ StudentList, refreshData, students }) {
     const [rowData, setRowData] = useState([])
     const [searchInput, setSearchInput] = useState("")
-    const [debouncedSearch, setDebouncedSearch] = useState("")
     const [selectedStudent, setSelectedStudent] = useState(null)
     const [viewOpen, setViewOpen] = useState(false)
     const [editStudent, setEditStudent] = useState(null)
@@ -167,12 +166,6 @@ function StudentListTable({ StudentList, refreshData, students }) {
         if (StudentList) setRowData(StudentList)
     }, [StudentList])
 
-    // Debounce search input so we don't re-filter on every single keystroke
-    useEffect(() => {
-        const t = setTimeout(() => setDebouncedSearch(searchInput), 150)
-        return () => clearTimeout(t)
-    }, [searchInput])
-
     const newestSession = useMemo(() => {
         const sessions = rowData
             .map((s) => String(s.session || "").trim())
@@ -186,31 +179,40 @@ function StudentListTable({ StudentList, refreshData, students }) {
     }, [rowData])
 
     // ─────────────────────────────────────────────
-    // ✅ Filtering + Search
-    //
-    // When search box has text:
-    //   → Search across ALL sessions, grades, sections
-    //   → Ignore all dropdown filters
-    //   → Match against EVERY top-level field on the student object
-    //     (name, admission no, roll no, contact, id, etc.) — this way
-    //     it doesn't matter what your database actually calls the
-    //     admission-number or roll-number field, it will still match.
-    //
-    // When search box is empty:
-    //   → Apply grade / section / session filters
-    //   → Default to newest session
+    // ✅ FILTERED DATA — clean explicit logic
     // ─────────────────────────────────────────────
     const filteredData = useMemo(() => {
-        const q = debouncedSearch.trim().toLowerCase()
+        const q = String(searchInput || "").trim().toLowerCase()
 
         // ─── SEARCH MODE ───
         if (q.length > 0) {
-            return rowData.filter((s) => {
-                return Object.values(s).some((v) => {
-                    if (v === null || v === undefined) return false
-                    if (typeof v === "object") return false // skip nested objects/arrays/images
-                    return String(v).toLowerCase().includes(q)
-                })
+            return rowData.filter((student) => {
+                // Explicitly check every field you want searchable
+                const name           = String(student.name || "").toLowerCase()
+                const fatherName     = String(student.fatherName || "").toLowerCase()
+                const admissionNo    = String(student.admissionNo ?? "").toLowerCase()
+                const rollNo         = String(student.rollNo ?? "").toLowerCase()
+                const id             = String(student.id ?? "").toLowerCase()
+                const contact        = String(student.contact || "").toLowerCase()
+                const session        = String(student.session || "").toLowerCase()
+                const grade          = String(student.grade || "").toLowerCase()
+                const section        = String(student.section || "").toLowerCase()
+                const address        = String(student.address || "").toLowerCase()
+                const fatherOcc      = String(student.fatherOccupation || "").toLowerCase()
+
+                return (
+                    name.includes(q) ||
+                    fatherName.includes(q) ||
+                    admissionNo.includes(q) ||
+                    rollNo.includes(q) ||
+                    id.includes(q) ||
+                    contact.includes(q) ||
+                    session.includes(q) ||
+                    grade.includes(q) ||
+                    section.includes(q) ||
+                    address.includes(q) ||
+                    fatherOcc.includes(q)
+                )
             })
         }
 
@@ -223,7 +225,7 @@ function StudentListTable({ StudentList, refreshData, students }) {
             if (effectiveSession && !sameText(s.session, effectiveSession)) return false
             return true
         })
-    }, [rowData, gradeFilter, sectionFilter, sessionFilter, newestSession, debouncedSearch])
+    }, [rowData, gradeFilter, sectionFilter, sessionFilter, newestSession, searchInput])
 
     const sessionOptions = useMemo(() => {
         const set = new Set()
@@ -232,11 +234,6 @@ function StudentListTable({ StudentList, refreshData, students }) {
         return Array.from(set).sort()
     }, [rowData])
 
-    // ─────────────────────────────────────────────
-    // ✅ Keep admission numbers sequential (1, 2, 3...)
-    // Runs automatically right after any delete, so there are
-    // never gaps in the admission-number sequence.
-    // ─────────────────────────────────────────────
     const renumberAdmissionNumbers = async (remainingStudents) => {
         const sorted = [...remainingStudents].sort((a, b) => {
             const an = Number(a.admissionNo) || 0
@@ -272,10 +269,8 @@ function StudentListTable({ StudentList, refreshData, students }) {
             const resp = await GlobalApi.DeleteStudentRecord(id)
             if (resp?.data?.success && (resp.data.deletedCount ?? 1) > 0) {
                 toast.success("Record Deleted Successfully")
-
                 const remaining = rowData.filter((s) => s.id !== id)
                 await renumberAdmissionNumbers(remaining)
-
                 refreshData()
             } else {
                 toast.error(resp?.data?.error || "Student not found")
@@ -764,7 +759,7 @@ function StudentListTable({ StudentList, refreshData, students }) {
             headerName: "Admission No",
             filter: true,
             width: 140,
-            sort: 'asc',              // ← table opens sorted by admission no ascending
+            sort: 'asc',
             comparator: (a, b) => (Number(a) || 0) - (Number(b) || 0),
         },
         {
