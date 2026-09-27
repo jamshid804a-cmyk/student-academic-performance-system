@@ -179,7 +179,18 @@ function StudentListTable({ StudentList, refreshData, students }) {
     }, [rowData])
 
     // ─────────────────────────────────────────────
-    // ✅ FILTERED DATA — clean explicit logic
+    // ✅ FILTERING + SEARCH
+    //
+    // SEARCH MODE (search box has text):
+    //   → Ignores all dropdown filters
+    //   → Searches across ALL sessions/grades/sections
+    //   → Builds a string of every field on the student object
+    //     (name, admission no, roll no, id, contact, etc.)
+    //     so it matches numbers AND strings
+    //
+    // NORMAL MODE (search empty):
+    //   → Applies grade / section / session filters
+    //   → Defaults to newest session
     // ─────────────────────────────────────────────
     const filteredData = useMemo(() => {
         const q = String(searchInput || "").trim().toLowerCase()
@@ -187,32 +198,19 @@ function StudentListTable({ StudentList, refreshData, students }) {
         // ─── SEARCH MODE ───
         if (q.length > 0) {
             return rowData.filter((student) => {
-                // Explicitly check every field you want searchable
-                const name           = String(student.name || "").toLowerCase()
-                const fatherName     = String(student.fatherName || "").toLowerCase()
-                const admissionNo    = String(student.admissionNo ?? "").toLowerCase()
-                const rollNo         = String(student.rollNo ?? "").toLowerCase()
-                const id             = String(student.id ?? "").toLowerCase()
-                const contact        = String(student.contact || "").toLowerCase()
-                const session        = String(student.session || "").toLowerCase()
-                const grade          = String(student.grade || "").toLowerCase()
-                const section        = String(student.section || "").toLowerCase()
-                const address        = String(student.address || "").toLowerCase()
-                const fatherOcc      = String(student.fatherOccupation || "").toLowerCase()
-
-                return (
-                    name.includes(q) ||
-                    fatherName.includes(q) ||
-                    admissionNo.includes(q) ||
-                    rollNo.includes(q) ||
-                    id.includes(q) ||
-                    contact.includes(q) ||
-                    session.includes(q) ||
-                    grade.includes(q) ||
-                    section.includes(q) ||
-                    address.includes(q) ||
-                    fatherOcc.includes(q)
-                )
+                // Build a searchable string from ALL fields (except image and _id)
+                const parts = []
+                for (const key in student) {
+                    if (key === "image") continue        // skip base64 image
+                    if (key === "_id") continue           // skip mongo id
+                    if (key === "__v") continue           // skip mongo version
+                    const val = student[key]
+                    if (val === null || val === undefined) continue
+                    if (typeof val === "object") continue // skip nested objects
+                    parts.push(String(val).toLowerCase())
+                }
+                const haystack = parts.join(" ")
+                return haystack.includes(q)
             })
         }
 
