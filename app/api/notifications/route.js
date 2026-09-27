@@ -2,6 +2,52 @@ import { NextResponse } from "next/server";
 import { getDb } from "@/utils";
 import { ObjectId } from "mongodb";
 
+// ✅ Sends a real push notification with sound to the parent's phone
+async function sendPushNotification(db, studentId, type, message) {
+  try {
+    const student = await db
+      .collection("students")
+      .findOne({ id: Number(studentId) });
+
+    if (!student?.contact) {
+      console.log("⚠️ No student/contact found for push, studentId:", studentId);
+      return;
+    }
+
+    const parent = await db
+      .collection("parents")
+      .findOne({ phone: student.contact });
+
+    if (!parent?.pushToken) {
+      console.log("⚠️ No pushToken found for parent phone:", student.contact);
+      return;
+    }
+
+    const pushType = type === "academic" ? "test" : type || "attendance";
+
+    const pushRes = await fetch("https://exp.host/--/api/v2/push/send", {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        to: parent.pushToken,
+        sound: "default",
+        title: "New Notification",
+        body: message,
+        data: { type: pushType },
+        channelId: `channel_${pushType}`,
+      }),
+    });
+
+    const pushData = await pushRes.json();
+    console.log("📲 Push result:", JSON.stringify(pushData));
+  } catch (e) {
+    console.error("❌ Push send failed:", e.message);
+  }
+}
+
 // ✅ GET — fetch notifications for a student
 export async function GET(req) {
   try {
@@ -75,6 +121,9 @@ export async function POST(req) {
       type: type || "attendance",
       createdAt: new Date(),
     });
+
+    // ✅ Fire the real push notification (fire-and-forget, doesn't block response)
+    sendPushNotification(db, studentId, type || "attendance", message);
 
     return NextResponse.json({
       success: true,
