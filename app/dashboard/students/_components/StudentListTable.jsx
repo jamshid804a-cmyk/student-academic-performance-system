@@ -179,18 +179,7 @@ function StudentListTable({ StudentList, refreshData, students }) {
     }, [rowData])
 
     // ─────────────────────────────────────────────
-    // ✅ FILTERING + SEARCH
-    //
-    // SEARCH MODE (search box has text):
-    //   → Ignores all dropdown filters
-    //   → Searches across ALL sessions/grades/sections
-    //   → Builds a string of every field on the student object
-    //     (name, admission no, roll no, id, contact, etc.)
-    //     so it matches numbers AND strings
-    //
-    // NORMAL MODE (search empty):
-    //   → Applies grade / section / session filters
-    //   → Defaults to newest session
+    // ✅ SEARCH + FILTER
     // ─────────────────────────────────────────────
     const filteredData = useMemo(() => {
         const q = String(searchInput || "").trim().toLowerCase()
@@ -198,19 +187,38 @@ function StudentListTable({ StudentList, refreshData, students }) {
         // ─── SEARCH MODE ───
         if (q.length > 0) {
             return rowData.filter((student) => {
-                // Build a searchable string from ALL fields (except image and _id)
-                const parts = []
-                for (const key in student) {
-                    if (key === "image") continue        // skip base64 image
-                    if (key === "_id") continue           // skip mongo id
-                    if (key === "__v") continue           // skip mongo version
-                    const val = student[key]
-                    if (val === null || val === undefined) continue
-                    if (typeof val === "object") continue // skip nested objects
-                    parts.push(String(val).toLowerCase())
+                // Check each field explicitly + every other field via loop
+                const checkFields = [
+                    student.name,
+                    student.fatherName,
+                    student.fatherOccupation,
+                    student.admissionNo,
+                    student.rollNo,
+                    student.id,
+                    student.contact,
+                    student.session,
+                    student.grade,
+                    student.section,
+                    student.address,
+                    student.admissionDate,
+                ]
+
+                // Direct field match
+                for (const v of checkFields) {
+                    if (v === null || v === undefined || v === "") continue
+                    if (String(v).toLowerCase().includes(q)) return true
                 }
-                const haystack = parts.join(" ")
-                return haystack.includes(q)
+
+                // Fallback: check every property on the object
+                for (const key in student) {
+                    if (key === "image" || key === "_id" || key === "__v") continue
+                    const v = student[key]
+                    if (v === null || v === undefined) continue
+                    if (typeof v === "object") continue
+                    if (String(v).toLowerCase().includes(q)) return true
+                }
+
+                return false
             })
         }
 
