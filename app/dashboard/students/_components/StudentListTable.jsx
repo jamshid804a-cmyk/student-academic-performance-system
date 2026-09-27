@@ -179,33 +179,61 @@ function StudentListTable({ StudentList, refreshData, students }) {
     }, [rowData])
 
     // ─────────────────────────────────────────────
-    // SEARCH + FILTER
+    // ✅ SEARCH + FILTER
+    //
+    // SEARCH MODE:
+    //   → Ignores grade/section/session dropdowns
+    //   → Searches ALL sessions/grades/sections
+    //
+    //   If search term is a NUMBER (e.g. "3", "5"):
+    //     → EXACT match on admissionNo, rollNo, id
+    //       (so "3" finds only admissionNo=3, not "13", "30", etc.)
+    //
+    //   If search term is TEXT (e.g. "khan"):
+    //     → CONTAINS match on name, fatherName, address, etc.
+    //
+    // NORMAL MODE (empty search):
+    //   → Apply grade/section/session filters (default = newest session)
     // ─────────────────────────────────────────────
     const filteredData = useMemo(() => {
         const q = String(searchInput || "").trim().toLowerCase()
 
-        // Debug — visible in F12 console
-        console.log("[SEARCH] q =", JSON.stringify(q), "| rowData length =", rowData.length)
-
         // ─── SEARCH MODE ───
         if (q.length > 0) {
+            const isNumeric = /^\d+$/.test(q)
+
             return rowData.filter((student) => {
-                // Build a string from EVERY field of the student
-                let haystack = ""
-                for (const key in student) {
-                    if (key === "image") continue
-                    if (key === "_id") continue
-                    if (key === "__v") continue
-                    const val = student[key]
-                    if (val === null || val === undefined) continue
-                    if (typeof val === "object") continue
-                    haystack += " " + String(val).toLowerCase()
+                // ── NUMERIC SEARCH: exact match on admissionNo / rollNo / id ──
+                if (isNumeric) {
+                    const admissionNo = String(student.admissionNo ?? "").trim()
+                    const rollNo = String(student.rollNo ?? "").trim()
+                    const id = String(student.id ?? "").trim()
+
+                    return (
+                        admissionNo === q ||
+                        rollNo === q ||
+                        id === q
+                    )
                 }
-                const matched = haystack.includes(q)
-                if (matched) {
-                    console.log("[SEARCH] MATCH:", student.name, "| haystack:", haystack.trim())
-                }
-                return matched
+
+                // ── TEXT SEARCH: contains match on text fields ──
+                const textFields = [
+                    student.name,
+                    student.fatherName,
+                    student.fatherOccupation,
+                    student.admissionNo,
+                    student.rollNo,
+                    student.id,
+                    student.contact,
+                    student.session,
+                    student.grade,
+                    student.section,
+                    student.address,
+                ]
+                return textFields.some((v) => {
+                    if (v === null || v === undefined || v === "") return false
+                    return String(v).toLowerCase().includes(q)
+                })
             })
         }
 
