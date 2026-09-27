@@ -333,20 +333,42 @@ export default function TestingPage() {
     setDeletingSubject(null)
   }
 
-  // Save EITHER obtained marks or total marks
+  // ─────────────────────────────────────────────
+  // ✅ Save EITHER obtained marks or total marks
+  // Validates: obtained marks can never exceed total marks.
+  // If the new value would break that rule, the change is
+  // rejected (not saved, not applied to the UI) and an error
+  // toast is shown instead.
+  // ─────────────────────────────────────────────
   const handleMarksChange = async (studentId, subjectName, field, value) => {
     const key = `${studentId}__${subjectName}`
+    const current = tests[key] || { marks: "", totalMarks: "" }
+
+    const nextMarks = field === "marks" ? value : current.marks
+    const nextTotal = field === "totalMarks" ? value : current.totalMarks
+
+    const marksNum = nextMarks === "" || nextMarks === undefined ? null : Number(nextMarks)
+    const totalNum = nextTotal === "" || nextTotal === undefined ? null : Number(nextTotal)
+
+    // Only validate once BOTH values are present — otherwise let the user
+    // keep typing (e.g. total not entered yet).
+    if (marksNum !== null && totalNum !== null && !Number.isNaN(marksNum) && !Number.isNaN(totalNum)) {
+      if (marksNum > totalNum) {
+        toast.error(`Obtained marks (${marksNum}) cannot be greater than Total marks (${totalNum})`)
+        return // ❌ reject — do not update local state or save to server
+      }
+    }
+
+    // ✅ Valid — update local state immediately for responsiveness
     setTests((prev) => {
       const prevRec = prev[key] || { marks: "", totalMarks: 100 }
       return { ...prev, [key]: { ...prevRec, [field]: value } }
     })
+
     try {
-      const current = tests[key] || {}
-      const marks = field === "marks" ? value : current.marks
-      const totalMarks = field === "totalMarks" ? value : current.totalMarks
       await GlobalApi.SaveTest({
         studentId, grade, section, session, month: monthKey, testType,
-        subject: subjectName, marks, totalMarks,
+        subject: subjectName, marks: nextMarks, totalMarks: nextTotal,
       })
       const testResp = await GlobalApi.GetTests({ grade, section, session, month: monthKey, testType })
       const marksMap = {}
