@@ -147,15 +147,10 @@ export default function RiskBox({
         };
       }
 
-      // ✅ Support both old (present: true) and new (status: "P") formats
       const dayNum = Number(item.day);
       const status = item.status || (item.present ? "P" : null);
 
-      if (
-        status === "P" &&
-        dayNum >= weekStart &&
-        dayNum <= weekEnd
-      ) {
+      if (status === "P" && dayNum >= weekStart && dayNum <= weekEnd) {
         studentMap[item.studentId].presentDays += 1;
         studentMap[item.studentId].presentDaysList.push(dayNum);
       }
@@ -191,6 +186,7 @@ export default function RiskBox({
           blockNumber,
           weekStart: weekRange.weekStart,
           weekEnd: weekRange.weekEnd,
+          type: "attendance",   // ✅ NEW — tells the app to play the Attendance sound
         }),
       });
 
