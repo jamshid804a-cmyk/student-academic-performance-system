@@ -166,7 +166,6 @@ export default function TestingPage() {
     return Array.from(names).sort()
   }, [students, subjectsByStudent])
 
-  // Clears old test marks for a student/subject combo before (re)adding or removing it
   const clearOldMarks = async (studentId, name) => {
     try {
       await fetch(
@@ -181,7 +180,6 @@ export default function TestingPage() {
     }
   }
 
-  // ─── Add subject to ONE student ───
   const handleAddSubjectSingle = async (studentId) => {
     const name = newSubjectName.trim()
     if (!name) return
@@ -208,7 +206,6 @@ export default function TestingPage() {
     toast.success(`"${name}" added for this student`)
   }
 
-  // ─── Add subject to ALL currently loaded students at once ───
   const handleAddSubjectBulk = async () => {
     const name = newSubjectName.trim()
     if (!name) return
@@ -266,7 +263,6 @@ export default function TestingPage() {
     setSubjectModal(null)
   }
 
-  // ─── Remove subject from ONE student ───
   const handleRemoveSubject = (studentId, subjectName) => {
     if (!confirm(`Remove subject "${subjectName}" from Testing for this student?`)) return
     const sid = String(studentId)
@@ -279,7 +275,6 @@ export default function TestingPage() {
     toast.success("Removed from Testing")
   }
 
-  // ─── Remove a subject from ALL students at once ───
   const handleRemoveSubjectAll = async (subjectName) => {
     const affected = students.filter((st) => {
       const sid = String(st.id)
@@ -304,7 +299,6 @@ export default function TestingPage() {
         return copy
       })
 
-      // Remove from extraSubjects for anyone who had it as an extra subject
       setExtraSubjects((prev) => {
         const copy = { ...prev }
         affected.forEach((st) => {
@@ -314,7 +308,6 @@ export default function TestingPage() {
         return copy
       })
 
-      // Hide it for anyone who had it as a base subject (from GetAllSubjects)
       setHiddenSubjects((prev) => {
         const copy = { ...prev }
         affected.forEach((st) => {
@@ -333,13 +326,6 @@ export default function TestingPage() {
     setDeletingSubject(null)
   }
 
-  // ─────────────────────────────────────────────
-  // ✅ Save EITHER obtained marks or total marks
-  // Validates: obtained marks can never exceed total marks.
-  // If the new value would break that rule, the change is
-  // rejected (not saved, not applied to the UI) and an error
-  // toast is shown instead.
-  // ─────────────────────────────────────────────
   const handleMarksChange = async (studentId, subjectName, field, value) => {
     const key = `${studentId}__${subjectName}`
     const current = tests[key] || { marks: "", totalMarks: "" }
@@ -350,16 +336,13 @@ export default function TestingPage() {
     const marksNum = nextMarks === "" || nextMarks === undefined ? null : Number(nextMarks)
     const totalNum = nextTotal === "" || nextTotal === undefined ? null : Number(nextTotal)
 
-    // Only validate once BOTH values are present — otherwise let the user
-    // keep typing (e.g. total not entered yet).
     if (marksNum !== null && totalNum !== null && !Number.isNaN(marksNum) && !Number.isNaN(totalNum)) {
       if (marksNum > totalNum) {
         toast.error(`Obtained marks (${marksNum}) cannot be greater than Total marks (${totalNum})`)
-        return // ❌ reject — do not update local state or save to server
+        return
       }
     }
 
-    // ✅ Valid — update local state immediately for responsiveness
     setTests((prev) => {
       const prevRec = prev[key] || { marks: "", totalMarks: 100 }
       return { ...prev, [key]: { ...prevRec, [field]: value } }
@@ -422,7 +405,14 @@ export default function TestingPage() {
       await fetch("/api/notifications", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ studentId: row.student.id, message, blockNumber: 0, weekStart: 0, weekEnd: 0, type: "academic" }),
+        body: JSON.stringify({
+          studentId: row.student.id,
+          message,
+          blockNumber: 0,
+          weekStart: 0,
+          weekEnd: 0,
+          type: "test",   // ✅ Changed from "academic" → "test"
+        }),
       })
       toast.success(`Notification sent for ${row.student.name}`)
     } catch (err) { console.error(err); toast.error("Failed to send") }
@@ -661,7 +651,6 @@ export default function TestingPage() {
         </>
       )}
 
-      {/* ─── Add Subject Modal (single student OR bulk) ─── */}
       {subjectModal && (
         <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
           <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl max-w-md w-full overflow-hidden animate-fade-in">

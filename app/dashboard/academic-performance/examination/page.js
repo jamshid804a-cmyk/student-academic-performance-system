@@ -21,10 +21,9 @@ const MONTHS = [
 const EXAM_TYPES = ["Mid Term", "Final Term"]
 
 const STORAGE_KEY = "examination_filters_v1"
-const EXTRA_KEY = "examination_extra_subjects_v1"     // subjects added ONLY in Examination
-const HIDDEN_KEY = "examination_hidden_subjects_v1"   // subjects hidden ONLY in Examination
+const EXTRA_KEY = "examination_extra_subjects_v1"
+const HIDDEN_KEY = "examination_hidden_subjects_v1"
 
-// Subjects to hide from this page
 const HIDDEN_SUBJECTS = ["english", "urdu"]
 const isExcluded = (name) => HIDDEN_SUBJECTS.includes(String(name || "").trim().toLowerCase())
 
@@ -51,16 +50,13 @@ export default function ExaminationPage() {
   const [hydrated, setHydrated] = useState(false)
   const [searchInput, setSearchInput] = useState("")
 
-  // Examination-only subject data (never touches the Testing section)
-  const [extraSubjects, setExtraSubjects] = useState({})   // { [studentId]: [names] }
-  const [hiddenSubjects, setHiddenSubjects] = useState({}) // { [studentId]: [names] }
+  const [extraSubjects, setExtraSubjects] = useState({})
+  const [hiddenSubjects, setHiddenSubjects] = useState({})
 
-  // ─── Subject modal state ───
-  // mode: 'single' (one student) | 'bulk' (all students) | null (closed)
   const [subjectModal, setSubjectModal] = useState(null)
   const [newSubjectName, setNewSubjectName] = useState("")
   const [bulkSaving, setBulkSaving] = useState(false)
-  const [deletingSubject, setDeletingSubject] = useState(null) // subject name currently being bulk-deleted
+  const [deletingSubject, setDeletingSubject] = useState(null)
 
   useEffect(() => {
     try {
@@ -164,7 +160,6 @@ export default function ExaminationPage() {
     return Array.from(names).sort()
   }, [students, subjectsByStudent])
 
-  // ─── Add subject to ONE student ───
   const handleAddSubjectSingle = (studentId) => {
     const name = newSubjectName.trim()
     if (!name) return
@@ -184,7 +179,6 @@ export default function ExaminationPage() {
     toast.success(`"${name}" added for this student`)
   }
 
-  // ─── Add subject to ALL currently loaded students at once ───
   const handleAddSubjectBulk = () => {
     const name = newSubjectName.trim()
     if (!name) return
@@ -234,7 +228,6 @@ export default function ExaminationPage() {
     setSubjectModal(null)
   }
 
-  // ─── Remove subject from ONE student ───
   const handleRemoveSubject = (studentId, subjectName) => {
     if (!confirm(`Remove subject "${subjectName}" from Examination for this student?`)) return
     const sid = String(studentId)
@@ -247,7 +240,6 @@ export default function ExaminationPage() {
     toast.success("Removed from Examination")
   }
 
-  // ─── Remove a subject from ALL students at once ───
   const handleRemoveSubjectAll = async (subjectName) => {
     const affected = students.filter((st) => {
       const sid = String(st.id)
@@ -264,7 +256,6 @@ export default function ExaminationPage() {
 
     setDeletingSubject(subjectName)
     try {
-      // Clear saved marks for this subject on every affected student
       await Promise.all(
         affected.map((st) =>
           fetch(
@@ -375,7 +366,14 @@ export default function ExaminationPage() {
       await fetch("/api/notifications", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ studentId: row.student.id, message, blockNumber: 0, weekStart: 0, weekEnd: 0, type: "academic" }),
+        body: JSON.stringify({
+          studentId: row.student.id,
+          message,
+          blockNumber: 0,
+          weekStart: 0,
+          weekEnd: 0,
+          type: "examination",   // ✅ Changed from "academic" → "examination"
+        }),
       })
       toast.success(`Notification sent for ${row.student.name}`)
     } catch (err) { console.error(err); toast.error("Failed to send") }
@@ -618,7 +616,6 @@ export default function ExaminationPage() {
         </>
       )}
 
-      {/* ─── Add Subject Modal (single student OR bulk) ─── */}
       {subjectModal && (
         <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
           <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl max-w-md w-full overflow-hidden animate-fade-in">
