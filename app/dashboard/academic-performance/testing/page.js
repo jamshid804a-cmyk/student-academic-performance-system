@@ -24,9 +24,8 @@ const STORAGE_KEY = "testing_filters_v1"
 const EXTRA_KEY = "testing_extra_subjects_v1"
 const HIDDEN_KEY = "testing_hidden_subjects_v1"
 
-// Only Urdu stays excluded — English is allowed as a subject.
-const EXCLUDED_SUBJECTS = ["urdu"]
-const isExcluded = (name) => EXCLUDED_SUBJECTS.includes(String(name || "").trim().toLowerCase())
+// ✅ No subjects excluded — any subject name is allowed
+const isExcluded = () => false
 
 const monthNameToKey = (name) => {
   const map = {
@@ -54,12 +53,11 @@ export default function TestingPage() {
   const [extraSubjects, setExtraSubjects] = useState({})
   const [hiddenSubjects, setHiddenSubjects] = useState({})
 
-  // ─── Subject modal state ───
-  // mode: 'single' (one student) | 'bulk' (all students) | null (closed)
+  // Modal state
   const [subjectModal, setSubjectModal] = useState(null)
   const [newSubjectName, setNewSubjectName] = useState("")
   const [bulkSaving, setBulkSaving] = useState(false)
-  const [deletingSubject, setDeletingSubject] = useState(null) // subject name currently being bulk-deleted
+  const [deletingSubject, setDeletingSubject] = useState(null)
 
   useEffect(() => {
     try {
@@ -183,7 +181,6 @@ export default function TestingPage() {
   const handleAddSubjectSingle = async (studentId) => {
     const name = newSubjectName.trim()
     if (!name) return
-    if (isExcluded(name)) { toast.error(`${name} is not allowed in Testing`); return }
 
     const sid = String(studentId)
     const alreadyExists = (subjectsByStudent[sid] || []).some(
@@ -209,7 +206,6 @@ export default function TestingPage() {
   const handleAddSubjectBulk = async () => {
     const name = newSubjectName.trim()
     if (!name) return
-    if (isExcluded(name)) { toast.error(`${name} is not allowed in Testing`); return }
     if (students.length === 0) { toast.error("No students loaded"); return }
 
     const targets = students.filter((st) => {
@@ -326,6 +322,7 @@ export default function TestingPage() {
     setDeletingSubject(null)
   }
 
+  // ✅ Simple manual entry — user types both obtained and total marks directly
   const handleMarksChange = async (studentId, subjectName, field, value) => {
     const key = `${studentId}__${subjectName}`
     const current = tests[key] || { marks: "", totalMarks: "" }
@@ -411,7 +408,7 @@ export default function TestingPage() {
           blockNumber: 0,
           weekStart: 0,
           weekEnd: 0,
-          type: "test",   // ✅ Changed from "academic" → "test"
+          type: "test",
         }),
       })
       toast.success(`Notification sent for ${row.student.name}`)
@@ -572,7 +569,8 @@ export default function TestingPage() {
                             <td key={name} className="px-2 py-2.5 text-center">
                               <div className="flex items-center justify-center gap-1.5">
                                 <input
-                                  type="number" min="0"
+                                  type="number"
+                                  min="0"
                                   value={cell?.marks ?? ""}
                                   onChange={(e) => handleMarksChange(row.student.id, name, "marks", e.target.value)}
                                   placeholder="Obt"
@@ -583,7 +581,8 @@ export default function TestingPage() {
                                 />
                                 <span className="text-slate-400 text-sm font-bold">/</span>
                                 <input
-                                  type="number" min="0"
+                                  type="number"
+                                  min="0"
                                   value={cell?.totalMarks ?? ""}
                                   onChange={(e) => handleMarksChange(row.student.id, name, "totalMarks", e.target.value)}
                                   placeholder="Tot"
@@ -698,7 +697,7 @@ export default function TestingPage() {
                     if (e.key === "Enter") handleModalSubmit()
                     if (e.key === "Escape") closeModal()
                   }}
-                  placeholder="e.g. Mathematics, Science, English..."
+                  placeholder="e.g. Mathematics, Science, English, Urdu..."
                   disabled={bulkSaving}
                   className="w-full px-4 py-3 rounded-xl border border-slate-300 dark:border-slate-600
                     focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 dark:focus:ring-emerald-900/40

@@ -24,8 +24,8 @@ const STORAGE_KEY = "examination_filters_v1"
 const EXTRA_KEY = "examination_extra_subjects_v1"
 const HIDDEN_KEY = "examination_hidden_subjects_v1"
 
-const HIDDEN_SUBJECTS = ["english", "urdu"]
-const isExcluded = (name) => HIDDEN_SUBJECTS.includes(String(name || "").trim().toLowerCase())
+// ✅ No subjects excluded — any subject name is allowed (English, Urdu, etc.)
+const isExcluded = () => false
 
 const monthNameToKey = (name) => {
   const map = {
@@ -163,7 +163,6 @@ export default function ExaminationPage() {
   const handleAddSubjectSingle = (studentId) => {
     const name = newSubjectName.trim()
     if (!name) return
-    if (isExcluded(name)) { toast.error(`"${name}" is hidden on this page`); return }
 
     const sid = String(studentId)
     const alreadyExists = (subjectsByStudent[sid] || []).some(
@@ -182,7 +181,6 @@ export default function ExaminationPage() {
   const handleAddSubjectBulk = () => {
     const name = newSubjectName.trim()
     if (!name) return
-    if (isExcluded(name)) { toast.error(`"${name}" is hidden on this page`); return }
     if (students.length === 0) { toast.error("No students loaded"); return }
 
     const targets = students.filter((st) => {
@@ -372,7 +370,7 @@ export default function ExaminationPage() {
           blockNumber: 0,
           weekStart: 0,
           weekEnd: 0,
-          type: "examination",   // ✅ Changed from "academic" → "examination"
+          type: "examination",
         }),
       })
       toast.success(`Notification sent for ${row.student.name}`)
@@ -663,7 +661,7 @@ export default function ExaminationPage() {
                     if (e.key === "Enter") handleModalSubmit()
                     if (e.key === "Escape") closeModal()
                   }}
-                  placeholder="e.g. Mathematics, Science, History..."
+                  placeholder="e.g. Mathematics, Science, History, Urdu..."
                   disabled={bulkSaving}
                   className="w-full px-4 py-3 rounded-xl border border-slate-300 dark:border-slate-600
                     focus:border-purple-500 focus:ring-2 focus:ring-purple-100 dark:focus:ring-purple-900/40
