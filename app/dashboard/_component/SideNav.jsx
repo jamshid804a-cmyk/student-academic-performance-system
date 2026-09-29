@@ -23,7 +23,6 @@ function SideNav() {
   const [mounted, setMounted] = useState(false)
   const menuRef = useRef(null)
 
-  // Load collapse preference from localStorage
   useEffect(() => {
     try {
       const saved = localStorage.getItem("sidenav_collapsed")
@@ -77,7 +76,6 @@ function SideNav() {
     { name: 'Examination', icon: FileText, path: '/dashboard/academic-performance/examination' },
   ]
 
-  // ─── Class helpers ───
   const isActive = (p) => path === p
 
   const itemClass = (active) =>
@@ -100,7 +98,6 @@ function SideNav() {
      }
      ${collapsed ? "justify-center px-1" : "ml-2"}`
 
-  // Animated text wrapper
   const Label = ({ children, className = "" }) => (
     <span
       className={`
@@ -113,10 +110,9 @@ function SideNav() {
     </span>
   )
 
-  // Prevent SSR flash
   if (!mounted) {
     return (
-      <div className="border shadow-md h-screen w-64 bg-white dark:bg-slate-800 dark:border-slate-700" />
+      <div className="border shadow-md h-screen w-72 bg-white dark:bg-slate-800 dark:border-slate-700" />
     )
   }
 
@@ -129,7 +125,7 @@ function SideNav() {
         ${collapsed ? "w-[76px] p-3" : "w-72 p-5"}
       `}
     >
-      {/* ─── Toggle button ─── */}
+      {/* Toggle button */}
       <button
         onClick={() => setCollapsed(!collapsed)}
         className={`
@@ -137,7 +133,7 @@ function SideNav() {
           w-8 h-8 rounded-full bg-gradient-to-br from-blue-600 to-indigo-600
           text-white shadow-lg shadow-blue-500/40
           hover:scale-110 active:scale-95 transition-all duration-300
-          ${collapsed ? "-right-4" : "-right-4"}
+          -right-4
         `}
         title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
       >
@@ -148,10 +144,10 @@ function SideNav() {
         )}
       </button>
 
-      {/* ─── School logo + name ─── */}
+      {/* School logo + name */}
       <div
         className={`
-          flex items-center gap-3 mb-2
+          flex items-center gap-3 mb-2 min-w-0
           transition-all duration-300
           ${collapsed ? "justify-center" : ""}
         `}
@@ -161,16 +157,15 @@ function SideNav() {
             src={school.logo}
             alt="School Logo"
             className={`
-              object-contain rounded-lg
+              object-contain rounded-lg shrink-0
               transition-all duration-300 ease-out
-              group-hover:scale-110
               ${collapsed ? "w-10 h-10" : "w-12 h-12"}
             `}
           />
         ) : (
           <div
             className={`
-              flex items-center justify-center rounded-xl
+              flex items-center justify-center rounded-xl shrink-0
               bg-gradient-to-br from-blue-500 to-indigo-600 text-white
               transition-all duration-300
               ${collapsed ? "w-10 h-10" : "w-12 h-12"}
@@ -181,15 +176,14 @@ function SideNav() {
         )}
 
         <h1
+          title={school.name}
           className={`
             text-base font-extrabold leading-tight
             text-slate-800 dark:text-slate-100
-            transition-all duration-300 ease-out whitespace-nowrap
-            ${
-              collapsed
-                ? "opacity-0 w-0 -translate-x-3 pointer-events-none overflow-hidden"
-                : "opacity-100 w-auto translate-x-0"
-            }
+            transition-all duration-300 ease-out
+            ${collapsed
+              ? "opacity-0 w-0 -translate-x-3 pointer-events-none overflow-hidden"
+              : "opacity-100 w-auto translate-x-0 truncate flex-1 min-w-0"}
           `}
         >
           {school.name}
@@ -204,18 +198,16 @@ function SideNav() {
         `}
       />
 
-      {/* ─── Menu list ─── */}
+      {/* Menu list */}
       <div className="flex-1 overflow-y-auto overflow-x-hidden pr-1 -mr-1">
         {menuList.map((m) => {
           const active = isActive(m.path)
           return (
             <Link key={m.id} href={m.path}>
               <div className={itemClass(active)} title={collapsed ? m.name : ""}>
-                {/* Active indicator bar */}
                 {active && (
                   <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-7 bg-white rounded-r-full" />
                 )}
-
                 <m.icon
                   size={20}
                   className={`shrink-0 transition-transform duration-300 ${
@@ -223,8 +215,6 @@ function SideNav() {
                   }`}
                 />
                 <Label className="font-semibold text-sm">{m.name}</Label>
-
-                {/* Hover glow */}
                 {!active && (
                   <span className="absolute inset-0 rounded-xl opacity-0 group-hover/item:opacity-100 transition-opacity duration-300 bg-gradient-to-r from-blue-100/50 to-transparent dark:from-blue-900/20 pointer-events-none" />
                 )}
@@ -233,7 +223,7 @@ function SideNav() {
           )
         })}
 
-        {/* ─── Academic Performance (expandable) ─── */}
+        {/* Academic Performance */}
         <div>
           <button
             type="button"
@@ -251,10 +241,8 @@ function SideNav() {
             {path?.startsWith('/dashboard/academic-performance') && (
               <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-7 bg-white rounded-r-full" />
             )}
-
             <BookOpen size={20} className="shrink-0 transition-transform duration-300 group-hover/item:scale-110" />
             <Label className="font-semibold text-sm flex-1">Academic Performance</Label>
-
             <span
               className={`
                 transition-all duration-300 ease-out
@@ -269,7 +257,6 @@ function SideNav() {
             </span>
           </button>
 
-          {/* Sub items — animated */}
           <div
             className={`
               overflow-hidden transition-all duration-300 ease-in-out
@@ -292,12 +279,9 @@ function SideNav() {
           </div>
         </div>
 
-        {/* ─── Fee Management ─── */}
+        {/* Fee Management */}
         <Link href="/dashboard/fee-management">
-          <div
-            className={itemClass(isActive('/dashboard/fee-management'))}
-            title={collapsed ? "Fee Management" : ""}
-          >
+          <div className={itemClass(isActive('/dashboard/fee-management'))} title={collapsed ? "Fee Management" : ""}>
             {isActive('/dashboard/fee-management') && (
               <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-7 bg-white rounded-r-full" />
             )}
@@ -306,12 +290,9 @@ function SideNav() {
           </div>
         </Link>
 
-        {/* ─── Settings ─── */}
+        {/* Settings */}
         <Link href="/dashboard/settings">
-          <div
-            className={itemClass(isActive('/dashboard/settings'))}
-            title={collapsed ? "Settings" : ""}
-          >
+          <div className={itemClass(isActive('/dashboard/settings'))} title={collapsed ? "Settings" : ""}>
             {isActive('/dashboard/settings') && (
               <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-7 bg-white rounded-r-full" />
             )}
@@ -321,12 +302,9 @@ function SideNav() {
         </Link>
       </div>
 
-      {/* ─── User card ─── */}
+      {/* User card */}
       <div
-        className={`
-          relative mt-3 pt-3 border-t border-slate-200 dark:border-slate-700
-          transition-all duration-300
-        `}
+        className="relative mt-3 pt-3 border-t border-slate-200 dark:border-slate-700 transition-all duration-300"
         ref={menuRef}
       >
         {openUserMenu && !collapsed && (
@@ -394,11 +372,9 @@ function SideNav() {
             className={`
               flex-1 text-left min-w-0
               transition-all duration-300 ease-out
-              ${
-                collapsed
-                  ? "opacity-0 w-0 -translate-x-3 pointer-events-none overflow-hidden"
-                  : "opacity-100 w-auto translate-x-0"
-              }
+              ${collapsed
+                ? "opacity-0 w-0 -translate-x-3 pointer-events-none overflow-hidden"
+                : "opacity-100 w-auto translate-x-0"}
             `}
           >
             <h2 className="text-sm font-semibold text-slate-800 dark:text-slate-100 truncate">
@@ -427,14 +403,8 @@ function SideNav() {
           animation: user-menu-in 0.2s ease-out;
           transform-origin: bottom center;
         }
-
-        /* Smooth scrollbar */
-        ::-webkit-scrollbar {
-          width: 6px;
-        }
-        ::-webkit-scrollbar-track {
-          background: transparent;
-        }
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb {
           background: rgba(148, 163, 184, 0.3);
           border-radius: 3px;

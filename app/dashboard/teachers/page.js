@@ -24,6 +24,8 @@ const MONTHS = [
   "July","August","September","October","November","December"
 ]
 
+const STORAGE_KEY = "teachers_page_state_v1"
+
 const monthNameToKey = (name) => {
   const map = {
     January: "01", February: "02", March: "03", April: "04",
@@ -50,6 +52,36 @@ export default function TeachersPage() {
   const [attendanceMonth, setAttendanceMonth] = useState("")
   const [teacherAttendance, setTeacherAttendance] = useState([])
   const [loadingAttendance, setLoadingAttendance] = useState(false)
+  const [hydrated, setHydrated] = useState(false)
+
+  // ✅ Load saved tab + month from localStorage
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}")
+      if (saved.activeTab) setActiveTab(saved.activeTab)
+      if (saved.attendanceMonth) setAttendanceMonth(saved.attendanceMonth)
+      else {
+        // If no saved month, pick the current month
+        const currentMonthName = MONTHS[new Date().getMonth()]
+        setAttendanceMonth(currentMonthName)
+      }
+    } catch {
+      const currentMonthName = MONTHS[new Date().getMonth()]
+      setAttendanceMonth(currentMonthName)
+    }
+    setHydrated(true)
+  }, [])
+
+  // ✅ Save tab + month to localStorage whenever they change
+  useEffect(() => {
+    if (!hydrated) return
+    try {
+      localStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify({ activeTab, attendanceMonth })
+      )
+    } catch {}
+  }, [activeTab, attendanceMonth, hydrated])
 
   // Load teachers
   const loadTeachers = useCallback(async () => {
@@ -68,9 +100,11 @@ export default function TeachersPage() {
     loadTeachers()
   }, [loadTeachers])
 
-  // Load teacher attendance when month changes
+  // Load teacher attendance when month changes (and tab is attendance)
   useEffect(() => {
+    if (!hydrated) return
     if (!attendanceMonth || activeTab !== "attendance") return
+
     const load = async () => {
       setLoadingAttendance(true)
       try {
@@ -84,9 +118,9 @@ export default function TeachersPage() {
       setLoadingAttendance(false)
     }
     load()
-  }, [attendanceMonth, activeTab])
+  }, [attendanceMonth, activeTab, hydrated])
 
-  // Regenerate public token — used by the 🔗 button
+  // Regenerate link
   const handleRegenerateLink = async (teacher) => {
     try {
       const resp = await GlobalApi.RegenerateTeacherToken(teacher._id)
@@ -95,14 +129,10 @@ export default function TeachersPage() {
 
       const url = `${window.location.origin}/teacher/${newToken}/public`
 
-      // Update local list
       setTeachers((prev) =>
-        prev.map((t) =>
-          t._id === teacher._id ? { ...t, publicToken: newToken } : t
-        )
+        prev.map((t) => (t._id === teacher._id ? { ...t, publicToken: newToken } : t))
       )
 
-      // Copy to clipboard
       try {
         await navigator.clipboard.writeText(url)
         toast.success("New link generated and copied to clipboard")
@@ -119,7 +149,6 @@ export default function TeachersPage() {
     }
   }
 
-  // Copy existing link (without regenerating)
   const handleCopyLink = async (teacher) => {
     if (!teacher.publicToken) {
       toast.error("No link yet — click the link icon to generate one")
@@ -134,7 +163,6 @@ export default function TeachersPage() {
     }
   }
 
-  // WhatsApp share
   const handleWhatsApp = (teacher) => {
     if (!teacher.publicToken) {
       toast.error("Generate the link first")
@@ -162,6 +190,15 @@ export default function TeachersPage() {
       String(t.subject || "").toLowerCase().includes(q)
     )
   })
+
+  // Wait for hydration before rendering — avoids flashing wrong tab
+  if (!hydrated) {
+    return (
+      <div className="p-7 flex items-center justify-center min-h-[60vh]">
+        <LoaderIcon className="animate-spin text-indigo-500" size={28} />
+      </div>
+    )
+  }
 
   return (
     <div className="p-7 animate-page-in">
