@@ -37,7 +37,6 @@ const monthNameToKey = (name) => {
 
 const MONTH_KEYS = ["01","02","03","04","05","06","07","08","09","10","11","12"]
 
-// Tailwind class for filter selects (replaces .fi)
 const FILTER_CLASS = "px-3 py-2 rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-sm text-slate-800 dark:text-slate-100 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 dark:focus:ring-blue-900/40 transition"
 
 export default function FeeManagementPage() {
@@ -194,7 +193,6 @@ export default function FeeManagementPage() {
     }
   }
 
-  // ✅ NEW: send a simple "fee is due" notice for the selected month
   const handleNotifyDue = async (row) => {
     if (!month) {
       toast.error("Please select a month first")
@@ -381,8 +379,7 @@ export default function FeeManagementPage() {
                         </button>
                         <button
                           onClick={() => handleSendOne(r)}
-                          disabled={r.status === "Paid"}
-                          className="px-2 py-1 rounded bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-xs font-semibold disabled:opacity-40">
+                          className="px-2 py-1 rounded bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-xs font-semibold">
                           Remind
                         </button>
                       </div>
