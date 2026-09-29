@@ -68,6 +68,7 @@ export default function FeeManagementPage() {
   const [students, setStudents] = useState([])
   const [payments, setPayments] = useState([])
   const [allPayments, setAllPayments] = useState([])
+  const [schoolInfo, setSchoolInfo] = useState(null)
   const [loading, setLoading] = useState(false)
   const [hydrated, setHydrated] = useState(false)
   const debounceRef = useRef(null)
@@ -84,6 +85,16 @@ export default function FeeManagementPage() {
       if (saved.month) setMonth(saved.month)
     } catch {}
     setHydrated(true)
+  }, [])
+
+  // ✅ Load school info (name + logo) once for the print receipt
+  useEffect(() => {
+    GlobalApi.GetSchoolInfo()
+      .then((resp) => {
+        const info = resp?.data?.[0] || resp?.data || null
+        setSchoolInfo(info)
+      })
+      .catch(() => {})
   }, [])
 
   useEffect(() => {
@@ -241,22 +252,17 @@ export default function FeeManagementPage() {
     }
   }
 
-  // ✅ Compute previous months: January through the month BEFORE the current filter month.
-  // Uses the session's END year (e.g. "2025-2026" → 2026) — matches how payments are stored.
-  // Shows every month, whether paid in full or short.
+  // ✅ Only unpaid months before the current filter month
   const computePreviousMonths = (row) => {
     const sid = String(row.student.id)
     const studentSession = row.student.session || session
     const year = getSessionYear(studentSession)
     const monthlyFee = Number(row.student.fee || 0)
 
-    // Current month number (1-12) from the filter
     const currentMonthNum = month ? Number(monthNameToKey(month).split("/")[0]) : 12
 
-    // All payments for this student
     const all = allPaymentsByStudent[sid] || []
 
-    // Group by month key "MM/YYYY"
     const paidByMonth = {}
     all.forEach((p) => {
       const key = String(p.month || "")
@@ -267,18 +273,19 @@ export default function FeeManagementPage() {
       paidByMonth[key] += Number(p.amount || 0)
     })
 
-    // Build a list: January (num=1) through the month BEFORE the current one.
     const list = []
     for (let num = 1; num < currentMonthNum; num++) {
       const key = monthNumToKey(num, year)
       const paid = paidByMonth[key] || 0
       const short = Math.max(0, monthlyFee - paid)
-      list.push({
-        label: MONTH_NAMES[num - 1],
-        monthKey: key,
-        paid,
-        short,
-      })
+      if (short > 0) {
+        list.push({
+          label: MONTH_NAMES[num - 1],
+          monthKey: key,
+          paid,
+          short,
+        })
+      }
     }
 
     return list
@@ -309,6 +316,7 @@ export default function FeeManagementPage() {
       },
       previousMonths,
       latestPayment: latest,
+      schoolInfo,
     })
   }
 
