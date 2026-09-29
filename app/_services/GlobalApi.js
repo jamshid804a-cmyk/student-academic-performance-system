@@ -75,6 +75,32 @@ const DeleteStudentFees = (studentId, session, month) =>
     axios.put('/api/fees', { studentId, session, month });
 const SendFeeReminder = (data) => axios.post('/api/fees/remind', data);
 
+// Teachers
+const GetAllTeachers = (filters = {}) => {
+    const params = new URLSearchParams();
+    if (filters.subject) params.append('subject', filters.subject);
+    if (filters.status) params.append('status', filters.status);
+    const qs = params.toString();
+    return axios.get('/api/teacher' + (qs ? `?${qs}` : ''));
+};
+const GetTeacher = (id) => axios.get(`/api/teacher/${id}`);
+const CreateTeacher = (data) => axios.post('/api/teacher', data);
+const UpdateTeacher = (id, data) => axios.put(`/api/teacher/${id}`, data);
+const DeleteTeacher = (id) => axios.delete(`/api/teacher/${id}`);
+const RegenerateTeacherToken = (id) => axios.patch(`/api/teacher/${id}`);
+const GetPublicTeacher = (token) => axios.get(`/api/teacher/${token}/public`);
+
+// Teacher Attendance
+const GetTeacherAttendance = (month, teacherId) => {
+    const params = new URLSearchParams();
+    params.append('month', month);
+    if (teacherId) params.append('teacherId', teacherId);
+    return axios.get('/api/teacher-attendance?' + params.toString());
+};
+const SaveTeacherAttendance = (data) => axios.post('/api/teacher-attendance', data);
+const DeleteTeacherAttendance = (teacherId, month, day) =>
+    axios.delete(`/api/teacher-attendance?teacherId=${teacherId}&month=${month}&day=${day}`);
+
 // School Info
 const GetSchoolInfo = () => axios.get('/api/school');
 const SaveSchoolInfo = (data) => axios.post('/api/school', data);
@@ -103,6 +129,16 @@ export default {
     DeleteFeePayment,
     DeleteStudentFees,
     SendFeeReminder,
+    GetAllTeachers,
+    GetTeacher,
+    CreateTeacher,
+    UpdateTeacher,
+    DeleteTeacher,
+    RegenerateTeacherToken,
+    GetPublicTeacher,
+    GetTeacherAttendance,
+    SaveTeacherAttendance,
+    DeleteTeacherAttendance,
     GetSchoolInfo,
     SaveSchoolInfo,
 };
