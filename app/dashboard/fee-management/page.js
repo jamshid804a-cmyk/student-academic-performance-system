@@ -5,6 +5,7 @@ import dynamic from 'next/dynamic'
 import { LoaderIcon, Wallet, Send, Printer, Trash2, BellRing } from 'lucide-react'
 import GlobalApi from '@/app/_services/GlobalApi'
 import { toast } from 'sonner'
+import { printFeeSlip } from '@/utils/printSlip'
 
 // ✅ Load dialogs ONLY on the client — avoids server-side useContext crash
 const PayDialog = dynamic(() => import('./_components/PayDialog'), { ssr: false })
@@ -221,6 +222,33 @@ export default function FeeManagementPage() {
     }
   }
 
+  // ✅ Print receipt — takes the latest payment for this student this month
+  const handlePrintSlip = (row) => {
+    const payments = row.paymentList || []
+    if (payments.length === 0) {
+      toast.info(`No payment recorded for ${row.student.name} this month`)
+      return
+    }
+
+    // Latest payment (highest paidAt, or last in list)
+    const latest = [...payments].sort((a, b) => {
+      const ta = new Date(a.paidAt || a.paidDate || 0).getTime()
+      const tb = new Date(b.paidAt || b.paidDate || 0).getTime()
+      return tb - ta
+    })[0]
+
+    printFeeSlip({
+      student: row.student,
+      month: month,
+      monthTotals: {
+        fee: row.fee,
+        paid: row.paid,
+        pending: row.pending,
+      },
+      latestPayment: latest,
+    })
+  }
+
   const handleDeleteAll = async (row) => {
     if (!confirm(`Delete the ${month} fee records for "${row.student.name}"? This cannot be undone.`)) return
     try {
@@ -289,7 +317,7 @@ export default function FeeManagementPage() {
         <div className="flex gap-2">
           <button onClick={handlePrintClass}
             className="px-4 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-semibold inline-flex items-center gap-1">
-            <Printer size={14} /> Print
+            <Printer size={14} /> Print Report
           </button>
           <button onClick={handleSendAll}
             className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold inline-flex items-center gap-1">
@@ -342,6 +370,7 @@ export default function FeeManagementPage() {
                   <th className="p-3 text-center font-semibold text-slate-700">Months Paid</th>
                   <th className="p-3 text-center font-semibold text-slate-700">Status</th>
                   <th className="p-3 text-center font-semibold text-slate-700">Action</th>
+                  <th className="p-3 text-center font-semibold text-slate-700">Slip</th>
                   <th className="p-3 text-center font-semibold text-slate-700">Notify</th>
                   <th className="p-3 text-center font-semibold text-slate-700">Delete</th>
                 </tr>
@@ -383,6 +412,14 @@ export default function FeeManagementPage() {
                           Remind
                         </button>
                       </div>
+                    </td>
+                    <td className="p-3 text-center">
+                      <button
+                        onClick={() => handlePrintSlip(r)}
+                        title={`Print receipt for ${month}`}
+                        className="w-8 h-8 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-600 flex items-center justify-center mx-auto">
+                        <Printer size={14} />
+                      </button>
                     </td>
                     <td className="p-3 text-center">
                       <button
