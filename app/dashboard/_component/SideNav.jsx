@@ -80,87 +80,40 @@ function SideNav() {
   const isActive = (p) => path === p
 
   const itemClass = (active) =>
-    `relative flex items-center gap-3 p-3 my-1 rounded-xl cursor-pointer
-     transition-all duration-300 group/item
-     ${
-       active
-         ? "bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-500/30"
-         : "text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700/60 hover:text-blue-700 dark:hover:text-blue-300"
-     }
-     ${collapsed ? "justify-center" : ""}`
+    `relative flex items-center gap-3 p-3 my-1 rounded-xl cursor-pointer transition-all duration-300 group/item ${active ? "bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-500/30" : "text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700/60 hover:text-blue-700 dark:hover:text-blue-300"} ${collapsed ? "justify-center" : ""}`
 
   const subItemClass = (active) =>
-    `relative flex items-center gap-2 py-2 px-3 my-1 rounded-lg cursor-pointer
-     transition-all duration-300
-     ${
-       active
-         ? "bg-blue-500 text-white shadow-sm"
-         : "text-slate-500 dark:text-slate-400 hover:bg-blue-50 dark:hover:bg-slate-700 hover:text-blue-700 dark:hover:text-blue-300"
-     }
-     ${collapsed ? "justify-center px-1" : "ml-2"}`
+    `relative flex items-center gap-2 py-2 px-3 my-1 rounded-lg cursor-pointer transition-all duration-300 ${active ? "bg-blue-500 text-white shadow-sm" : "text-slate-500 dark:text-slate-400 hover:bg-blue-50 dark:hover:bg-slate-700 hover:text-blue-700 dark:hover:text-blue-300"} ${collapsed ? "justify-center px-1" : "ml-2"}`
 
   const Label = ({ children, className = "" }) => (
-    <span
-      className={`
-        whitespace-nowrap transition-all duration-300 ease-out
-        ${collapsed ? "opacity-0 w-0 translate-x-[-8px] pointer-events-none" : "opacity-100 w-auto translate-x-0"}
-        ${className}
-      `}
-    >
+    <span className={`whitespace-nowrap transition-all duration-300 ease-out ${collapsed ? "opacity-0 w-0 translate-x-[-8px] pointer-events-none" : "opacity-100 w-auto translate-x-0"} ${className}`}>
       {children}
     </span>
   )
 
-  // Truncate very long school names — show first 22 chars + "…"
   const displayName = school.name.length > 22
     ? school.name.slice(0, 22).trimEnd() + "…"
     : school.name
 
   if (!mounted) {
-    return (
-      <div className="border shadow-md h-screen w-64 bg-white dark:bg-slate-800 dark:border-slate-700" />
-    )
+    return <div className="border shadow-md h-screen w-64 bg-white dark:bg-slate-800 dark:border-slate-700" />
   }
 
   return (
-    <div
-      className={`
-        relative border shadow-lg h-screen flex flex-col
-        bg-white dark:bg-slate-800 dark:border-slate-700
-        transition-all duration-300 ease-in-out
-        ${collapsed ? "w-[72px] p-3" : "w-64 p-4"}
-      `}
-    >
+    <div className={`relative border shadow-lg h-screen flex flex-col bg-white dark:bg-slate-800 dark:border-slate-700 transition-all duration-300 ease-in-out ${collapsed ? "w-[72px] p-3" : "w-64 p-4"}`}>
+
       {/* Toggle button */}
       <button
         onClick={() => setCollapsed(!collapsed)}
-        className="
-          absolute top-5 z-30 flex items-center justify-center
-          w-7 h-7 rounded-full bg-white dark:bg-slate-700
-          border border-slate-200 dark:border-slate-600
-          text-slate-500 dark:text-slate-300
-          shadow-md hover:shadow-lg
-          hover:text-blue-600 dark:hover:text-blue-400
-          hover:scale-110 active:scale-95
-          transition-all duration-300
-          -right-3.5
-        "
+        className="absolute top-5 z-30 flex items-center justify-center w-7 h-7 rounded-full bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-slate-500 dark:text-slate-300 shadow-md hover:shadow-lg hover:text-blue-600 dark:hover:text-blue-400 hover:scale-110 active:scale-95 transition-all duration-300 -right-3.5"
         title={collapsed ? "Expand" : "Collapse"}
       >
-        {collapsed ? (
-          <PanelLeftOpen size={13} strokeWidth={2.5} />
-        ) : (
-          <PanelLeftClose size={13} strokeWidth={2.5} />
-        )}
+        {collapsed ? <PanelLeftOpen size={13} strokeWidth={2.5} /> : <PanelLeftClose size={13} strokeWidth={2.5} />}
       </button>
 
       {/* School logo + name */}
       <div
-        className={`
-          flex items-center gap-3 mb-2 mt-1
-          transition-all duration-300
-          ${collapsed ? "justify-center" : ""}
-        `}
+        className={`flex items-center gap-3 mb-2 mt-1 transition-all duration-300 ${collapsed ? "justify-center" : ""}`}
         onMouseEnter={() => setShowFullName(true)}
         onMouseLeave={() => setShowFullName(false)}
       >
@@ -169,27 +122,14 @@ function SideNav() {
             <img
               src={school.logo}
               alt="School Logo"
-              className={`
-                object-contain rounded-xl
-                transition-all duration-300 ease-out
-                ${collapsed ? "w-10 h-10" : "w-11 h-11"}
-              `}
+              className={`object-contain rounded-xl transition-all duration-300 ease-out ${collapsed ? "w-10 h-10" : "w-11 h-11"}`}
             />
           ) : (
-            <div
-              className={`
-                flex items-center justify-center rounded-xl
-                bg-gradient-to-br from-blue-500 to-indigo-600 text-white
-                shadow-sm
-                transition-all duration-300
-                ${collapsed ? "w-10 h-10" : "w-11 h-11"}
-              `}
-            >
+            <div className={`flex items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 text-white shadow-sm transition-all duration-300 ${collapsed ? "w-10 h-10" : "w-11 h-11"}`}>
               <GraduationCap size={collapsed ? 19 : 21} />
             </div>
           )}
 
-          {/* Tooltip when collapsed */}
           {collapsed && showFullName && (
             <div className="absolute left-full top-1/2 -translate-y-1/2 ml-3 px-3 py-1.5 rounded-lg bg-slate-900 text-white text-xs font-medium whitespace-nowrap shadow-xl z-50 pointer-events-none">
               {school.name}
@@ -200,15 +140,7 @@ function SideNav() {
 
         <h1
           title={school.name}
-          className={`
-            text-sm font-bold leading-tight
-            text-slate-800 dark:text-slate-100
-            transition-all duration-300 ease-out
-            ${collapsed
-              ? "opacity-0 w-0 -translate-x-3 pointer-events-none overflow-hidden"
-              : "opacity-100 flex-1 min-w-0"}
-          `}
-          style={{ wordBreak: "keep-all", overflowWrap: "break-word" }}
+          className={`text-sm font-bold leading-tight text-slate-800 dark:text-slate-100 transition-all duration-300 ease-out ${collapsed ? "opacity-0 w-0 -translate-x-3 pointer-events-none overflow-hidden" : "opacity-100 flex-1 min-w-0"}`}
         >
           {displayName}
         </h1>
@@ -223,15 +155,8 @@ function SideNav() {
           return (
             <Link key={m.id} href={m.path}>
               <div className={itemClass(active)} title={collapsed ? m.name : ""}>
-                {active && (
-                  <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-white rounded-r-full" />
-                )}
-                <m.icon
-                  size={19}
-                  className={`shrink-0 transition-transform duration-300 ${
-                    active ? "" : "group-hover/item:scale-110"
-                  }`}
-                />
+                {active && <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-white rounded-r-full" />}
+                <m.icon size={19} className={`shrink-0 transition-transform duration-300 ${active ? "" : "group-hover/item:scale-110"}`} />
                 <Label className="font-semibold text-sm">{m.name}</Label>
               </div>
             </Link>
@@ -253,31 +178,15 @@ function SideNav() {
             title={collapsed ? "Academic Performance" : ""}
             className={`${itemClass(path?.startsWith('/dashboard/academic-performance'))} w-full text-left`}
           >
-            {path?.startsWith('/dashboard/academic-performance') && (
-              <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-white rounded-r-full" />
-            )}
+            {path?.startsWith('/dashboard/academic-performance') && <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-white rounded-r-full" />}
             <BookOpen size={19} className="shrink-0 transition-transform duration-300 group-hover/item:scale-110" />
             <Label className="font-semibold text-sm flex-1">Academic</Label>
-            <span
-              className={`
-                transition-all duration-300 ease-out
-                ${collapsed ? "opacity-0 w-0 pointer-events-none" : "opacity-100 w-auto"}
-              `}
-            >
-              {openAcademic ? (
-                <ChevronDown size={15} className="text-current" />
-              ) : (
-                <ChevronRight size={15} className="text-current" />
-              )}
+            <span className={`transition-all duration-300 ease-out ${collapsed ? "opacity-0 w-0 pointer-events-none" : "opacity-100 w-auto"}`}>
+              {openAcademic ? <ChevronDown size={15} className="text-current" /> : <ChevronRight size={15} className="text-current" />}
             </span>
           </button>
 
-          <div
-            className={`
-              overflow-hidden transition-all duration-300 ease-in-out
-              ${openAcademic && !collapsed ? "max-h-40 opacity-100 mt-1" : "max-h-0 opacity-0"}
-            `}
-          >
+          <div className={`overflow-hidden transition-all duration-300 ease-in-out ${openAcademic && !collapsed ? "max-h-40 opacity-100 mt-1" : "max-h-0 opacity-0"}`}>
             <div className="ml-3 border-l-2 border-blue-200 dark:border-slate-600 pl-2">
               {academicItems.map((item) => {
                 const active = isActive(item.path)
@@ -297,9 +206,7 @@ function SideNav() {
         {/* Fee Management */}
         <Link href="/dashboard/fee-management">
           <div className={itemClass(isActive('/dashboard/fee-management'))} title={collapsed ? "Fee Management" : ""}>
-            {isActive('/dashboard/fee-management') && (
-              <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-white rounded-r-full" />
-            )}
+            {isActive('/dashboard/fee-management') && <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-white rounded-r-full" />}
             <Wallet size={19} className="shrink-0 transition-transform duration-300 group-hover/item:scale-110" />
             <Label className="font-semibold text-sm">Fee</Label>
           </div>
@@ -308,9 +215,7 @@ function SideNav() {
         {/* Settings */}
         <Link href="/dashboard/settings">
           <div className={itemClass(isActive('/dashboard/settings'))} title={collapsed ? "Settings" : ""}>
-            {isActive('/dashboard/settings') && (
-              <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-white rounded-r-full" />
-            )}
+            {isActive('/dashboard/settings') && <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-white rounded-r-full" />}
             <Settings size={19} className="shrink-0 transition-transform duration-300 group-hover/item:scale-110" />
             <Label className="font-semibold text-sm">Settings</Label>
           </div>
@@ -318,10 +223,7 @@ function SideNav() {
       </div>
 
       {/* User card */}
-      <div
-        className="relative mt-2 pt-3 border-t border-slate-200 dark:border-slate-700"
-        ref={menuRef}
-      >
+      <div className="relative mt-2 pt-3 border-t border-slate-200 dark:border-slate-700" ref={menuRef}>
         {openUserMenu && !collapsed && (
           <div className="absolute bottom-full left-0 right-0 mb-2 bg-white dark:bg-slate-800 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 overflow-hidden animate-user-menu z-50">
             <div className="px-4 py-4 bg-gradient-to-br from-blue-500 to-indigo-600 text-white">
@@ -334,9 +236,7 @@ function SideNav() {
                   alt="user"
                 />
                 <div className="min-w-0">
-                  <p className="font-bold text-sm truncate">
-                    {user?.given_name} {user?.family_name}
-                  </p>
+                  <p className="font-bold text-sm truncate">{user?.given_name} {user?.family_name}</p>
                   <p className="text-xs text-blue-100 truncate">{user?.email}</p>
                 </div>
               </div>
@@ -369,12 +269,7 @@ function SideNav() {
             setOpenUserMenu(!openUserMenu)
           }}
           title={collapsed ? user?.given_name || "User" : ""}
-          className={`
-            w-full flex items-center gap-3 p-2 rounded-xl
-            hover:bg-slate-100 dark:hover:bg-slate-700
-            transition-all duration-300 group
-            ${collapsed ? "justify-center" : ""}
-          `}
+          className={`w-full flex items-center gap-3 p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-700 transition-all duration-300 group ${collapsed ? "justify-center" : ""}`}
         >
           <Image
             src={user?.picture || '/default-avatar.png'}
@@ -383,27 +278,13 @@ function SideNav() {
             className="rounded-full ring-2 ring-blue-200 dark:ring-slate-600 group-hover:ring-blue-400 transition-all shrink-0"
             alt="user"
           />
-          <div
-            className={`
-              flex-1 text-left min-w-0
-              transition-all duration-300 ease-out
-              ${collapsed
-                ? "opacity-0 w-0 -translate-x-3 pointer-events-none overflow-hidden"
-                : "opacity-100 w-auto translate-x-0"}
-            `}
-          >
-            <h2 className="text-xs font-semibold text-slate-800 dark:text-slate-100 truncate">
-              {user?.given_name} {user?.family_name}
-            </h2>
+          <div className={`flex-1 text-left min-w-0 transition-all duration-300 ease-out ${collapsed ? "opacity-0 w-0 -translate-x-3 pointer-events-none overflow-hidden" : "opacity-100 w-auto translate-x-0"}`}>
+            <h2 className="text-xs font-semibold text-slate-800 dark:text-slate-100 truncate">{user?.given_name} {user?.family_name}</h2>
             <h2 className="text-[10px] text-slate-400 truncate">{user?.email}</h2>
           </div>
           {!collapsed && (
             <span className="shrink-0">
-              {openUserMenu ? (
-                <ChevronDown size={14} className="text-slate-400" />
-              ) : (
-                <ChevronUp size={14} className="text-slate-400" />
-              )}
+              {openUserMenu ? <ChevronDown size={14} className="text-slate-400" /> : <ChevronUp size={14} className="text-slate-400" />}
             </span>
           )}
         </button>
