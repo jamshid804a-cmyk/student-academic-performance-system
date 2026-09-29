@@ -112,7 +112,7 @@ function SideNav() {
 
   if (!mounted) {
     return (
-      <div className="border shadow-md h-screen w-72 bg-white dark:bg-slate-800 dark:border-slate-700" />
+      <div className="border shadow-md h-screen w-80 bg-white dark:bg-slate-800 dark:border-slate-700" />
     )
   }
 
@@ -122,7 +122,7 @@ function SideNav() {
         relative border shadow-lg h-screen flex flex-col
         bg-white dark:bg-slate-800 dark:border-slate-700
         transition-all duration-300 ease-in-out
-        ${collapsed ? "w-[76px] p-3" : "w-72 p-5"}
+        ${collapsed ? "w-[76px] p-3" : "w-80 p-5"}
       `}
     >
       {/* Toggle button */}
@@ -144,10 +144,10 @@ function SideNav() {
         )}
       </button>
 
-      {/* School logo + name */}
+      {/* School logo + name — name wraps to multiple lines */}
       <div
         className={`
-          flex items-center gap-3 mb-2 min-w-0
+          flex items-start gap-3 mb-2 min-w-0
           transition-all duration-300
           ${collapsed ? "justify-center" : ""}
         `}
@@ -178,13 +178,18 @@ function SideNav() {
         <h1
           title={school.name}
           className={`
-            text-base font-extrabold leading-tight
+            text-base font-extrabold leading-snug
             text-slate-800 dark:text-slate-100
             transition-all duration-300 ease-out
             ${collapsed
               ? "opacity-0 w-0 -translate-x-3 pointer-events-none overflow-hidden"
-              : "opacity-100 w-auto translate-x-0 truncate flex-1 min-w-0"}
+              : "opacity-100 flex-1 min-w-0"}
           `}
+          style={{
+            wordBreak: "break-word",
+            overflowWrap: "anywhere",
+            whiteSpace: "normal",
+          }}
         >
           {school.name}
         </h1>
