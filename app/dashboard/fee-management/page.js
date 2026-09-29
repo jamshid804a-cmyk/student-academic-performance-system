@@ -40,11 +40,11 @@ const MONTH_NAMES = ["January","February","March","April","May","June","July","A
 
 const FILTER_CLASS = "px-3 py-2 rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-sm text-slate-800 dark:text-slate-100 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 dark:focus:ring-blue-900/40 transition"
 
-// Parse "2025-2026" → 2025 (the starting year)
-function getSessionStartYear(session) {
+// Parse "2025-2026" → 2026 (the year the actual payment months use)
+function getSessionYear(session) {
   if (!session) return new Date().getFullYear()
   const parts = String(session).split("-")
-  const y = Number(parts[0])
+  const y = Number(parts[1] ?? parts[0])
   return isNaN(y) ? new Date().getFullYear() : y
 }
 
@@ -241,18 +241,19 @@ export default function FeeManagementPage() {
     }
   }
 
-  // ✅ Compute previous months (January up to but not including the current filter month).
-  // Shows EVERY month, whether paid in full or short.
+  // ✅ Compute previous months: January through the month BEFORE the current filter month.
+  // Uses the session's END year (e.g. "2025-2026" → 2026) — matches how payments are stored.
+  // Shows every month, whether paid in full or short.
   const computePreviousMonths = (row) => {
     const sid = String(row.student.id)
     const studentSession = row.student.session || session
-    const startYear = getSessionStartYear(studentSession)
+    const year = getSessionYear(studentSession)
     const monthlyFee = Number(row.student.fee || 0)
 
     // Current month number (1-12) from the filter
     const currentMonthNum = month ? Number(monthNameToKey(month).split("/")[0]) : 12
 
-    // All payments for this student this session
+    // All payments for this student
     const all = allPaymentsByStudent[sid] || []
 
     // Group by month key "MM/YYYY"
@@ -267,10 +268,9 @@ export default function FeeManagementPage() {
     })
 
     // Build a list: January (num=1) through the month BEFORE the current one.
-    // Include every month — paid or not.
     const list = []
     for (let num = 1; num < currentMonthNum; num++) {
-      const key = monthNumToKey(num, startYear)
+      const key = monthNumToKey(num, year)
       const paid = paidByMonth[key] || 0
       const short = Math.max(0, monthlyFee - paid)
       list.push({
