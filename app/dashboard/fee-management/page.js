@@ -7,7 +7,6 @@ import GlobalApi from '@/app/_services/GlobalApi'
 import { toast } from 'sonner'
 import { printFeeSlip } from '@/utils/printSlip'
 
-// ✅ Load dialogs ONLY on the client — avoids server-side useContext crash
 const PayDialog = dynamic(() => import('./_components/PayDialog'), { ssr: false })
 const HistoryDialog = dynamic(() => import('./_components/HistoryDialog'), { ssr: false })
 
@@ -37,8 +36,28 @@ const monthNameToKey = (name) => {
 }
 
 const MONTH_KEYS = ["01","02","03","04","05","06","07","08","09","10","11","12"]
+const MONTH_NAMES = ["January","February","March","April","May","June","July","August","September","October","November","December"]
 
 const FILTER_CLASS = "px-3 py-2 rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-sm text-slate-800 dark:text-slate-100 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 dark:focus:ring-blue-900/40 transition"
+
+// Parse "2025-2026" → 2025 (the starting year)
+function getSessionStartYear(session) {
+  if (!session) return new Date().getFullYear()
+  const parts = String(session).split("-")
+  const y = Number(parts[0])
+  return isNaN(y) ? new Date().getFullYear() : y
+}
+
+// Build "MM/YYYY" from a month number (1-12) and a year
+function monthNumToKey(monthNum, year) {
+  return `${String(monthNum).padStart(2, "0")}/${year}`
+}
+
+// Extract the month number from "MM/YYYY"
+function monthKeyToNum(monthKey) {
+  const parts = String(monthKey).split("/")
+  return Number(parts[0])
+}
 
 export default function FeeManagementPage() {
   const [grade, setGrade] = useState("")
@@ -222,7 +241,50 @@ export default function FeeManagementPage() {
     }
   }
 
-  // ✅ Print receipt — takes the latest payment for this student this month
+  // ✅ Compute previous months (from session start up to, but not including, current month)
+  // where the student did NOT pay in full.
+  const computePreviousMonths = (row) => {
+    const sid = String(row.student.id)
+    const studentSession = row.student.session || session
+    const startYear = getSessionStartYear(studentSession)
+    const monthlyFee = Number(row.student.fee || 0)
+
+    // Current month number (1-12) — from the filter
+    const currentMonthNum = month ? Number(monthNameToKey(month).split("/")[0]) : 12
+
+    // All payments for this student this session
+    const all = allPaymentsByStudent[sid] || []
+
+    // Group by month key "MM/YYYY"
+    const paidByMonth = {}
+    all.forEach((p) => {
+      const key = String(p.month || "")
+      if (!key) return
+      const num = monthKeyToNum(key)
+      if (num < 1 || num > 12) return
+      if (!paidByMonth[key]) paidByMonth[key] = 0
+      paidByMonth[key] += Number(p.amount || 0)
+    })
+
+    // Build a list of months: January (num=1) through the month BEFORE the current one
+    const list = []
+    for (let num = 1; num < currentMonthNum; num++) {
+      const key = monthNumToKey(num, startYear)
+      const paid = paidByMonth[key] || 0
+      const short = Math.max(0, monthlyFee - paid)
+      if (short > 0) {
+        list.push({
+          label: MONTH_NAMES[num - 1],
+          monthKey: key,
+          paid,
+          short,
+        })
+      }
+    }
+
+    return list
+  }
+
   const handlePrintSlip = (row) => {
     const payments = row.paymentList || []
     if (payments.length === 0) {
@@ -230,12 +292,13 @@ export default function FeeManagementPage() {
       return
     }
 
-    // Latest payment (highest paidAt, or last in list)
     const latest = [...payments].sort((a, b) => {
       const ta = new Date(a.paidAt || a.paidDate || 0).getTime()
       const tb = new Date(b.paidAt || b.paidDate || 0).getTime()
       return tb - ta
     })[0]
+
+    const previousMonths = computePreviousMonths(row)
 
     printFeeSlip({
       student: row.student,
@@ -245,6 +308,7 @@ export default function FeeManagementPage() {
         paid: row.paid,
         pending: row.pending,
       },
+      previousMonths,
       latestPayment: latest,
     })
   }
