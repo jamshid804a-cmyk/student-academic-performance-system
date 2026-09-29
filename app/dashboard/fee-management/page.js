@@ -241,15 +241,15 @@ export default function FeeManagementPage() {
     }
   }
 
-  // ✅ Compute previous months (from session start up to, but not including, current month)
-  // where the student did NOT pay in full.
+  // ✅ Compute previous months (January up to but not including the current filter month).
+  // Shows EVERY month, whether paid in full or short.
   const computePreviousMonths = (row) => {
     const sid = String(row.student.id)
     const studentSession = row.student.session || session
     const startYear = getSessionStartYear(studentSession)
     const monthlyFee = Number(row.student.fee || 0)
 
-    // Current month number (1-12) — from the filter
+    // Current month number (1-12) from the filter
     const currentMonthNum = month ? Number(monthNameToKey(month).split("/")[0]) : 12
 
     // All payments for this student this session
@@ -266,20 +266,19 @@ export default function FeeManagementPage() {
       paidByMonth[key] += Number(p.amount || 0)
     })
 
-    // Build a list of months: January (num=1) through the month BEFORE the current one
+    // Build a list: January (num=1) through the month BEFORE the current one.
+    // Include every month — paid or not.
     const list = []
     for (let num = 1; num < currentMonthNum; num++) {
       const key = monthNumToKey(num, startYear)
       const paid = paidByMonth[key] || 0
       const short = Math.max(0, monthlyFee - paid)
-      if (short > 0) {
-        list.push({
-          label: MONTH_NAMES[num - 1],
-          monthKey: key,
-          paid,
-          short,
-        })
-      }
+      list.push({
+        label: MONTH_NAMES[num - 1],
+        monthKey: key,
+        paid,
+        short,
+      })
     }
 
     return list
