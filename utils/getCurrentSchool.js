@@ -1,18 +1,8 @@
 import { getKindeServerSession } from "@kinde-oss/kinde-auth-nextjs/server"
 import { getDb } from "@/utils"
 
-// The owner's email — this account can access the admin dashboard
-// and see ALL schools. Change this if your owner email changes.
 export const OWNER_EMAIL = "jamshid804a@gmail.com"
 
-/**
- * Reads the Kinde session, gets the logged-in user's email,
- * and finds their school in the `schools` collection.
- *
- * Returns:
- *   { success: true, email, school, isOwner }
- *   { success: false, error, email?, school? }
- */
 export async function getCurrentSchool() {
   try {
     const { getUser } = getKindeServerSession()
@@ -26,9 +16,7 @@ export async function getCurrentSchool() {
     const isOwner = email === OWNER_EMAIL.toLowerCase()
 
     const db = await getDb()
-    const school = await db.collection("schools").findOne({
-      email,
-    })
+    const school = await db.collection("schools").findOne({ email })
 
     if (!school) {
       return {
@@ -54,10 +42,6 @@ export async function getCurrentSchool() {
   }
 }
 
-/**
- * Same as getCurrentSchool, but for API routes that already
- * have the request object. Use this inside `app/api/**/route.js`.
- */
 export async function getCurrentSchoolFromRequest() {
   return getCurrentSchool()
 }
