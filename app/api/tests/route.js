@@ -1,97 +1,157 @@
-import { NextResponse } from "next/server";
-import { getDb } from "@/utils";
+import { NextResponse } from "next/server"
+import { getDb } from "@/utils"
+import { getCurrentSchool } from "@/utils/getCurrentSchool"
 
-// ✅ GET — fetch tests filtered by grade/section/session/month/testType
+// ─────────────────────────────────────────────
+// GET — tests for the LOGGED-IN user's school
+//   ?grade=1st&section=A&session=...&month=MM/YYYY&testType=Monthly
+// ─────────────────────────────────────────────
 export async function GET(req) {
   try {
-    const { searchParams } = new URL(req.url);
-    const grade = searchParams.get("grade");
-    const section = searchParams.get("section");
-    const session = searchParams.get("session");
-    const month = searchParams.get("month");
-    const testType = searchParams.get("testType");
+    const schoolResult = await getCurrentSchool()
+    if (!schoolResult.success) {
+      return NextResponse.json({ error: schoolResult.error }, { status: 401 })
+    }
+    const { schoolId } = schoolResult.school
 
-    const db = await getDb();
+    const { searchParams } = new URL(req.url)
+    const grade = searchParams.get("grade")
+    const section = searchParams.get("section")
+    const session = searchParams.get("session")
+    const month = searchParams.get("month")
+    const testType = searchParams.get("testType")
 
-    const filter = {};
-    if (grade) filter.grade = grade;
-    if (section) filter.section = section;
-    if (session) filter.session = session;
-    if (month) filter.month = month;
-    if (testType) filter.testType = testType;
+    const db = await getDb()
 
-    const tests = await db.collection("tests").find(filter).toArray();
+    // ✅ schoolId always present
+    const filter = { schoolId }
+    if (grade) filter.grade = grade
+    if (section) filter.section = section
+    if (session) filter.session = session
+    if (month) filter.month = month
+    if (testType) filter.testType = testType
+
+    const tests = await db
+      .collection("tests")
+      .find(filter)
+      .toArray()
 
     return NextResponse.json(
-      tests.map((t) => ({ ...t, id: t._id.toString(), _id: undefined }))
-    );
+      tests.map((t) => ({ ...t, _id: t._id.toString() }))
+    )
   } catch (err) {
-    console.error("❌ GET /api/tests:", err.message);
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    console.error("❌ GET /api/tests:", err.message)
+    return NextResponse.json({ error: err.message }, { status: 500 })
   }
 }
 
-// ✅ POST — save/update marks for one student for one subject
+// ─────────────────────────────────────────────
+// POST — save/update test marks (tagged with schoolId)
+// ─────────────────────────────────────────────
 export async function POST(req) {
   try {
-    const data = await req.json();
+    const schoolResult = await getCurrentSchool()
+    if (!schoolResult.success) {
+      return NextResponse.json({ error: schoolResult.error }, { status: 401 })
+    }
+    const { schoolId } = schoolResult.school
+
+    const data = await req.json()
     const {
-      studentId,
-      grade,
-      section,
-      session,
-      month,
-      testType,
-      subject,
-      marks,
-      totalMarks = 100,
-    } = data;
+      studentId, grade, section, session,
+      month, testType, subject, marks, totalMarks,
+    } = data
 
     if (!studentId || !subject || !month || !testType) {
       return NextResponse.json(
-        { error: "studentId, subject, month and testType required" },
+        { error: "studentId, subject, month, testType are required" },
         { status: 400 }
-      );
+      )
     }
 
-    const db = await getDb();
-    const collection = db.collection("tests");
+    const db = await getDb()
+    const collection = db.collection("tests")
 
-    const filter = {
-      studentId: String(studentId),
-      subject,
-      month,
-      testType,
-    };
+    // Compute percentage safely
+    const totalNum = Number(totalMarks) || 100
+    const marksNum = Number(marks) || 0
+    const percentage = totalNum > 0
+      ? Math.round((marksNum / totalNum) * 100)
+      : 0
 
-    // If marks are empty → remove the record
-    if (marks === null || marks === undefined || marks === "") {
-      await collection.deleteOne(filter);
-      return NextResponse.json({ success: true, cleared: true });
-    }
-
-    const numericMarks = Number(marks);
-
+    // Upsert: one test per (school × student × subject × month × testType)
     await collection.updateOne(
-      filter,
+      {
+        schoolId,
+        studentId: String(studentId),
+        subject: String(subject),
+        month: String(month),
+        testType: String(testType),
+      },
       {
         $set: {
-          ...filter,
-          grade,
-          section,
-          session,
-          marks: numericMarks,
-          totalMarks: Number(totalMarks),
-          percentage: Math.round((numericMarks / Number(totalMarks)) * 100),
+          schoolId,
+          studentId: String(studentId),
+          grade: grade || "",
+          section: section || "",
+          session: session || "",
+          month: String(month),
+          testType: String(testType),
+          subject: String(subject),
+          marks: marksNum,
+          totalMarks: totalNum,
+          percentage,
           updatedAt: new Date(),
         },
+        $setOnInsert: { createdAt: new Date() },
       },
       { upsert: true }
-    );
+    )
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true })
   } catch (err) {
-    console.error("❌ POST /api/tests:", err.message);
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    console.error("❌ POST /api/tests:", err.message)
+    return NextResponse.json({ error: err.message }, { status: 500 })
+  }
+}
+
+// ─────────────────────────────────────────────
+// DELETE — remove a specific test (only your school's)
+//   ?studentId=1&subject=Math&month=MM/YYYY&testType=Monthly
+// ─────────────────────────────────────────────
+export async function DELETE(req) {
+  try {
+    const schoolResult = await getCurrentSchool()
+    if (!schoolResult.success) {
+      return NextResponse.json({ error: schoolResult.error }, { status: 401 })
+    }
+    const { schoolId } = schoolResult.school
+
+    const { searchParams } = new URL(req.url)
+    const studentId = searchParams.get("studentId")
+    const subject = searchParams.get("subject")
+    const month = searchParams.get("month")
+    const testType = searchParams.get("testType")
+
+    if (!studentId || !subject || !month || !testType) {
+      return NextResponse.json(
+        { error: "studentId, subject, month, testType are required" },
+        { status: 400 }
+      )
+    }
+
+    const db = await getDb()
+    await db.collection("tests").deleteOne({
+      schoolId,
+      studentId: String(studentId),
+      subject: String(subject),
+      month: String(month),
+      testType: String(testType),
+    })
+
+    return NextResponse.json({ success: true })
+  } catch (err) {
+    console.error("❌ DELETE /api/tests:", err.message)
+    return NextResponse.json({ error: err.message }, { status: 500 })
   }
 }
