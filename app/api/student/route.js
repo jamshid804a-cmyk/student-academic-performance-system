@@ -1,160 +1,105 @@
-import { NextResponse } from "next/server";
-import { getDb } from "@/utils";
+import { NextResponse } from "next/server"
+import { getDb } from "@/utils"
+import { getCurrentSchool } from "@/utils/getCurrentSchool"
 
 // ─────────────────────────────────────────────
-// GET - Fetch students (supports ?grade=&section=&session=)
+// GET — Fetch students for the LOGGED-IN user's school
+//   Supports: ?grade=&section=&session=
 // ─────────────────────────────────────────────
 export async function GET(req) {
   try {
-    const { searchParams } = new URL(req.url);
-    const grade = searchParams.get("grade");
-    const section = searchParams.get("section");
-    const session = searchParams.get("session");
+    const schoolResult = await getCurrentSchool()
+    if (!schoolResult.success) {
+      return NextResponse.json(
+        { error: schoolResult.error || "Unauthorized" },
+        { status: 401 }
+      )
+    }
 
-    const db = await getDb();
+    const { schoolId } = schoolResult.school
+    const { searchParams } = new URL(req.url)
+    const grade = searchParams.get("grade")
+    const section = searchParams.get("section")
+    const session = searchParams.get("session")
 
-    const filter = {};
-    if (grade) filter.grade = grade;
-    if (section) filter.section = section;
-    if (session) filter.session = session;
+    const db = await getDb()
+
+    // ✅ schoolId is ALWAYS in the filter — this is the key security
+    const filter = { schoolId }
+    if (grade) filter.grade = grade
+    if (section) filter.section = section
+    if (session) filter.session = session
 
     const students = await db
       .collection("students")
       .find(filter)
       .sort({ id: 1 })
-      .toArray();
+      .toArray()
 
     const formatted = students.map((s) => ({
       ...s,
       id: s.id ?? null,
       _id: s._id.toString(),
-    }));
+    }))
 
-    return NextResponse.json(formatted);
+    return NextResponse.json(formatted)
   } catch (err) {
-    console.error("❌ GET /api/student error:", err.message);
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    console.error("❌ GET /api/student:", err.message)
+    return NextResponse.json({ error: err.message }, { status: 500 })
   }
 }
 
 // ─────────────────────────────────────────────
-// POST - Add a new student
-//   - Normal add: blocks duplicates
-//   - Promotion (isPromotion: true): skips duplicate checks
+// POST — Create a new student, tagged with schoolId
 // ─────────────────────────────────────────────
 export async function POST(req) {
   try {
-    const data = await req.json();
-    console.log("Received student data:", data);
-    console.log("isPromotion flag:", data.isPromotion);
+    const schoolResult = await getCurrentSchool()
+    if (!schoolResult.success) {
+      return NextResponse.json(
+        { error: schoolResult.error || "Unauthorized" },
+        { status: 401 }
+      )
+    }
 
-    // ─── Basic validation ───
+    const { schoolId } = schoolResult.school
+    const data = await req.json()
+
     if (!data.name || !data.grade) {
       return NextResponse.json(
-        { error: "Name and Grade are required" },
+        { error: "name and grade are required" },
         { status: 400 }
-      );
+      )
     }
 
-    const db = await getDb();
-    const students = db.collection("students");
+    const db = await getDb()
+    const collection = db.collection("students")
 
-    // ─── Duplicate Admission No check (SKIP if promotion) ───
-    if (
-      !data.isPromotion &&
-      data.admissionNo !== null &&
-      data.admissionNo !== undefined &&
-      data.admissionNo !== ""
-    ) {
-      const existingAdmission = await students.findOne({
-        admissionNo: String(data.admissionNo).trim(),
-      });
-      if (existingAdmission) {
-        return NextResponse.json(
-          { error: `Admission No ${data.admissionNo} already exists` },
-          { status: 409 }
-        );
-      }
-    }
+    // Auto-generate the next numeric id (1, 2, 3...) per school
+    const last = await collection
+      .find({ schoolId })
+      .sort({ id: -1 })
+      .limit(1)
+      .toArray()
+    const nextId = last.length > 0 ? Number(last[0].id) + 1 : 1
 
-    // ─── Duplicate Roll No check (SKIP if promotion) ───
-    if (
-      !data.isPromotion &&
-      data.rollNo !== null &&
-      data.rollNo !== undefined &&
-      data.rollNo !== ""
-    ) {
-      const rollQuery = {
-        grade: String(data.grade).trim(),
-        rollNo: Number(data.rollNo),
-      };
-      if (data.section) rollQuery.section = String(data.section).trim();
-      if (data.session) rollQuery.session = String(data.session).trim();
-
-      const existingRoll = await students.findOne(rollQuery);
-      if (existingRoll) {
-        return NextResponse.json(
-          {
-            error:
-              `Roll No ${data.rollNo} already exists for Grade ${data.grade}` +
-              (data.section ? ` - Section ${data.section}` : "") +
-              (data.session ? ` (${data.session})` : ""),
-          },
-          { status: 409 }
-        );
-      }
-    }
-
-    // ─── Auto-increment id ───
-    const counter = await db.collection("counters").findOneAndUpdate(
-      { _id: "student_id" },
-      { $inc: { seq: 1 } },
-      { returnDocument: "after", upsert: true }
-    );
-
-    const nextId = counter?.value?.seq ?? counter?.seq ?? 1;
-
-    // ─── Build student record (all fields from the form) ───
-    const newStudent = {
-      id: nextId,
-      name: String(data.name).trim(),
-      grade: String(data.grade).trim(),
-      contact: data.contact || "",
-      address: data.address || "",
-      fatherName: data.fatherName ? String(data.fatherName).trim() : null,
-      fatherOccupation: data.fatherOccupation
-        ? String(data.fatherOccupation).trim()
-        : null,
-      admissionNo: data.admissionNo ? String(data.admissionNo).trim() : null,
-      section: data.section ? String(data.section).trim() : null,
-      rollNo: data.rollNo ? Number(data.rollNo) : null,
-      session: data.session ? String(data.session).trim() : null,
-      admissionDate: data.admissionDate || null,
-      fee: data.fee ? Number(data.fee) : 0,
-      image: data.image || null,
+    const doc = {
+      ...data,
+      id: data.id ?? nextId,
+      schoolId,                        // ✅ tag with school
       createdAt: new Date(),
-    };
+      updatedAt: new Date(),
+    }
 
-    const result = await students.insertOne(newStudent);
-    console.log("✅ Student added with id:", nextId);
+    const result = await collection.insertOne(doc)
 
     return NextResponse.json({
       success: true,
-      id: nextId,
-      _id: result.insertedId.toString(),
-    });
+      id: result.insertedId.toString(),
+      studentId: doc.id,
+    })
   } catch (err) {
-    console.error("❌ POST /api/student error:", err.message);
-
-    // Safety net: Mongo unique index error
-    if (err.code === 11000) {
-      const field = Object.keys(err.keyPattern || {})[0] || "field";
-      return NextResponse.json(
-        { error: `Duplicate value for ${field}` },
-        { status: 409 }
-      );
-    }
-
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    console.error("❌ POST /api/student:", err.message)
+    return NextResponse.json({ error: err.message }, { status: 500 })
   }
 }
