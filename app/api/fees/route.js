@@ -1,129 +1,165 @@
-import { NextResponse } from "next/server";
-import { getDb } from "@/utils";
+import { NextResponse } from "next/server"
+import { getDb } from "@/utils"
+import { ObjectId } from "mongodb"
+import { getCurrentSchool } from "@/utils/getCurrentSchool"
 
-// ✅ GET — list all fee payments for a month/class
-// ?grade=5th&section=A&session=2025-2026&month=09/2026
-// month is optional — if omitted, returns all months for that class
+// ─────────────────────────────────────────────
+// GET — fee payments for the LOGGED-IN user's school
+//   ?grade=&section=&session=&month=MM/YYYY
+// ─────────────────────────────────────────────
 export async function GET(req) {
   try {
-    const { searchParams } = new URL(req.url);
-    const grade = searchParams.get("grade");
-    const section = searchParams.get("section");
-    const session = searchParams.get("session");
-    const month = searchParams.get("month");
+    const schoolResult = await getCurrentSchool()
+    if (!schoolResult.success) {
+      return NextResponse.json({ error: schoolResult.error }, { status: 401 })
+    }
+    const { schoolId } = schoolResult.school
 
-    const db = await getDb();
+    const { searchParams } = new URL(req.url)
+    const grade = searchParams.get("grade")
+    const section = searchParams.get("section")
+    const session = searchParams.get("session")
+    const month = searchParams.get("month")
 
-    const filter = {};
-    if (grade) filter.grade = grade;
-    if (section) filter.section = section;
-    if (session) filter.session = session;
-    if (month) filter.month = month;
+    const db = await getDb()
 
-    const payments = await db
+    // ✅ schoolId always in the filter
+    const filter = { schoolId }
+    if (grade) filter.grade = grade
+    if (section) filter.section = section
+    if (session) filter.session = session
+    if (month) filter.month = month
+
+    const records = await db
       .collection("fees")
       .find(filter)
       .sort({ paidAt: -1 })
-      .toArray();
+      .toArray()
 
     return NextResponse.json(
-      payments.map((p) => ({ ...p, id: p._id.toString(), _id: undefined }))
-    );
+      records.map((r) => ({ ...r, _id: r._id.toString() }))
+    )
   } catch (err) {
-    console.error("❌ GET /api/fees:", err.message);
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    console.error("❌ GET /api/fees:", err.message)
+    return NextResponse.json({ error: err.message }, { status: 500 })
   }
 }
 
-// ✅ POST — record a fee payment
+// ─────────────────────────────────────────────
+// POST — record a fee payment (tagged with schoolId)
+// ─────────────────────────────────────────────
 export async function POST(req) {
   try {
-    const data = await req.json();
-    const {
-      studentId,
-      grade,
-      section,
-      session,
-      month,
-      amount,
-      paidDate,     // "01/04/2026"
-      note,
-    } = data;
+    const schoolResult = await getCurrentSchool()
+    if (!schoolResult.success) {
+      return NextResponse.json({ error: schoolResult.error }, { status: 401 })
+    }
+    const { schoolId } = schoolResult.school
 
-    if (!studentId || !month || !amount || !paidDate) {
+    const data = await req.json()
+    const { studentId, grade, section, session, month, amount, paidDate, note } = data
+
+    if (!studentId || !month || amount === undefined) {
       return NextResponse.json(
-        { error: "studentId, month, amount and paidDate required" },
+        { error: "studentId, month, amount are required" },
         { status: 400 }
-      );
+      )
     }
 
-    const db = await getDb();
-
-    await db.collection("fees").insertOne({
+    const db = await getDb()
+    const doc = {
+      schoolId,                          // ✅ tag with school
       studentId: String(studentId),
-      grade,
-      section,
-      session,
-      month,
-      amount: Number(amount),
-      paidDate,
+      grade: grade || "",
+      section: section || "",
+      session: session || "",
+      month: String(month),
+      amount: Number(amount) || 0,
+      paidDate: paidDate || "",
       note: note || "",
       paidAt: new Date(),
-    });
+    }
 
-    return NextResponse.json({ success: true });
+    const result = await db.collection("fees").insertOne(doc)
+
+    return NextResponse.json({
+      success: true,
+      id: result.insertedId.toString(),
+    })
   } catch (err) {
-    console.error("❌ POST /api/fees:", err.message);
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    console.error("❌ POST /api/fees:", err.message)
+    return NextResponse.json({ error: err.message }, { status: 500 })
   }
 }
 
-// ✅ PUT — delete fee records for a specific student
-// If `month` is provided → only that month is deleted
-// If `month` is omitted → all records for the session are deleted
+// ─────────────────────────────────────────────
+// PUT — delete all fee records for a student in one month
+//   Body: { studentId, session, month }
+// ─────────────────────────────────────────────
 export async function PUT(req) {
   try {
-    const data = await req.json();
-    const { studentId, session, month } = data;
+    const schoolResult = await getCurrentSchool()
+    if (!schoolResult.success) {
+      return NextResponse.json({ error: schoolResult.error }, { status: 401 })
+    }
+    const { schoolId } = schoolResult.school
 
-    if (!studentId) {
-      return NextResponse.json({ error: "studentId required" }, { status: 400 });
+    const body = await req.json()
+    const { studentId, session, month } = body
+
+    if (!studentId || !month) {
+      return NextResponse.json(
+        { error: "studentId and month are required" },
+        { status: 400 }
+      )
     }
 
-    const db = await getDb();
-    const filter = { studentId: String(studentId) };
-    if (session) filter.session = session;
-    if (month) filter.month = month;
+    const db = await getDb()
 
-    const result = await db.collection("fees").deleteMany(filter);
+    const filter = { schoolId, studentId: String(studentId), month: String(month) }
+    if (session) filter.session = session
 
-    return NextResponse.json({ success: true, deletedCount: result.deletedCount });
+    const result = await db.collection("fees").deleteMany(filter)
+
+    return NextResponse.json({
+      success: true,
+      deletedCount: result.deletedCount,
+    })
   } catch (err) {
-    console.error("❌ PUT /api/fees (delete):", err.message);
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    console.error("❌ PUT /api/fees:", err.message)
+    return NextResponse.json({ error: err.message }, { status: 500 })
   }
 }
 
-// ✅ DELETE — remove a SINGLE payment record by id
+// ─────────────────────────────────────────────
+// DELETE — remove one fee payment (only your school's)
+// ─────────────────────────────────────────────
 export async function DELETE(req) {
   try {
-    const { searchParams } = new URL(req.url);
-    const id = searchParams.get("id");
-    if (!id) return NextResponse.json({ error: "id required" }, { status: 400 });
+    const schoolResult = await getCurrentSchool()
+    if (!schoolResult.success) {
+      return NextResponse.json({ error: schoolResult.error }, { status: 401 })
+    }
+    const { schoolId } = schoolResult.school
 
-    const db = await getDb();
-    const { ObjectId } = await import("mongodb");
-
-    let result;
-    try {
-      result = await db.collection("fees").deleteOne({ _id: new ObjectId(id) });
-    } catch {
-      result = await db.collection("fees").deleteOne({ id });
+    const { searchParams } = new URL(req.url)
+    const id = searchParams.get("id")
+    if (!id) {
+      return NextResponse.json({ error: "id is required" }, { status: 400 })
     }
 
-    return NextResponse.json({ success: true, deletedCount: result.deletedCount });
+    const db = await getDb()
+    const result = await db.collection("fees").deleteOne({
+      _id: new ObjectId(id),
+      schoolId,
+    })
+
+    return NextResponse.json({
+      success: true,
+      deletedCount: result.deletedCount,
+    })
   } catch (err) {
-    console.error("❌ DELETE /api/fees:", err.message);
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    console.error("❌ DELETE /api/fees:", err.message)
+    return NextResponse.json({ error: err.message }, { status: 500 })
   }
 }
