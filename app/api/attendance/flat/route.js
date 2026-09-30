@@ -1,62 +1,76 @@
-import { NextResponse } from "next/server";
-import { getDb } from "@/utils";
+import { NextResponse } from "next/server"
+import { getDb } from "@/utils"
+import { getCurrentSchool } from "@/utils/getCurrentSchool"
 
-// ✅ GET — flat list of attendance records for a month/class
-// ?grade=5th&section=A&session=2025-2026&month=01/2026
+// ─────────────────────────────────────────────
+// GET — FLAT attendance list for one class
+//   ?grade=1st&month=MM/YYYY&section=A&session=...
+// Returns one row per (student × day) with status.
+// ─────────────────────────────────────────────
 export async function GET(req) {
   try {
-    const { searchParams } = new URL(req.url);
-    const grade = searchParams.get("grade");
-    const section = searchParams.get("section");
-    const session = searchParams.get("session");
-    const month = searchParams.get("month");
+    const schoolResult = await getCurrentSchool()
+    if (!schoolResult.success) {
+      return NextResponse.json({ error: schoolResult.error }, { status: 401 })
+    }
+    const { schoolId } = schoolResult.school
+
+    const { searchParams } = new URL(req.url)
+    const grade = searchParams.get("grade")
+    const month = searchParams.get("month")
+    const section = searchParams.get("section")
+    const session = searchParams.get("session")
 
     if (!grade || !month) {
-      return NextResponse.json(
-        { error: "grade and month are required" },
-        { status: 400 }
-      );
+      return NextResponse.json([])
     }
 
-    const db = await getDb();
+    const db = await getDb()
 
-    // Students of this class
-    const studentFilter = { grade };
-    if (section) studentFilter.section = section;
-    if (session) studentFilter.session = session;
+    // 1. Fetch the class's students
+    const studentFilter = { schoolId, grade }
+    if (section) studentFilter.section = section
+    if (session) studentFilter.session = session
 
     const students = await db
       .collection("students")
       .find(studentFilter)
-      .toArray();
+      .sort({ rollNo: 1, id: 1 })
+      .toArray()
 
-    // Map studentId -> name/grade for convenience
-    const studentsById = {};
-    students.forEach((s) => {
-      const sid = s.id != null ? String(s.id) : s._id.toString();
-      studentsById[sid] = { name: s.name, grade: s.grade };
-    });
+    if (students.length === 0) return NextResponse.json([])
 
-    // Attendance records for this month
-    const attendance = await db
+    const ids = students.map((s) => String(s.id))
+
+    // 2. Fetch their attendance for that month
+    const records = await db
       .collection("attendance")
-      .find({ date: month })
-      .toArray();
+      .find({ schoolId, studentId: { $in: ids }, date: month })
+      .toArray()
 
-    const flat = attendance
-      .filter((a) => studentsById[String(a.studentId)]) // only records for this class
-      .map((a) => ({
-        studentId: String(a.studentId),
-        name: studentsById[String(a.studentId)].name,
-        grade: studentsById[String(a.studentId)].grade,
-        day: Number(a.day),
-        date: a.date,
-        status: a.status || (a.present ? "P" : "A"),
-      }));
+    // 3. Flatten: one row per record, with student info attached
+    const byId = {}
+    students.forEach((s) => { byId[String(s.id)] = s })
 
-    return NextResponse.json(flat);
+    const flat = records.map((r) => {
+      const s = byId[String(r.studentId)] || {}
+      return {
+        studentId: r.studentId,
+        name: s.name || "",
+        grade: s.grade || "",
+        section: s.section || "",
+        session: s.session || "",
+        rollNo: s.rollNo ?? null,
+        day: r.day,
+        date: r.date,
+        status: r.status || (r.present ? "P" : "A"),
+        present: r.status === "P" || r.present === true,
+      }
+    })
+
+    return NextResponse.json(flat)
   } catch (err) {
-    console.error("❌ GET /api/attendance/flat error:", err.message);
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    console.error("❌ GET /api/attendance/flat:", err.message)
+    return NextResponse.json({ error: err.message }, { status: 500 })
   }
 }
