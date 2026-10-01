@@ -6,7 +6,7 @@ const OWNER_EMAIL = "jamshid804a@gmail.com"
 
 // ─────────────────────────────────────────────
 // GET — returns the current user's org package + section status
-//   Used by the sidebar to decide which section switcher to show.
+//   Used by the sidebar, no-section page, and pay page.
 // ─────────────────────────────────────────────
 export async function GET() {
   try {
@@ -24,8 +24,9 @@ export async function GET() {
         success: true,
         isOwner: true,
         package: "both",
-        schoolSection: { active: true, expiresAt: null },
-        academySection: { active: true, expiresAt: null },
+        schoolName: "SAPSYSYSTEM",
+        schoolSection: { active: true, expiresAt: null, price: 0, priceNote: "" },
+        academySection: { active: true, expiresAt: null, price: 0, priceNote: "" },
       })
     }
 
@@ -39,10 +40,14 @@ export async function GET() {
     const schoolSection = org.schoolSection || {
       active: org.active !== false,
       expiresAt: org.expiresAt || null,
+      price: 0,
+      priceNote: "",
     }
     const academySection = org.academySection || {
       active: false,
       expiresAt: null,
+      price: 0,
+      priceNote: "",
     }
 
     // Auto-expire if expiresAt has passed
@@ -58,13 +63,18 @@ export async function GET() {
       success: true,
       isOwner: false,
       package: pkg,
+      schoolName: org.schoolName || "Organization",
       schoolSection: {
         active: schoolActive,
         expiresAt: schoolSection.expiresAt || null,
+        price: Number(schoolSection.price) || 0,
+        priceNote: schoolSection.priceNote || "",
       },
       academySection: {
         active: academyActive,
         expiresAt: academySection.expiresAt || null,
+        price: Number(academySection.price) || 0,
+        priceNote: academySection.priceNote || "",
       },
     })
   } catch (err) {
