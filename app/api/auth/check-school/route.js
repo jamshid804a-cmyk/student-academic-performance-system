@@ -25,6 +25,32 @@ export async function GET(req) {
       return NextResponse.json({ success: false }, { headers: noCacheHeaders })
     }
 
+    // ─── Determine section status ───
+    const now = Date.now()
+
+    const schoolSection = school.schoolSection || {
+      active: school.active !== false,
+      expiresAt: school.expiresAt || null,
+    }
+    const academySection = school.academySection || {
+      active: false,
+      expiresAt: null,
+    }
+
+    const schoolActive =
+      schoolSection.active === true &&
+      (!schoolSection.expiresAt || new Date(schoolSection.expiresAt).getTime() > now)
+    const academyActive =
+      academySection.active === true &&
+      (!academySection.expiresAt || new Date(academySection.expiresAt).getTime() > now)
+
+    const pkg = school.package || "school"
+
+    // Is ANY section usable?
+    const anyActive = schoolActive || academyActive
+
+    // Legacy: `active` reflects whether the user can access anything at all
+    // (used by middleware — if false, user is blocked from /dashboard)
     return NextResponse.json(
       {
         success: true,
@@ -32,8 +58,17 @@ export async function GET(req) {
           schoolId: school.schoolId,
           schoolName: school.schoolName,
           email: school.email,
-          active: school.active !== false,
+          package: pkg,
+
+          // Legacy fields (kept for backward compat)
+          active: anyActive,
           expiresAt: school.expiresAt,
+
+          // New fields
+          schoolActive,
+          academyActive,
+          schoolExpiresAt: schoolSection.expiresAt || null,
+          academyExpiresAt: academySection.expiresAt || null,
         },
       },
       { headers: noCacheHeaders }
