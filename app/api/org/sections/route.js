@@ -6,7 +6,7 @@ const OWNER_EMAIL = "jamshid804a@gmail.com"
 
 // ─────────────────────────────────────────────
 // GET — returns the current user's org package + section status
-//   Used by the sidebar, no-section page, and pay page.
+//   Used by: sidebar, layout redirect, no-section page, pay page.
 // ─────────────────────────────────────────────
 export async function GET() {
   try {
@@ -25,8 +25,22 @@ export async function GET() {
         isOwner: true,
         package: "both",
         schoolName: "SAPSYSYSTEM",
-        schoolSection: { active: true, expiresAt: null, price: 0, priceNote: "" },
-        academySection: { active: true, expiresAt: null, price: 0, priceNote: "" },
+        schoolSection: {
+          active: true,
+          expired: false,
+          needsPayment: false,
+          expiresAt: null,
+          price: 0,
+          priceNote: "",
+        },
+        academySection: {
+          active: true,
+          expired: false,
+          needsPayment: false,
+          expiresAt: null,
+          price: 0,
+          priceNote: "",
+        },
       })
     }
 
@@ -37,27 +51,38 @@ export async function GET() {
     }
 
     const pkg = org.package || "school"
-    const schoolSection = org.schoolSection || {
+    const now = Date.now()
+
+    // ─── SCHOOL section ───
+    const rawSchool = org.schoolSection || {
       active: org.active !== false,
       expiresAt: org.expiresAt || null,
       price: 0,
       priceNote: "",
     }
-    const academySection = org.academySection || {
+    const schoolExpired =
+      rawSchool.expiresAt && new Date(rawSchool.expiresAt).getTime() <= now
+    const schoolActive =
+      rawSchool.active === true && !schoolExpired
+
+    // ─── ACADEMY section ───
+    const rawAcademy = org.academySection || {
       active: false,
       expiresAt: null,
       price: 0,
       priceNote: "",
     }
-
-    // Auto-expire if expiresAt has passed
-    const now = Date.now()
-    const schoolActive =
-      schoolSection.active === true &&
-      (!schoolSection.expiresAt || new Date(schoolSection.expiresAt).getTime() > now)
+    const academyExpired =
+      rawAcademy.expiresAt && new Date(rawAcademy.expiresAt).getTime() <= now
     const academyActive =
-      academySection.active === true &&
-      (!academySection.expiresAt || new Date(academySection.expiresAt).getTime() > now)
+      rawAcademy.active === true && !academyExpired
+
+    // ─── needsPayment logic ───
+    // School: admin handles manually → never routes to pay page
+    const schoolNeedsPayment = false
+
+    // Academy: if not active (expired, suspended, or never activated)
+    const academyNeedsPayment = !academyActive
 
     return NextResponse.json({
       success: true,
@@ -66,15 +91,19 @@ export async function GET() {
       schoolName: org.schoolName || "Organization",
       schoolSection: {
         active: schoolActive,
-        expiresAt: schoolSection.expiresAt || null,
-        price: Number(schoolSection.price) || 0,
-        priceNote: schoolSection.priceNote || "",
+        expired: Boolean(schoolExpired),
+        needsPayment: schoolNeedsPayment,
+        expiresAt: rawSchool.expiresAt || null,
+        price: Number(rawSchool.price) || 0,
+        priceNote: rawSchool.priceNote || "",
       },
       academySection: {
         active: academyActive,
-        expiresAt: academySection.expiresAt || null,
-        price: Number(academySection.price) || 0,
-        priceNote: academySection.priceNote || "",
+        expired: Boolean(academyExpired),
+        needsPayment: academyNeedsPayment,
+        expiresAt: rawAcademy.expiresAt || null,
+        price: Number(rawAcademy.price) || 0,
+        priceNote: rawAcademy.priceNote || "",
       },
     })
   } catch (err) {
