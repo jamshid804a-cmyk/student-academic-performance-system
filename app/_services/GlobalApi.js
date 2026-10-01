@@ -105,6 +105,9 @@ const DeleteTeacherAttendance = (teacherId, month, day) =>
 const GetSchoolInfo = () => axios.get('/api/school');
 const SaveSchoolInfo = (data) => axios.post('/api/school', data);
 
+// Org Sections (package + section active status)
+const GetOrgSections = () => axios.get('/api/org/sections');
+
 export default {
     GetAllGrades,
     CreateNewStudent,
@@ -141,4 +144,5 @@ export default {
     DeleteTeacherAttendance,
     GetSchoolInfo,
     SaveSchoolInfo,
+    GetOrgSections,
 };

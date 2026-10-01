@@ -4,20 +4,17 @@ import { LogoutLink } from '@kinde-oss/kinde-auth-nextjs/components'
 import {
   GraduationCap, Hand, LayoutIcon, BookOpen,
   ChevronDown, ChevronRight, FileText, FlaskConical, Wallet, Settings,
-  LogOut, ChevronUp, User, Users, PanelLeftClose, PanelLeftOpen,
-  School, Library
+  LogOut, ChevronUp, User, Users, PanelLeftClose, PanelLeftOpen
 } from 'lucide-react'
 import Image from 'next/image'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import React, { useState, useEffect, useRef } from 'react'
 import GlobalApi from '@/app/_services/GlobalApi'
-import { useProgram } from '@/src/context/ProgramContext'
 
 function SideNav() {
   const { user } = useKindeBrowserClient() || {}
   const path = usePathname()
-  const { program, setProgram, hydrated: programHydrated } = useProgram()
 
   const [collapsed, setCollapsed] = useState(false)
   const [openAcademic, setOpenAcademic] = useState(false)
@@ -25,7 +22,6 @@ function SideNav() {
   const [school, setSchool] = useState({ name: 'SAPSYSYSTEM', logo: '' })
   const [mounted, setMounted] = useState(false)
   const [showFullName, setShowFullName] = useState(false)
-  const [sections, setSections] = useState(null) // { package, schoolSection, academySection }
   const menuRef = useRef(null)
 
   useEffect(() => {
@@ -58,35 +54,6 @@ function SideNav() {
       })
       .catch(() => {})
   }, [path])
-
-  // Load section availability (package + active status)
-  useEffect(() => {
-    GlobalApi.GetOrgSections()
-      .then(resp => {
-        if (resp?.data?.success) setSections(resp.data)
-      })
-      .catch(() => {})
-  }, [path])
-
-  // If current program is not allowed, switch automatically
-  useEffect(() => {
-    if (!sections || !programHydrated) return
-    const pkg = sections.package || 'school'
-    const sActive = sections.schoolSection?.active === true
-    const aActive = sections.academySection?.active === true
-
-    let allowed = 'school'
-    if (pkg === 'school') allowed = 'school'
-    else if (pkg === 'academy') allowed = 'academy'
-    else {
-      // both
-      if (program === 'academy' && aActive) allowed = 'academy'
-      else if (program === 'school' && sActive) allowed = 'school'
-      else if (sActive) allowed = 'school'
-      else if (aActive) allowed = 'academy'
-    }
-    if (allowed !== program) setProgram(allowed)
-  }, [sections, program, programHydrated, setProgram])
 
   useEffect(() => {
     const handleClickOutside = (e) => {
@@ -131,12 +98,6 @@ function SideNav() {
   if (!mounted) {
     return <div className="border shadow-md h-screen w-64 bg-white dark:bg-slate-800 dark:border-slate-700" />
   }
-
-  // Section switcher only when package = both AND both sections active
-  const pkg = sections?.package || 'school'
-  const sActive = sections?.schoolSection?.active === true
-  const aActive = sections?.academySection?.active === true
-  const showSwitcher = pkg === 'both' && sActive && aActive
 
   return (
     <div className={`relative border shadow-lg h-screen flex flex-col bg-white dark:bg-slate-800 dark:border-slate-700 transition-all duration-300 ease-in-out ${collapsed ? "w-[72px] p-3" : "w-64 p-4"}`}>
@@ -184,47 +145,6 @@ function SideNav() {
           {displayName}
         </h1>
       </div>
-
-      {/* Section Switcher (only when package = both and both active) */}
-      {showSwitcher && (
-        <>
-          <div className={`mt-2 ${collapsed ? "" : "px-0"}`}>
-            {collapsed ? (
-              <div className="flex flex-col items-center gap-2">
-                <button
-                  onClick={() => setProgram('school')}
-                  title="School Section"
-                  className={`w-10 h-10 rounded-xl flex items-center justify-center transition ${program === 'school' ? 'bg-blue-600 text-white shadow' : 'bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600'}`}
-                >
-                  <School size={18} />
-                </button>
-                <button
-                  onClick={() => setProgram('academy')}
-                  title="Academy Section"
-                  className={`w-10 h-10 rounded-xl flex items-center justify-center transition ${program === 'academy' ? 'bg-purple-600 text-white shadow' : 'bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600'}`}
-                >
-                  <Library size={18} />
-                </button>
-              </div>
-            ) : (
-              <div className="grid grid-cols-2 gap-1.5 p-1 bg-slate-100 dark:bg-slate-700/50 rounded-xl">
-                <button
-                  onClick={() => setProgram('school')}
-                  className={`flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-bold transition ${program === 'school' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-600'}`}
-                >
-                  <School size={14} /> School
-                </button>
-                <button
-                  onClick={() => setProgram('academy')}
-                  className={`flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-bold transition ${program === 'academy' ? 'bg-purple-600 text-white shadow-sm' : 'text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-600'}`}
-                >
-                  <Library size={14} /> Academy
-                </button>
-              </div>
-            )}
-          </div>
-        </>
-      )}
 
       <div className="border-t border-slate-200 dark:border-slate-700 my-2" />
 
