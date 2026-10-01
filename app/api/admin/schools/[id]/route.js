@@ -16,7 +16,6 @@ async function isOwner() {
   }
 }
 
-// Resolve the given id (ObjectId string OR schoolId) to a real ObjectId
 async function resolveId(db, id) {
   try {
     return new ObjectId(id)
@@ -27,7 +26,7 @@ async function resolveId(db, id) {
 }
 
 // ─────────────────────────────────────────────
-// GET — one school by id or schoolId
+// GET — one organization
 // ─────────────────────────────────────────────
 export async function GET(req, { params }) {
   try {
@@ -37,14 +36,10 @@ export async function GET(req, { params }) {
 
     const db = await getDb()
     const _id = await resolveId(db, params.id)
-    if (!_id) {
-      return NextResponse.json({ error: "School not found" }, { status: 404 })
-    }
+    if (!_id) return NextResponse.json({ error: "Not found" }, { status: 404 })
 
     const school = await db.collection("schools").findOne({ _id })
-    if (!school) {
-      return NextResponse.json({ error: "School not found" }, { status: 404 })
-    }
+    if (!school) return NextResponse.json({ error: "Not found" }, { status: 404 })
 
     return NextResponse.json({
       success: true,
@@ -57,9 +52,12 @@ export async function GET(req, { params }) {
 }
 
 // ─────────────────────────────────────────────
-// PATCH — update a school
-//   Body: { active?, schoolName?, ownerName?, note?, expiresAt? }
-//   ⭐ This is what the ON/OFF toggle calls.
+// PATCH — update organization
+//   Body examples:
+//     { schoolSection: { active: false } }
+//     { academySection: { active: true, price: 2500, priceNote: "New year" } }
+//     { schoolName: "New Name" }
+//     { package: "both" }
 // ─────────────────────────────────────────────
 export async function PATCH(req, { params }) {
   try {
@@ -69,28 +67,60 @@ export async function PATCH(req, { params }) {
 
     const db = await getDb()
     const _id = await resolveId(db, params.id)
-    if (!_id) {
-      return NextResponse.json({ error: "School not found" }, { status: 404 })
-    }
+    if (!_id) return NextResponse.json({ error: "Not found" }, { status: 404 })
 
     const body = await req.json()
+    const patch = { updatedAt: new Date() }
 
-    // Whitelist — never allow changing schoolId or email via this route
-    const patch = {}
-    if (body.active !== undefined) patch.active = Boolean(body.active)
+    // Direct fields
     if (body.schoolName !== undefined) patch.schoolName = String(body.schoolName).trim()
     if (body.ownerName !== undefined) patch.ownerName = String(body.ownerName).trim()
     if (body.note !== undefined) patch.note = String(body.note).trim()
-    if (body.expiresAt !== undefined) patch.expiresAt = new Date(body.expiresAt)
-    patch.updatedAt = new Date()
+    if (body.package !== undefined) {
+      const p = String(body.package)
+      if (["school", "academy", "both"].includes(p)) patch.package = p
+    }
 
-    const result = await db.collection("schools").updateOne(
-      { _id },
-      { $set: patch }
-    )
+    // Nested: schoolSection
+    if (body.schoolSection && typeof body.schoolSection === "object") {
+      const s = body.schoolSection
+      if (s.active !== undefined) patch["schoolSection.active"] = Boolean(s.active)
+      if (s.expiresAt !== undefined)
+        patch["schoolSection.expiresAt"] = s.expiresAt ? new Date(s.expiresAt) : null
+      if (s.price !== undefined) patch["schoolSection.price"] = Number(s.price) || 0
+      if (s.priceNote !== undefined) patch["schoolSection.priceNote"] = String(s.priceNote)
+
+      // Legacy mirror
+      if (s.active !== undefined) patch.active = Boolean(s.active)
+      if (s.expiresAt !== undefined)
+        patch.expiresAt = s.expiresAt ? new Date(s.expiresAt) : null
+    }
+
+    // Nested: academySection
+    if (body.academySection && typeof body.academySection === "object") {
+      const a = body.academySection
+      if (a.active !== undefined) patch["academySection.active"] = Boolean(a.active)
+      if (a.expiresAt !== undefined)
+        patch["academySection.expiresAt"] = a.expiresAt ? new Date(a.expiresAt) : null
+      if (a.price !== undefined) patch["academySection.price"] = Number(a.price) || 0
+      if (a.priceNote !== undefined) patch["academySection.priceNote"] = String(a.priceNote)
+    }
+
+    // Convenience: when reactivating a section, give it 30 days
+    if (patch["schoolSection.active"] === true && patch["schoolSection.expiresAt"] === undefined) {
+      patch["schoolSection.expiresAt"] = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
+      patch.expiresAt = patch["schoolSection.expiresAt"]
+    }
+    if (patch["academySection.active"] === true && patch["academySection.expiresAt"] === undefined) {
+      patch["academySection.expiresAt"] = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
+    }
+
+    const result = await db
+      .collection("schools")
+      .updateOne({ _id }, { $set: patch })
 
     if (result.matchedCount === 0) {
-      return NextResponse.json({ error: "School not found" }, { status: 404 })
+      return NextResponse.json({ error: "Not found" }, { status: 404 })
     }
 
     return NextResponse.json({ success: true })
@@ -101,7 +131,7 @@ export async function PATCH(req, { params }) {
 }
 
 // ─────────────────────────────────────────────
-// DELETE — remove a school AND all its data
+// DELETE — remove organization and its data
 // ─────────────────────────────────────────────
 export async function DELETE(req, { params }) {
   try {
@@ -111,19 +141,13 @@ export async function DELETE(req, { params }) {
 
     const db = await getDb()
     const _id = await resolveId(db, params.id)
-    if (!_id) {
-      return NextResponse.json({ error: "School not found" }, { status: 404 })
-    }
+    if (!_id) return NextResponse.json({ error: "Not found" }, { status: 404 })
 
     const school = await db.collection("schools").findOne({ _id })
-    if (!school) {
-      return NextResponse.json({ error: "School not found" }, { status: 404 })
-    }
+    if (!school) return NextResponse.json({ error: "Not found" }, { status: 404 })
 
-    // Delete the school document
     await db.collection("schools").deleteOne({ _id })
 
-    // Also delete every record tagged with this schoolId (optional but clean)
     const schoolId = school.schoolId
     if (schoolId) {
       const collections = [

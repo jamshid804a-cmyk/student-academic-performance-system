@@ -4,9 +4,6 @@ import { getKindeServerSession } from "@kinde-oss/kinde-auth-nextjs/server"
 
 const OWNER_EMAIL = "jamshid804a@gmail.com"
 
-// ─────────────────────────────────────────────
-// Helper: is the requester the owner?
-// ─────────────────────────────────────────────
 async function isOwner() {
   try {
     const { getUser } = getKindeServerSession()
@@ -19,22 +16,30 @@ async function isOwner() {
 }
 
 // ─────────────────────────────────────────────
-// GET — list all schools (with live user counts)
+// GET — list all organizations
+//   ?package=school | academy | both   (optional filter)
 // ─────────────────────────────────────────────
-export async function GET() {
+export async function GET(req) {
   try {
     if (!(await isOwner())) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
+    const { searchParams } = new URL(req.url)
+    const pkg = searchParams.get("package")
+
     const db = await getDb()
+    const filter = {}
+    if (pkg === "school" || pkg === "academy" || pkg === "both") {
+      filter.package = pkg
+    }
+
     const schools = await db
       .collection("schools")
-      .find({})
+      .find(filter)
       .sort({ createdAt: -1 })
       .toArray()
 
-    // Get counts for each school in parallel
     const withCounts = await Promise.all(
       schools.map(async (s) => {
         const [students, teachers, notifications] = await Promise.all([
@@ -48,10 +53,25 @@ export async function GET() {
           schoolName: s.schoolName,
           email: s.email,
           ownerName: s.ownerName || "",
+          note: s.note || "",
+          package: s.package || "school",
+          // New shape: each section has active + expiresAt + price + note
+          schoolSection: s.schoolSection || {
+            active: s.active !== false,
+            expiresAt: s.expiresAt,
+            price: 0,
+            priceNote: "",
+          },
+          academySection: s.academySection || {
+            active: false,
+            expiresAt: null,
+            price: 0,
+            priceNote: "",
+          },
+          // Legacy fields kept for compatibility
           active: s.active !== false,
           createdAt: s.createdAt,
           expiresAt: s.expiresAt,
-          note: s.note || "",
           counts: { students, teachers, notifications },
         }
       })
@@ -65,8 +85,9 @@ export async function GET() {
 }
 
 // ─────────────────────────────────────────────
-// POST — create a new school
-//   Body: { schoolName, email, ownerName, note, expiresAt? }
+// POST — create a new organization
+//   Body: { schoolName, email, ownerName, note, package }
+//     package: "school" | "academy" | "both"
 // ─────────────────────────────────────────────
 export async function POST(req) {
   try {
@@ -75,7 +96,7 @@ export async function POST(req) {
     }
 
     const data = await req.json()
-    const { schoolName, email, ownerName, note, expiresAt } = data
+    const { schoolName, email, ownerName, note, package: pkg } = data
 
     if (!schoolName || !email) {
       return NextResponse.json(
@@ -84,16 +105,18 @@ export async function POST(req) {
       )
     }
 
+    const validPackages = ["school", "academy", "both"]
+    const chosenPackage = validPackages.includes(pkg) ? pkg : "school"
+
     const normalizedEmail = String(email).toLowerCase().trim()
 
     const db = await getDb()
     const collection = db.collection("schools")
 
-    // Duplicate check
     const existing = await collection.findOne({ email: normalizedEmail })
     if (existing) {
       return NextResponse.json(
-        { error: "A school with this email already exists" },
+        { error: "An organization with this email already exists" },
         { status: 400 }
       )
     }
@@ -103,7 +126,7 @@ export async function POST(req) {
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, "_")
       .replace(/^_|_$/g, "")
-      .slice(0, 30) || "school"
+      .slice(0, 30) || "org"
 
     let schoolId = base
     let suffix = 1
@@ -113,7 +136,10 @@ export async function POST(req) {
     }
 
     const now = new Date()
-    const exp = expiresAt ? new Date(expiresAt) : new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000) // 30 days default
+    const exp = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000) // 30 days
+
+    const schoolActive = chosenPackage === "school" || chosenPackage === "both"
+    const academyActive = chosenPackage === "academy" || chosenPackage === "both"
 
     const doc = {
       schoolId,
@@ -121,9 +147,27 @@ export async function POST(req) {
       email: normalizedEmail,
       ownerName: ownerName ? String(ownerName).trim() : "",
       note: note ? String(note).trim() : "",
-      active: true,
+      package: chosenPackage,
+
+      schoolSection: {
+        active: schoolActive,
+        expiresAt: schoolActive ? exp : null,
+        price: 0,
+        priceNote: "",
+      },
+      academySection: {
+        active: academyActive,
+        expiresAt: academyActive ? exp : null,
+        price: 0,          // you set it later per academy
+        priceNote: "",
+      },
+
+      // Legacy fields — mirror school section
+      active: schoolActive,
+      expiresAt: schoolActive ? exp : null,
+
       createdAt: now,
-      expiresAt: exp,
+      updatedAt: now,
     }
 
     const result = await collection.insertOne(doc)
