@@ -12,8 +12,8 @@ const PUBLIC_PATHS = [
   "/api/auth",
   "/payment-due",
   "/no-access",
-  "/dashboard/no-section",   // ← NEW: allow the no-section page
-  "/dashboard/pay",          // ← NEW: allow the pay page
+  "/dashboard/no-section",
+  "/dashboard/pay",
   "/_next",
   "/favicon.ico",
   "/logo.svg",
@@ -49,7 +49,7 @@ export async function middleware(request: NextRequest) {
   // 3. Owner always passes
   if (email === OWNER_EMAIL.toLowerCase()) return NextResponse.next()
 
-  // 4. Look up the user's school — force a fresh response every time
+  // 4. Check the school's section status
   try {
     const url = new URL("/api/auth/check-school", request.url)
     url.searchParams.set("email", email)
@@ -74,20 +74,20 @@ export async function middleware(request: NextRequest) {
       return NextResponse.redirect(new URL("/no-access", request.url))
     }
 
-    // If no section is usable → decide which expired page to show
-    if (data.school.active === false) {
-      const pkg = data.school.package || "school"
-
-      // Academy-only or Both orgs → new no-section page (with academy renewal)
-      if (pkg === "academy" || pkg === "both") {
-        return NextResponse.redirect(new URL("/dashboard/no-section", request.url))
-      }
-
-      // School-only orgs → old payment-due page (school renewal handled by admin)
-      return NextResponse.redirect(new URL("/payment-due", request.url))
+    // If any section is active → allow through
+    if (data.school.active === true) {
+      return NextResponse.next()
     }
 
-    return NextResponse.next()
+    // Nothing active → route based on package
+    const pkg = data.school.package || "school"
+
+    if (pkg === "academy" || pkg === "both") {
+      return NextResponse.redirect(new URL("/dashboard/no-section", request.url))
+    }
+
+    // School-only orgs → old payment-due page
+    return NextResponse.redirect(new URL("/payment-due", request.url))
   } catch (err) {
     return NextResponse.next()
   }
