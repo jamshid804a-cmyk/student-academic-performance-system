@@ -110,7 +110,6 @@ export default function FeeManagementContent() {
     try {
       const monthKey = monthNameToKey(month)
 
-      // Students — all academy students, filtered client-side
       const studentResp = await fetch(
         `/api/academy/student?email=${encodeURIComponent(orgEmail)}`,
         { cache: 'no-store' }
@@ -121,7 +120,6 @@ export default function FeeManagementContent() {
       if (batchNo) filtered = filtered.filter(s => s.batchNo === batchNo)
       if (year) filtered = filtered.filter(s => String(s.year) === String(year))
 
-      // Month fees
       const monthParams = new URLSearchParams({ orgEmail, course, month: monthKey })
       if (section) monthParams.append('section', section)
       if (batchNo) monthParams.append('batchNo', batchNo)
@@ -131,7 +129,6 @@ export default function FeeManagementContent() {
         { cache: 'no-store' }
       ).then(r => r.json())
 
-      // All fees
       const allParams = new URLSearchParams({ orgEmail, course })
       if (section) allParams.append('section', section)
       if (batchNo) allParams.append('batchNo', batchNo)
@@ -141,8 +138,11 @@ export default function FeeManagementContent() {
         { cache: 'no-store' }
       ).then(r => r.json())
 
-      // Ignore stale responses
       if (reqId !== reqRef.current) return
+
+      console.log("[FEE] fetchAll monthKey:", monthKey)
+      console.log("[FEE] fetchAll monthFees count:", (monthFees || []).length)
+      console.log("[FEE] fetchAll monthFees raw:", monthFees)
 
       setStudents(filtered)
       setPayments(Array.isArray(monthFees) ? monthFees : [])
@@ -155,7 +155,6 @@ export default function FeeManagementContent() {
     }
   }, [orgEmail, course, section, batchNo, year, month])
 
-  // Faster debounce (150ms) + cancel previous
   useEffect(() => {
     if (!hydrated) return
     if (debounceRef.current) clearTimeout(debounceRef.current)
@@ -172,6 +171,7 @@ export default function FeeManagementContent() {
       if (!map[sid]) map[sid] = []
       map[sid].push(p)
     })
+    console.log("[FEE] grouped keys:", Object.keys(map))
     return map
   }, [payments])
 
@@ -186,6 +186,7 @@ export default function FeeManagementContent() {
   }, [allPayments])
 
   const rows = useMemo(() => {
+    console.log("[FEE] student ids:", students.map(s => String(s.id)))
     return students.map((s) => {
       const sid = String(s.id)
       const list = paymentsByStudent[sid] || []
@@ -355,7 +356,6 @@ export default function FeeManagementContent() {
     w.document.close()
   }
 
-  // Called after PayDialog saves → small delay ensures DB write visible, then refetch
   const handleAfterPay = () => {
     setPayDialog(null)
     setTimeout(() => fetchAll(), 250)
