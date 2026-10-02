@@ -1,32 +1,32 @@
 import { NextResponse } from "next/server"
 import { getDb } from "@/utils"
-import { getKindeServerSession } from "@kinde-oss/kinde-auth-nextjs/server"
 
 const OWNER_EMAIL = "jamshid804a@gmail.com"
 
-async function isOwner() {
-  try {
-    const { getUser } = getKindeServerSession()
-    const user = await getUser()
-    if (!user?.email) return false
-    return String(user.email).toLowerCase().trim() === OWNER_EMAIL.toLowerCase()
-  } catch {
-    return false
-  }
+function isOwnerEmail(email) {
+  if (!email) return false
+  return String(email).toLowerCase().trim() === OWNER_EMAIL.toLowerCase()
 }
 
 // ─────────────────────────────────────────────
 // GET — list all payments (owner only)
-//   ?status=pending | approved | rejected  (optional)
+//   ?email=jamshid804a@gmail.com   (required)
+//   ?status=pending|approved|rejected  (optional)
+//
+//   NOTE: We pass owner email as a query param because the Kinde
+//   server-side session is unreliable in this deployment. The email
+//   is checked against the hardcoded owner email. Do not expose this
+//   endpoint publicly.
 // ─────────────────────────────────────────────
 export async function GET(req) {
   try {
-    if (!(await isOwner())) {
+    const { searchParams } = new URL(req.url)
+    const email = searchParams.get("email")
+    const status = searchParams.get("status")
+
+    if (!isOwnerEmail(email)) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
-
-    const { searchParams } = new URL(req.url)
-    const status = searchParams.get("status")
 
     const db = await getDb()
     const filter = {}
@@ -60,8 +60,9 @@ export async function GET(req) {
       adminNote: p.adminNote || "",
     }))
 
-    // Counts for badges
-    const pendingCount = await db.collection("payments").countDocuments({ status: "pending" })
+    const pendingCount = await db
+      .collection("payments")
+      .countDocuments({ status: "pending" })
 
     return NextResponse.json({
       success: true,
