@@ -12,7 +12,6 @@ export default function AddNewTeacher({ email, onClose, onSaved }) {
     email: "",
     phone: "",
     qualification: "",
-    subject: "",
     joiningDate: "",
     salary: "",
     address: "",
@@ -69,7 +68,6 @@ export default function AddNewTeacher({ email, onClose, onSaved }) {
         email: form.email,
         phone: form.phone,
         qualification: form.qualification,
-        subject: form.subject,
         joiningDate: form.joiningDate,
         salary: Number(form.salary) || 0,
         address: form.address,
@@ -124,23 +122,16 @@ export default function AddNewTeacher({ email, onClose, onSaved }) {
                 placeholder="e.g. 03001234567" className={inputCls} />
             </div>
             <div>
-              <label className={labelCls}>Subject</label>
-              <input value={form.subject} onChange={(e) => setField("subject", e.target.value)}
-                placeholder="e.g. English Grammar" className={inputCls} />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
               <label className={labelCls}>Qualification</label>
               <input value={form.qualification} onChange={(e) => setField("qualification", e.target.value)}
                 placeholder="e.g. M.A English" className={inputCls} />
             </div>
-            <div>
-              <label className={labelCls}>Joining Date</label>
-              <input type="date" value={form.joiningDate} onChange={(e) => setField("joiningDate", e.target.value)}
-                className={inputCls} />
-            </div>
+          </div>
+
+          <div>
+            <label className={labelCls}>Joining Date</label>
+            <input type="date" value={form.joiningDate} onChange={(e) => setField("joiningDate", e.target.value)}
+              className={inputCls} />
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

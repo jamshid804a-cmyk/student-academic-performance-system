@@ -1,7 +1,7 @@
 "use client"
 import React from "react"
 import {
-  X, Mail, Phone, Calendar, BookOpen, DollarSign, MapPin, Users, Briefcase
+  X, Mail, Phone, Calendar, DollarSign, MapPin, Users, Briefcase
 } from "lucide-react"
 
 function InfoRow({ icon: Icon, label, value }) {
@@ -42,7 +42,7 @@ export default function TeacherDetailsDialog({ teacher, onClose }) {
             <div className="min-w-0">
               <h3 className="text-xl font-bold text-white truncate">{teacher.name}</h3>
               <p className="text-xs text-purple-100 mt-0.5">
-                {teacher.teacherId || "—"} · {teacher.subject || "No subject"}
+                {teacher.teacherId || "—"}
               </p>
               <span className={`inline-block mt-2 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase ${
                 String(teacher.status).toLowerCase() === "active"
@@ -59,7 +59,6 @@ export default function TeacherDetailsDialog({ teacher, onClose }) {
           <InfoRow icon={Mail} label="Email" value={teacher.email} />
           <InfoRow icon={Phone} label="Phone" value={teacher.phone} />
           <InfoRow icon={Briefcase} label="Qualification" value={teacher.qualification} />
-          <InfoRow icon={BookOpen} label="Subject" value={teacher.subject} />
           <InfoRow icon={Calendar} label="Joining Date" value={teacher.joiningDate} />
           <InfoRow icon={DollarSign} label="Salary"
             value={teacher.salary ? `Rs. ${Number(teacher.salary).toLocaleString()}` : "—"} />

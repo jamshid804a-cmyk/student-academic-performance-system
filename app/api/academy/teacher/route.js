@@ -32,13 +32,12 @@ async function generateTeacherId(db, schoolId) {
 }
 
 // ─────────────────────────────────────────────
-// GET — ?orgEmail=...
+// GET — returns { success, teachers: [] }
 // ─────────────────────────────────────────────
 export async function GET(req) {
   try {
     const { searchParams } = new URL(req.url)
     const orgEmail = searchParams.get("orgEmail")
-    const subject = searchParams.get("subject")
     const status = searchParams.get("status")
 
     const db = await getDb()
@@ -46,7 +45,6 @@ export async function GET(req) {
     if (error) return NextResponse.json({ error }, { status: errStatus })
 
     const filter = { schoolId: org.schoolId, program: "academy" }
-    if (subject) filter.subject = subject
     if (status) filter.status = status
 
     const teachers = await db
@@ -55,14 +53,14 @@ export async function GET(req) {
       .sort({ teacherId: 1 })
       .toArray()
 
-    return NextResponse.json(
-      teachers.map((t) => ({
+    return NextResponse.json({
+      success: true,
+      teachers: teachers.map((t) => ({
         _id: t._id.toString(),
         teacherId: t.teacherId || "",
         name: t.name || "",
         email: t.email || "",
         phone: t.phone || "",
-        subject: t.subject || "",
         classes: Array.isArray(t.classes) ? t.classes : [],
         qualification: t.qualification || "",
         joiningDate: t.joiningDate || "",
@@ -71,8 +69,8 @@ export async function GET(req) {
         status: t.status || "Active",
         publicToken: t.publicToken || "",
         createdAt: t.createdAt,
-      }))
-    )
+      })),
+    })
   } catch (err) {
     console.error("❌ GET /api/academy/teacher:", err.message)
     return NextResponse.json({ error: err.message }, { status: 500 })
@@ -80,7 +78,7 @@ export async function GET(req) {
 }
 
 // ─────────────────────────────────────────────
-// POST — Body: { orgEmail, name, email, phone, subject, qualification, joiningDate, salary, address, status, classes }
+// POST — create
 // ─────────────────────────────────────────────
 export async function POST(req) {
   try {
@@ -99,7 +97,6 @@ export async function POST(req) {
     if (error) return NextResponse.json({ error }, { status: errStatus })
 
     const collection = db.collection("teachers")
-
     const existing = await collection.findOne({
       schoolId: org.schoolId,
       program: "academy",
@@ -107,7 +104,7 @@ export async function POST(req) {
     })
     if (existing) {
       return NextResponse.json(
-        { error: "A teacher with this email already exists in your academy" },
+        { error: "A teacher with this email already exists" },
         { status: 400 }
       )
     }
@@ -125,7 +122,6 @@ export async function POST(req) {
       phone: data.phone ? String(data.phone).trim() : "",
       classes: Array.isArray(data.classes) ? data.classes : [],
       qualification: data.qualification ? String(data.qualification).trim() : "",
-      subject: data.subject ? String(data.subject).trim() : "",
       joiningDate: data.joiningDate || "",
       salary: Number(data.salary) || 0,
       address: data.address ? String(data.address).trim() : "",
@@ -150,7 +146,7 @@ export async function POST(req) {
 }
 
 // ─────────────────────────────────────────────
-// PUT — Body: { orgEmail, _id, ...fields }
+// PUT — update
 // ─────────────────────────────────────────────
 export async function PUT(req) {
   try {
@@ -174,7 +170,6 @@ export async function PUT(req) {
     if (data.name !== undefined) patch.name = String(data.name).trim()
     if (data.email !== undefined) patch.email = String(data.email).trim().toLowerCase()
     if (data.phone !== undefined) patch.phone = String(data.phone).trim()
-    if (data.subject !== undefined) patch.subject = String(data.subject).trim()
     if (data.qualification !== undefined) patch.qualification = String(data.qualification).trim()
     if (data.joiningDate !== undefined) patch.joiningDate = data.joiningDate || ""
     if (data.salary !== undefined) patch.salary = Number(data.salary) || 0
@@ -199,7 +194,7 @@ export async function PUT(req) {
 }
 
 // ─────────────────────────────────────────────
-// PATCH — Body: { orgEmail, _id } — regenerate token
+// PATCH — regenerate token
 // ─────────────────────────────────────────────
 export async function PATCH(req) {
   try {
@@ -239,7 +234,7 @@ export async function PATCH(req) {
 }
 
 // ─────────────────────────────────────────────
-// DELETE — ?orgEmail=...&id=<mongo _id>
+// DELETE
 // ─────────────────────────────────────────────
 export async function DELETE(req) {
   try {

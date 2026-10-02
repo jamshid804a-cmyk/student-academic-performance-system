@@ -1,7 +1,6 @@
 "use client"
 import React, { useState } from "react"
 import { Eye, Pencil, Trash2, Link2, MessageCircle, LoaderIcon } from "lucide-react"
-import GlobalApi from "@/app/_services/GlobalApi"
 import { toast } from "sonner"
 
 export default function TeacherListTable({
@@ -58,7 +57,6 @@ export default function TeacherListTable({
             <tr className="bg-slate-50 dark:bg-slate-900/60 border-b border-slate-200 dark:border-slate-700">
               <th className="px-4 py-3.5 font-bold text-slate-600 dark:text-slate-300 uppercase text-[11px] tracking-wider text-left">Teacher ID</th>
               <th className="px-4 py-3.5 font-bold text-slate-600 dark:text-slate-300 uppercase text-[11px] tracking-wider text-left">Name</th>
-              <th className="px-4 py-3.5 font-bold text-slate-600 dark:text-slate-300 uppercase text-[11px] tracking-wider text-left">Subject</th>
               <th className="px-4 py-3.5 font-bold text-slate-600 dark:text-slate-300 uppercase text-[11px] tracking-wider text-left">Phone</th>
               <th className="px-4 py-3.5 font-bold text-slate-600 dark:text-slate-300 uppercase text-[11px] tracking-wider text-left">Courses</th>
               <th className="px-4 py-3.5 font-bold text-slate-600 dark:text-slate-300 uppercase text-[11px] tracking-wider text-center">Status</th>
@@ -83,7 +81,6 @@ export default function TeacherListTable({
                     </div>
                   </div>
                 </td>
-                <td className="px-4 py-3 text-slate-600 dark:text-slate-300">{t.subject || "—"}</td>
                 <td className="px-4 py-3 text-slate-600 dark:text-slate-300">{t.phone || "—"}</td>
                 <td className="px-4 py-3">
                   <div className="flex flex-wrap gap-1 max-w-[200px]">
