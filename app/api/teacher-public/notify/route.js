@@ -27,7 +27,6 @@ export async function POST(req) {
       return NextResponse.json({ error: "Teacher is inactive" }, { status: 403 })
     }
 
-    // Make sure the student belongs to this teacher's school
     const student = await db.collection("students").findOne({
       schoolId: teacher.schoolId,
       id: Number(studentId),
@@ -36,7 +35,7 @@ export async function POST(req) {
       return NextResponse.json({ error: "Student not found" }, { status: 404 })
     }
 
-    // Only allow the teacher to notify students in their own program
+    // Program check
     if (teacher.program === "academy" && student.program !== "academy") {
       return NextResponse.json({ error: "Not your student" }, { status: 403 })
     }
@@ -49,8 +48,11 @@ export async function POST(req) {
       type === "exam" ? "examination" :
       type || "attendance"
 
+    const program = teacher.program === "academy" ? "academy" : "school"
+
+    // ─── Save FIRST ───
     const doc = {
-      schoolId: teacher.schoolId,
+      schoolId: teacher.schoolId,               // ✅ NEW
       studentId: String(studentId),
       message,
       readStatus: false,
@@ -58,14 +60,14 @@ export async function POST(req) {
       weekStart: 0,
       weekEnd: 0,
       type: finalType,
-      program: teacher.program === "academy" ? "academy" : "school",
+      program,                                   // ✅ already saved
       teacherToken: token,
       createdAt: new Date(),
     }
 
     const result = await db.collection("notifications").insertOne(doc)
 
-    // Fire push notification (best-effort, don't fail on error)
+    // ─── Then push (best-effort) ───
     try {
       const parent = student.contact
         ? await db.collection("parents").findOne({ phone: student.contact })
@@ -77,9 +79,14 @@ export async function POST(req) {
           body: JSON.stringify({
             to: parent.pushToken,
             sound: "default",
-            title: "New Notification",
+            title: program === "academy" ? "Academy Alert" : "School Alert",
             body: message,
-            data: { type: finalType },
+            data: {
+              type: finalType,
+              program,
+              schoolId: String(teacher.schoolId),
+              studentId: String(studentId),
+            },
             channelId: `channel_${finalType}`,
           }),
         })

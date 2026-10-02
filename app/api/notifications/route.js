@@ -6,7 +6,7 @@ import { getCurrentSchool } from "@/utils/getCurrentSchool"
 // ─────────────────────────────────────────────
 // Push notification helper
 // ─────────────────────────────────────────────
-async function sendPushNotification(db, schoolId, studentId, type, message) {
+async function sendPushNotification(db, schoolId, studentId, type, message, program) {
   try {
     const student = await db
       .collection("students")
@@ -26,13 +26,12 @@ async function sendPushNotification(db, schoolId, studentId, type, message) {
       return
     }
 
-    // Map legacy types just in case
     const pushType =
       type === "exam" ? "examination" :
       type === "academic" ? "test" :
       type || "attendance"
 
-    const pushRes = await fetch("https://exp.host/--/api/v2/push/send", {
+    await fetch("https://exp.host/--/api/v2/push/send", {
       method: "POST",
       headers: {
         Accept: "application/json",
@@ -41,15 +40,17 @@ async function sendPushNotification(db, schoolId, studentId, type, message) {
       body: JSON.stringify({
         to: parent.pushToken,
         sound: "default",
-        title: "New Notification",
+        title: program === "academy" ? "Academy Alert" : "School Alert",
         body: message,
-        data: { type: pushType },
+        data: {
+          type: pushType,
+          program: program || "school",     // ✅ NEW
+          schoolId: String(schoolId),       // ✅ NEW
+          studentId: String(studentId),     // ✅ NEW
+        },
         channelId: `channel_${pushType}`,
       }),
     })
-
-    const pushData = await pushRes.json()
-    console.log("📲 Push result:", JSON.stringify(pushData))
   } catch (e) {
     console.error("❌ Push send failed:", e.message)
   }
@@ -77,7 +78,6 @@ export async function GET(req) {
     }
 
     const db = await getDb()
-
     const notifications = await db
       .collection("notifications")
       .find({ schoolId, studentId: String(studentId) })
@@ -98,8 +98,7 @@ export async function GET(req) {
 }
 
 // ─────────────────────────────────────────────
-// POST — save notification (tagged with schoolId)
-//   type: "attendance" | "test" | "examination" | "fee"
+// POST — save notification (tagged with schoolId + program)
 // ─────────────────────────────────────────────
 export async function POST(req) {
   try {
@@ -122,7 +121,6 @@ export async function POST(req) {
       )
     }
 
-    // Normalize legacy "academic" → "test" so the app can pick the right sound
     const finalType =
       type === "academic" ? "test" :
       type === "exam" ? "examination" :
@@ -131,11 +129,23 @@ export async function POST(req) {
     const db = await getDb()
     const collection = db.collection("notifications")
 
-    // Duplicate check ONLY for attendance (weekly block logic)
+    // ─── Auto-detect program from the student doc ───
+    let program = data.program || "school"
+    let actualStudentId = String(studentId)
+    try {
+      const stu = await db.collection("students").findOne({
+        schoolId,
+        id: Number(studentId),
+      })
+      if (stu?.program) program = stu.program
+      if (stu) actualStudentId = String(stu.id)
+    } catch {}
+
+    // Duplicate check ONLY for attendance
     if (finalType === "attendance") {
       const existing = await collection.findOne({
         schoolId,
-        studentId: String(studentId),
+        studentId: actualStudentId,
         blockNumber: Number(blockNumber),
         weekStart: Number(weekStart),
         weekEnd: Number(weekEnd),
@@ -146,20 +156,22 @@ export async function POST(req) {
       }
     }
 
+    // ─── SAVE FIRST (reliable) ───
     const result = await collection.insertOne({
-      schoolId,                          // ✅ NEW
-      studentId: String(studentId),
+      schoolId,
+      studentId: actualStudentId,
       message,
       readStatus: false,
       blockNumber: Number(blockNumber) || 0,
       weekStart: Number(weekStart) || 0,
       weekEnd: Number(weekEnd) || 0,
       type: finalType,
+      program,                            // ✅ NEW
       createdAt: new Date(),
     })
 
-    // Fire the push in the background
-    sendPushNotification(db, schoolId, studentId, finalType, message)
+    // ─── THEN push (best-effort) ───
+    sendPushNotification(db, schoolId, actualStudentId, finalType, message, program)
 
     return NextResponse.json({
       success: true,
