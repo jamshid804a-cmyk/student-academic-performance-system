@@ -5,11 +5,12 @@ import { useKindeBrowserClient } from '@kinde-oss/kinde-auth-nextjs'
 import MonthSelection from '@/app/dashboard/attendance/_components/MonthSelection'
 import CourseSelection from '../_components/CourseSelection'
 import SectionSelection from '../_components/SectionSelection'
+import BatchSelection from '../_components/BatchSelection'
 import YearSelection from '../_components/YearSelection'
 import StatusList from '../_components/StatusList'
 import AttendanceChart from '../_components/AttendanceChart'
 
-const STORAGE_KEY = 'academy_dashboard_filters_v2'
+const STORAGE_KEY = 'academy_dashboard_filters_v3'
 
 const monthNameToKey = (name) => {
   const map = {
@@ -27,6 +28,7 @@ export default function DashboardContent() {
   const [selectedMonth, setSelectedMonth] = useState('')
   const [selectedCourse, setSelectedCourse] = useState('')
   const [selectedSection, setSelectedSection] = useState('')
+  const [selectedBatch, setSelectedBatch] = useState('')
   const [selectedYear, setSelectedYear] = useState('')
 
   const [allStudents, setAllStudents] = useState([])
@@ -40,6 +42,7 @@ export default function DashboardContent() {
       if (saved.month) setSelectedMonth(saved.month)
       if (saved.course) setSelectedCourse(saved.course)
       if (saved.section) setSelectedSection(saved.section)
+      if (saved.batch) setSelectedBatch(saved.batch)
       if (saved.year) setSelectedYear(saved.year)
     } catch {}
     setHydrated(true)
@@ -51,11 +54,12 @@ export default function DashboardContent() {
       month: selectedMonth,
       course: selectedCourse,
       section: selectedSection,
+      batch: selectedBatch,
       year: selectedYear,
     }))
-  }, [selectedMonth, selectedCourse, selectedSection, selectedYear, hydrated])
+  }, [selectedMonth, selectedCourse, selectedSection, selectedBatch, selectedYear, hydrated])
 
-  // Total academy students
+  // All academy students (for total count)
   useEffect(() => {
     if (!email) return
     fetch(`/api/academy/student?email=${encodeURIComponent(email)}`, { cache: 'no-store' })
@@ -64,7 +68,7 @@ export default function DashboardContent() {
       .catch(() => {})
   }, [email])
 
-  // Class students (course + section)
+  // Class students (course + section + batch + year)
   useEffect(() => {
     if (!email) return
     if (!selectedCourse) { setClassStudents([]); return }
@@ -75,13 +79,15 @@ export default function DashboardContent() {
           let list = d.students || []
           list = list.filter(s => s.subject === selectedCourse)
           if (selectedSection) list = list.filter(s => s.section === selectedSection)
+          if (selectedBatch) list = list.filter(s => s.batchNo === selectedBatch)
+          if (selectedYear) list = list.filter(s => String(s.year) === String(selectedYear))
           setClassStudents(list)
         }
       })
       .catch(() => {})
-  }, [email, selectedCourse, selectedSection])
+  }, [email, selectedCourse, selectedSection, selectedBatch, selectedYear])
 
-  // Attendance
+  // Attendance (flat list)
   useEffect(() => {
     if (!email) return
     if (!selectedMonth || !selectedCourse) { setAttendanceList([]); return }
@@ -97,13 +103,14 @@ export default function DashboardContent() {
       month: monthKey,
     })
     if (selectedSection) params.append('section', selectedSection)
+    if (selectedBatch) params.append('batch', selectedBatch)
     if (selectedYear) params.append('year', selectedYear)
 
     fetch(`/api/academy/attendance/flat?${params.toString()}`, { cache: 'no-store' })
       .then(r => r.json())
       .then(data => setAttendanceList(Array.isArray(data) ? data : []))
       .catch(() => setAttendanceList([]))
-  }, [email, selectedMonth, selectedCourse, selectedSection, selectedYear])
+  }, [email, selectedMonth, selectedCourse, selectedSection, selectedBatch, selectedYear])
 
   return (
     <div className="p-8 bg-slate-50 min-h-screen">
@@ -132,6 +139,13 @@ export default function DashboardContent() {
           <SectionSelection
             selectedSection={setSelectedSection}
             defaultSection={selectedSection}
+          />
+        </div>
+        <div className="flex items-center gap-2">
+          <label className="text-sm font-medium text-slate-600">Batch</label>
+          <BatchSelection
+            selectedBatch={setSelectedBatch}
+            defaultBatch={selectedBatch}
           />
         </div>
         <div className="flex items-center gap-2">

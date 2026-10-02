@@ -1,7 +1,7 @@
 "use client"
 import React from "react"
 
-const BATCHES = ["Batch 1", "Batch 2", "Batch 3", "Batch 4", "Morning", "Evening", "Weekend"]
+const BATCHES = Array.from({ length: 20 }, (_, i) => `Batch ${i + 1}`)
 
 export default function BatchSelection({ selectedBatch, defaultBatch }) {
   return (
