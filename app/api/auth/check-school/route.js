@@ -1,37 +1,19 @@
 import { NextResponse } from "next/server"
-import { getKindeServerSession } from "@kinde-oss/kinde-auth-nextjs/server"
 import { getDb } from "@/utils"
 
 export async function GET(req) {
   const noCacheHeaders = {
     "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
-    Pragma: "no-cache",
-    Expires: "0",
+    "Pragma": "no-cache",
+    "Expires": "0",
   }
 
   try {
-    // Who is asking?
-    // 1) Middleware calls this with a secret header + the email it already verified.
-    // 2) Anyone else (browser) can only see THEIR OWN school, from the Kinde session.
     const { searchParams } = new URL(req.url)
-    const secret = process.env.INTERNAL_API_SECRET
-    const fromMiddleware =
-      secret && req.headers.get("x-internal-secret") === secret
-
-    let email = null
-    if (fromMiddleware) {
-      email = searchParams.get("email")
-    } else {
-      const { getUser } = getKindeServerSession()
-      const user = await getUser()
-      email = user?.email || null
-    }
+    const email = searchParams.get("email")
 
     if (!email) {
-      return NextResponse.json(
-        { success: false },
-        { status: 401, headers: noCacheHeaders }
-      )
+      return NextResponse.json({ success: false }, { status: 400, headers: noCacheHeaders })
     }
 
     const db = await getDb()
@@ -43,7 +25,7 @@ export async function GET(req) {
       return NextResponse.json({ success: false }, { headers: noCacheHeaders })
     }
 
-    // Section status
+    // ─── Determine section status ───
     const now = Date.now()
 
     const schoolSection = school.schoolSection || {
@@ -57,15 +39,18 @@ export async function GET(req) {
 
     const schoolActive =
       schoolSection.active === true &&
-      (!schoolSection.expiresAt ||
-        new Date(schoolSection.expiresAt).getTime() > now)
+      (!schoolSection.expiresAt || new Date(schoolSection.expiresAt).getTime() > now)
     const academyActive =
       academySection.active === true &&
-      (!academySection.expiresAt ||
-        new Date(academySection.expiresAt).getTime() > now)
+      (!academySection.expiresAt || new Date(academySection.expiresAt).getTime() > now)
 
     const pkg = school.package || "school"
 
+    // Is ANY section usable?
+    const anyActive = schoolActive || academyActive
+
+    // Legacy: `active` reflects whether the user can access anything at all
+    // (used by middleware — if false, user is blocked from /dashboard)
     return NextResponse.json(
       {
         success: true,
@@ -75,11 +60,11 @@ export async function GET(req) {
           email: school.email,
           package: pkg,
 
-          // Legacy
-          active: schoolActive || academyActive,
+          // Legacy fields (kept for backward compat)
+          active: anyActive,
           expiresAt: school.expiresAt,
 
-          // Per-section
+          // New fields
           schoolActive,
           academyActive,
           schoolExpiresAt: schoolSection.expiresAt || null,

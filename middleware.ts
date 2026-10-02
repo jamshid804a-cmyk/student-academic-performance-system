@@ -4,20 +4,15 @@ import { getKindeServerSession } from "@kinde-oss/kinde-auth-nextjs/server"
 
 const OWNER_EMAIL = "jamshid804a@gmail.com"
 
-// ⚠️ CHANGE THESE to match your real routes
-const ACADEMY_PATHS = ["/academy", "/api/academy"]
-const SCHOOL_HOME = "/dashboard"
-const ACADEMY_HOME = "/academy"
-
-// Paths that never go through the section check
+// Paths that never go through the school check
 const PUBLIC_PATHS = [
   "/",
   "/login",
   "/register",
-  "/api/auth",
-  "/api/org",
-  "/api/admin",
-  "/api/payments",
+  "/api/auth",             // includes /api/auth/check-school
+  "/api/org",              // includes /api/org/sections  ← NEW
+  "/api/admin",            // admin APIs — owner-only, checked inside the route  ← NEW
+  "/api/payments",         // payment submission  ← NEW
   "/payment-due",
   "/no-access",
   "/dashboard/no-section",
@@ -30,35 +25,26 @@ const PUBLIC_PATHS = [
   "/admin",
 ]
 
-function matches(pathname: string, list: string[]) {
-  return list.some((p) => pathname === p || pathname.startsWith(p + "/"))
-}
-
-function deny(request: NextRequest, redirectTo: string, message: string) {
-  // API calls get JSON 403, pages get a redirect
-  if (request.nextUrl.pathname.startsWith("/api/")) {
-    return NextResponse.json({ success: false, error: message }, { status: 403 })
-  }
-  return NextResponse.redirect(new URL(redirectTo, request.url))
+function isPublicPath(pathname: string) {
+  return PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(p + "/"))
 }
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
 
-  // 1. Public paths
-  if (matches(pathname, PUBLIC_PATHS)) return NextResponse.next()
+  // 1. Public paths — skip the school check
+  if (isPublicPath(pathname)) return NextResponse.next()
 
-  // 2. Logged-in user
+  // 2. Get the logged-in user
   let user: any = null
   try {
     const { getUser } = getKindeServerSession()
     user = await getUser()
   } catch (err) {
     console.error("Middleware getUser error:", err)
-    return NextResponse.redirect(new URL("/login", request.url))
+    return NextResponse.next()
   }
 
-  // Not logged in: let Kinde / the page handle login
   if (!user?.email) return NextResponse.next()
 
   const email = String(user.email).toLowerCase().trim()
@@ -66,13 +52,7 @@ export async function middleware(request: NextRequest) {
   // 3. Owner always passes
   if (email === OWNER_EMAIL.toLowerCase()) return NextResponse.next()
 
-  // 4. Which section is being opened?
-  const section: "school" | "academy" = matches(pathname, ACADEMY_PATHS)
-    ? "academy"
-    : "school"
-
-  // 5. Ask the server for this user's section status
-  let data: any
+  // 4. Check the school's section status
   try {
     const url = new URL("/api/auth/check-school", request.url)
     url.searchParams.set("email", email)
@@ -83,41 +63,37 @@ export async function middleware(request: NextRequest) {
       headers: {
         "Cache-Control": "no-cache, no-store, must-revalidate",
         Pragma: "no-cache",
-        "x-internal-secret": process.env.INTERNAL_API_SECRET || "",
       },
     })
 
-    if (!res.ok) throw new Error("check-school status " + res.status)
-    data = await res.json()
+    if (!res.ok) {
+      console.error("check-school failed with status", res.status)
+      return NextResponse.next()
+    }
+
+    const data = await res.json()
+
+    if (!data.success || !data.school) {
+      return NextResponse.redirect(new URL("/no-access", request.url))
+    }
+
+    // If any section is active → allow through
+    if (data.school.active === true) {
+      return NextResponse.next()
+    }
+
+    // Nothing active → route based on package
+    const pkg = data.school.package || "school"
+
+    if (pkg === "academy" || pkg === "both") {
+      return NextResponse.redirect(new URL("/dashboard/no-section", request.url))
+    }
+
+    // School-only orgs → old payment-due page
+    return NextResponse.redirect(new URL("/payment-due", request.url))
   } catch (err) {
-    // FAIL CLOSED: if we can't verify, don't let them in
-    console.error("Middleware check-school error:", err)
-    return deny(request, "/no-access", "Could not verify access")
+    return NextResponse.next()
   }
-
-  if (!data.success || !data.school) {
-    return deny(request, "/no-access", "No access")
-  }
-
-  const { schoolActive, academyActive, package: pkg } = data.school
-
-  // 6. Is the requested section active?
-  const allowed = section === "academy" ? academyActive : schoolActive
-  if (allowed) return NextResponse.next()
-
-  // 7. Requested section is blocked. Is the OTHER one working?
-  if (section === "school" && academyActive) {
-    return deny(request, `${ACADEMY_HOME}?suspended=school`, "School section is suspended")
-  }
-  if (section === "academy" && schoolActive) {
-    return deny(request, `${SCHOOL_HOME}?suspended=academy`, "Academy section is suspended")
-  }
-
-  // 8. Both blocked
-  if (pkg === "academy" || pkg === "both") {
-    return deny(request, "/dashboard/no-section", "Suspended")
-  }
-  return deny(request, "/payment-due", "Payment due")
 }
 
 export const config = {
