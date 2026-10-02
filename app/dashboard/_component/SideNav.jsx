@@ -44,7 +44,10 @@ function SideNav() {
   }, [collapsed])
 
   useEffect(() => {
-    if (path?.startsWith('/dashboard/academic-performance')) setOpenAcademic(true)
+    if (path?.startsWith('/dashboard/academic-performance') ||
+        path?.startsWith('/dashboard/academy/academic-performance')) {
+      setOpenAcademic(true)
+    }
   }, [path])
 
   useEffect(() => {
@@ -60,7 +63,6 @@ function SideNav() {
       .catch(() => {})
   }, [path])
 
-  // Load section availability
   useEffect(() => {
     GlobalApi.GetOrgSections()
       .then(resp => {
@@ -69,7 +71,6 @@ function SideNav() {
       .catch(() => {})
   }, [path])
 
-  // Auto-correct program if it doesn't match package
   useEffect(() => {
     if (!sections || !programHydrated) return
     const pkg = sections.package || 'school'
@@ -98,41 +99,42 @@ function SideNav() {
     return () => document.removeEventListener("mousedown", handleClickOutside)
   }, [openUserMenu])
 
-  // ─── Menu items (change based on current program) ───
+  // ─── Menu items (mirror school for both sections) ───
   const isAcademy = program === 'academy'
+  const base = isAcademy ? '/dashboard/academy' : '/dashboard'
 
-  const menuList = isAcademy
-    ? [
-        { id: 1, name: 'Dashboard', icon: LayoutIcon, path: '/dashboard/academy' },
-        { id: 2, name: 'Students', icon: GraduationCap, path: '/dashboard/academy/students' },
-        { id: 3, name: 'Teachers', icon: Users, path: '/dashboard/academy/teachers' },
-        { id: 4, name: 'Attendance', icon: Hand, path: '/dashboard/academy/attendance' },
-      ]
-    : [
-        { id: 1, name: 'Dashboard', icon: LayoutIcon, path: '/dashboard' },
-        { id: 2, name: 'Students', icon: GraduationCap, path: '/dashboard/students' },
-        { id: 3, name: 'Teachers', icon: Users, path: '/dashboard/teachers' },
-        { id: 4, name: 'Attendance', icon: Hand, path: '/dashboard/attendance' },
-      ]
-
-  const academicItems = [
-    { name: 'Testing', icon: FlaskConical, path: '/dashboard/academic-performance/testing' },
-    { name: 'Examination', icon: FileText, path: '/dashboard/academic-performance/examination' },
+  const menuList = [
+    { id: 1, name: 'Dashboard', icon: LayoutIcon, path: base },
+    { id: 2, name: 'Students', icon: GraduationCap, path: `${base}/students` },
+    { id: 3, name: 'Teachers', icon: Users, path: `${base}/teachers` },
+    { id: 4, name: 'Attendance', icon: Hand, path: `${base}/attendance` },
   ]
 
-  // In academy mode, replace "Academic" dropdown with a Courses link
-  const showAcademicDropdown = !isAcademy
+  // Academic dropdown — same structure for both
+  const academicItems = isAcademy
+    ? [
+        { name: 'Testing', icon: FlaskConical, path: `${base}/academic-performance/testing` },
+        { name: 'Examination', icon: FileText, path: `${base}/academic-performance/examination` },
+      ]
+    : [
+        { name: 'Testing', icon: FlaskConical, path: '/dashboard/academic-performance/testing' },
+        { name: 'Examination', icon: FileText, path: '/dashboard/academic-performance/examination' },
+      ]
+
+  const academicBase = isAcademy
+    ? `${base}/academic-performance`
+    : '/dashboard/academic-performance'
+
+  const feePath = isAcademy ? `${base}/fee-management` : '/dashboard/fee-management'
+  const settingsPath = '/dashboard/settings'
 
   const isActive = (p) => path === p
 
   const itemClass = (active) =>
-    `relative flex items-center gap-3 p-3 my-1 rounded-xl cursor-pointer transition-all duration-300 group/item ${active ? "bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-500/30" : "text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700/60 hover:text-blue-700 dark:hover:text-blue-300"} ${collapsed ? "justify-center" : ""}`
-
-  const itemClassAcademy = (active) =>
-    `relative flex items-center gap-3 p-3 my-1 rounded-xl cursor-pointer transition-all duration-300 group/item ${active ? "bg-gradient-to-r from-purple-600 to-fuchsia-600 text-white shadow-lg shadow-purple-500/30" : "text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700/60 hover:text-purple-700 dark:hover:text-purple-300"} ${collapsed ? "justify-center" : ""}`
+    `relative flex items-center gap-3 p-3 my-1 rounded-xl cursor-pointer transition-all duration-300 group/item ${active ? (isAcademy ? "bg-gradient-to-r from-purple-600 to-fuchsia-600 text-white shadow-lg shadow-purple-500/30" : "bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-500/30") : (isAcademy ? "text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700/60 hover:text-purple-700 dark:hover:text-purple-300" : "text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700/60 hover:text-blue-700 dark:hover:text-blue-300")} ${collapsed ? "justify-center" : ""}`
 
   const subItemClass = (active) =>
-    `relative flex items-center gap-2 py-2 px-3 my-1 rounded-lg cursor-pointer transition-all duration-300 ${active ? "bg-blue-500 text-white shadow-sm" : "text-slate-500 dark:text-slate-400 hover:bg-blue-50 dark:hover:bg-slate-700 hover:text-blue-700 dark:hover:text-blue-300"} ${collapsed ? "justify-center px-1" : "ml-2"}`
+    `relative flex items-center gap-2 py-2 px-3 my-1 rounded-lg cursor-pointer transition-all duration-300 ${active ? (isAcademy ? "bg-purple-500 text-white shadow-sm" : "bg-blue-500 text-white shadow-sm") : (isAcademy ? "text-slate-500 dark:text-slate-400 hover:bg-purple-50 dark:hover:bg-slate-700 hover:text-purple-700 dark:hover:text-purple-300" : "text-slate-500 dark:text-slate-400 hover:bg-blue-50 dark:hover:bg-slate-700 hover:text-blue-700 dark:hover:text-blue-300")} ${collapsed ? "justify-center px-1" : "ml-2"}`
 
   const Label = ({ children, className = "" }) => (
     <span className={`whitespace-nowrap transition-all duration-300 ease-out ${collapsed ? "opacity-0 w-0 translate-x-[-8px] pointer-events-none" : "opacity-100 w-auto translate-x-0"} ${className}`}>
@@ -181,8 +183,6 @@ function SideNav() {
   const showSchool = pkg === 'school' || pkg === 'both'
   const showAcademy = pkg === 'academy' || pkg === 'both'
   const showSwitcher = showSchool && showAcademy
-
-  const MenuItemClass = isAcademy ? itemClassAcademy : itemClass
 
   return (
     <div className={`relative border shadow-lg h-screen flex flex-col bg-white dark:bg-slate-800 dark:border-slate-700 transition-all duration-300 ease-in-out ${collapsed ? "w-[72px] p-3" : "w-64 p-4"}`}>
@@ -290,7 +290,7 @@ function SideNav() {
           const active = isActive(m.path)
           return (
             <Link key={m.id} href={m.path}>
-              <div className={MenuItemClass(active)} title={collapsed ? m.name : ""}>
+              <div className={itemClass(active)} title={collapsed ? m.name : ""}>
                 {active && <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-white rounded-r-full" />}
                 <m.icon size={19} className={`shrink-0 transition-transform duration-300 ${active ? "" : "group-hover/item:scale-110"}`} />
                 <Label className="font-semibold text-sm">{m.name}</Label>
@@ -299,79 +299,57 @@ function SideNav() {
           )
         })}
 
-        {showAcademicDropdown && (
-          <div>
-            <button
-              type="button"
-              onClick={() => {
-                if (collapsed) {
-                  setCollapsed(false)
-                  setTimeout(() => setOpenAcademic(true), 300)
-                } else {
-                  setOpenAcademic(!openAcademic)
-                }
-              }}
-              title={collapsed ? "Academic Performance" : ""}
-              className={`${itemClass(path?.startsWith('/dashboard/academic-performance'))} w-full text-left`}
-            >
-              {path?.startsWith('/dashboard/academic-performance') && <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-white rounded-r-full" />}
-              <BookOpen size={19} className="shrink-0 transition-transform duration-300 group-hover/item:scale-110" />
-              <Label className="font-semibold text-sm flex-1">Academic</Label>
-              <span className={`transition-all duration-300 ease-out ${collapsed ? "opacity-0 w-0 pointer-events-none" : "opacity-100 w-auto"}`}>
-                {openAcademic ? <ChevronDown size={15} className="text-current" /> : <ChevronRight size={15} className="text-current" />}
-              </span>
-            </button>
+        {/* Academic dropdown — same structure for school AND academy */}
+        <div>
+          <button
+            type="button"
+            onClick={() => {
+              if (collapsed) {
+                setCollapsed(false)
+                setTimeout(() => setOpenAcademic(true), 300)
+              } else {
+                setOpenAcademic(!openAcademic)
+              }
+            }}
+            title={collapsed ? "Academic Performance" : ""}
+            className={`${itemClass(path?.startsWith(academicBase))} w-full text-left`}
+          >
+            {path?.startsWith(academicBase) && <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-white rounded-r-full" />}
+            <BookOpen size={19} className="shrink-0 transition-transform duration-300 group-hover/item:scale-110" />
+            <Label className="font-semibold text-sm flex-1">Academic</Label>
+            <span className={`transition-all duration-300 ease-out ${collapsed ? "opacity-0 w-0 pointer-events-none" : "opacity-100 w-auto"}`}>
+              {openAcademic ? <ChevronDown size={15} className="text-current" /> : <ChevronRight size={15} className="text-current" />}
+            </span>
+          </button>
 
-            <div className={`overflow-hidden transition-all duration-300 ease-in-out ${openAcademic && !collapsed ? "max-h-40 opacity-100 mt-1" : "max-h-0 opacity-0"}`}>
-              <div className="ml-3 border-l-2 border-blue-200 dark:border-slate-600 pl-2">
-                {academicItems.map((item) => {
-                  const active = isActive(item.path)
-                  return (
-                    <Link key={item.path} href={item.path}>
-                      <div className={subItemClass(active)}>
-                        <item.icon size={14} className="shrink-0" />
-                        <Label className="text-xs font-medium">{item.name}</Label>
-                      </div>
-                    </Link>
-                  )
-                })}
-              </div>
+          <div className={`overflow-hidden transition-all duration-300 ease-in-out ${openAcademic && !collapsed ? "max-h-40 opacity-100 mt-1" : "max-h-0 opacity-0"}`}>
+            <div className={`ml-3 border-l-2 ${isAcademy ? "border-purple-200 dark:border-slate-600" : "border-blue-200 dark:border-slate-600"} pl-2`}>
+              {academicItems.map((item) => {
+                const active = isActive(item.path)
+                return (
+                  <Link key={item.path} href={item.path}>
+                    <div className={subItemClass(active)}>
+                      <item.icon size={14} className="shrink-0" />
+                      <Label className="text-xs font-medium">{item.name}</Label>
+                    </div>
+                  </Link>
+                )
+              })}
             </div>
           </div>
-        )}
+        </div>
 
-        {/* Academy mode: Courses link (replaces Academic dropdown) */}
-        {isAcademy && (
-          <Link href="/dashboard/academy/courses">
-            <div className={MenuItemClass(isActive('/dashboard/academy/courses'))} title={collapsed ? "Courses" : ""}>
-              {isActive('/dashboard/academy/courses') && <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-white rounded-r-full" />}
-              <BookOpen size={19} className="shrink-0 transition-transform duration-300 group-hover/item:scale-110" />
-              <Label className="font-semibold text-sm">Courses</Label>
-            </div>
-          </Link>
-        )}
+        <Link href={feePath}>
+          <div className={itemClass(isActive(feePath))} title={collapsed ? "Fee Management" : ""}>
+            {isActive(feePath) && <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-white rounded-r-full" />}
+            <Wallet size={19} className="shrink-0 transition-transform duration-300 group-hover/item:scale-110" />
+            <Label className="font-semibold text-sm">Fee</Label>
+          </div>
+        </Link>
 
-        {isAcademy ? (
-          <Link href="/dashboard/academy/fees">
-            <div className={MenuItemClass(isActive('/dashboard/academy/fees'))} title={collapsed ? "Fee" : ""}>
-              {isActive('/dashboard/academy/fees') && <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-white rounded-r-full" />}
-              <Wallet size={19} className="shrink-0 transition-transform duration-300 group-hover/item:scale-110" />
-              <Label className="font-semibold text-sm">Fee</Label>
-            </div>
-          </Link>
-        ) : (
-          <Link href="/dashboard/fee-management">
-            <div className={itemClass(isActive('/dashboard/fee-management'))} title={collapsed ? "Fee Management" : ""}>
-              {isActive('/dashboard/fee-management') && <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-white rounded-r-full" />}
-              <Wallet size={19} className="shrink-0 transition-transform duration-300 group-hover/item:scale-110" />
-              <Label className="font-semibold text-sm">Fee</Label>
-            </div>
-          </Link>
-        )}
-
-        <Link href="/dashboard/settings">
-          <div className={MenuItemClass(isActive('/dashboard/settings'))} title={collapsed ? "Settings" : ""}>
-            {isActive('/dashboard/settings') && <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-white rounded-r-full" />}
+        <Link href={settingsPath}>
+          <div className={itemClass(isActive(settingsPath))} title={collapsed ? "Settings" : ""}>
+            {isActive(settingsPath) && <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-white rounded-r-full" />}
             <Settings size={19} className="shrink-0 transition-transform duration-300 group-hover/item:scale-110" />
             <Label className="font-semibold text-sm">Settings</Label>
           </div>
@@ -381,7 +359,7 @@ function SideNav() {
       <div className="relative mt-2 pt-3 border-t border-slate-200 dark:border-slate-700" ref={menuRef}>
         {openUserMenu && !collapsed && (
           <div className="absolute bottom-full left-0 right-0 mb-2 bg-white dark:bg-slate-800 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 overflow-hidden animate-user-menu z-50">
-            <div className="px-4 py-4 bg-gradient-to-br from-blue-500 to-indigo-600 text-white">
+            <div className={`px-4 py-4 bg-gradient-to-br ${isAcademy ? "from-purple-500 to-fuchsia-600" : "from-blue-500 to-indigo-600"} text-white`}>
               <div className="flex items-center gap-3">
                 <Image
                   src={user?.picture || '/default-avatar.png'}
