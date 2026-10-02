@@ -2,9 +2,6 @@ import { NextResponse } from "next/server"
 import { getDb } from "@/utils"
 import { ObjectId } from "mongodb"
 
-// ─────────────────────────────────────────────
-// Helper: load org by email + ensure it's an academy-capable org
-// ─────────────────────────────────────────────
 async function loadAcademyOrg(db, email) {
   if (!email) return { error: "email required", status: 400 }
   const org = await db
@@ -20,8 +17,8 @@ async function loadAcademyOrg(db, email) {
 }
 
 // ─────────────────────────────────────────────
-// GET — list all academy students for the org
-//   ?email=user@example.com  (required)
+// GET — list academy students
+//   ?email=user@example.com
 // ─────────────────────────────────────────────
 export async function GET(req) {
   try {
@@ -48,7 +45,8 @@ export async function GET(req) {
         fatherName: s.fatherName || "",
         phone: s.phone || "",
         subject: s.subject || "",
-        batch: s.batch || "",
+        section: s.section || "",
+        year: s.year || "",
         monthlyFee: Number(s.monthlyFee) || 0,
         admissionDate: s.admissionDate || null,
         createdAt: s.createdAt,
@@ -61,8 +59,8 @@ export async function GET(req) {
 }
 
 // ─────────────────────────────────────────────
-// POST — create a new academy student
-//   Body: { email, name, subject, batch, fatherName?, phone?, monthlyFee?, admissionDate? }
+// POST — create academy student
+//   Body: { email, name, subject, section, year, fatherName?, phone?, monthlyFee?, admissionDate? }
 // ─────────────────────────────────────────────
 export async function POST(req) {
   try {
@@ -70,7 +68,8 @@ export async function POST(req) {
     const email = body.email
     const name = String(body.name || "").trim()
     const subject = String(body.subject || "").trim()
-    const batch = String(body.batch || "").trim()
+    const section = String(body.section || "").trim()
+    const year = String(body.year || "").trim()
     const fatherName = String(body.fatherName || "").trim()
     const phone = String(body.phone || "").trim()
     const monthlyFee = Number(body.monthlyFee) || 0
@@ -83,16 +82,10 @@ export async function POST(req) {
       )
     }
     if (!subject) {
-      return NextResponse.json(
-        { error: "Subject is required" },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: "Course is required" }, { status: 400 })
     }
-    if (!batch) {
-      return NextResponse.json(
-        { error: "Batch is required" },
-        { status: 400 }
-      )
+    if (!section) {
+      return NextResponse.json({ error: "Section is required" }, { status: 400 })
     }
 
     const db = await getDb()
@@ -106,10 +99,10 @@ export async function POST(req) {
       fatherName,
       phone,
       subject,
-      batch,
+      section,
+      year,
       monthlyFee,
       admissionDate: admissionDate ? new Date(admissionDate) : new Date(),
-      // Standard ownership fields
       schoolId: org.schoolId,
       orgId: org._id.toString(),
       program: "academy",
@@ -132,7 +125,7 @@ export async function POST(req) {
 }
 
 // ─────────────────────────────────────────────
-// DELETE — remove an academy student
+// DELETE — remove academy student
 //   ?id=xxx&email=user@example.com
 // ─────────────────────────────────────────────
 export async function DELETE(req) {

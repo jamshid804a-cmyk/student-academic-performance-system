@@ -4,7 +4,7 @@ import React, { useEffect, useState } from "react"
 import { useKindeBrowserClient } from "@kinde-oss/kinde-auth-nextjs"
 import {
   Loader2, GraduationCap, Plus, Trash2, Search,
-  RefreshCw, Phone, BookOpen, Users2
+  RefreshCw, Phone, BookOpen, Users2, Layers
 } from "lucide-react"
 import StudentForm from "./StudentForm"
 
@@ -66,7 +66,7 @@ export default function StudentsListContent() {
     return (
       s.name?.toLowerCase().includes(q) ||
       s.subject?.toLowerCase().includes(q) ||
-      s.batch?.toLowerCase().includes(q) ||
+      s.section?.toLowerCase().includes(q) ||
       s.phone?.toLowerCase().includes(q)
     )
   })
@@ -101,7 +101,7 @@ export default function StudentsListContent() {
         <Search size={16} className="text-slate-400 ml-2" />
         <input
           type="text"
-          placeholder="Search by name, subject, batch, phone…"
+          placeholder="Search by name, course, section, phone…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="flex-1 outline-none text-sm bg-transparent py-1.5"
@@ -150,8 +150,9 @@ export default function StudentsListContent() {
                 </div>
 
                 <div className="space-y-2 pt-3 border-t border-slate-100">
-                  <Row icon={BookOpen} label="Subject" value={s.subject || "—"} />
-                  <Row icon={Users2} label="Batch" value={s.batch || "—"} />
+                  <Row icon={BookOpen} label="Course" value={s.subject || "—"} />
+                  <Row icon={Layers} label="Section" value={s.section || "—"} />
+                  {s.year && <Row icon={Users2} label="Year" value={s.year} />}
                   {s.phone && <Row icon={Phone} label="Phone" value={s.phone} />}
                   {s.monthlyFee > 0 && (
                     <Row icon={BookOpen} label="Monthly Fee" value={`Rs. ${s.monthlyFee}`} />
