@@ -9,7 +9,7 @@ import {
 } from 'lucide-react'
 import Image from 'next/image'
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import React, { useState, useEffect, useRef } from 'react'
 import GlobalApi from '@/app/_services/GlobalApi'
 import { useProgram } from '@/src/context/ProgramContext'
@@ -17,6 +17,7 @@ import { useProgram } from '@/src/context/ProgramContext'
 function SideNav() {
   const { user } = useKindeBrowserClient() || {}
   const path = usePathname()
+  const router = useRouter()
   const { program, setProgram, hydrated: programHydrated } = useProgram()
 
   const [collapsed, setCollapsed] = useState(false)
@@ -25,7 +26,7 @@ function SideNav() {
   const [school, setSchool] = useState({ name: 'SAPSYSYSTEM', logo: '' })
   const [mounted, setMounted] = useState(false)
   const [showFullName, setShowFullName] = useState(false)
-  const [sections, setSections] = useState(null) // { package, schoolSection, academySection }
+  const [sections, setSections] = useState(null)
   const menuRef = useRef(null)
 
   useEffect(() => {
@@ -59,7 +60,7 @@ function SideNav() {
       .catch(() => {})
   }, [path])
 
-  // Load section availability (package + active status)
+  // Load section availability
   useEffect(() => {
     GlobalApi.GetOrgSections()
       .then(resp => {
@@ -68,7 +69,7 @@ function SideNav() {
       .catch(() => {})
   }, [path])
 
-  // If current program is not allowed, switch automatically
+  // Auto-correct program if it doesn't match package
   useEffect(() => {
     if (!sections || !programHydrated) return
     const pkg = sections.package || 'school'
@@ -79,7 +80,6 @@ function SideNav() {
     if (pkg === 'school') allowed = 'school'
     else if (pkg === 'academy') allowed = 'academy'
     else {
-      // both
       if (program === 'academy' && aActive) allowed = 'academy'
       else if (program === 'school' && sActive) allowed = 'school'
       else if (sActive) allowed = 'school'
@@ -98,22 +98,38 @@ function SideNav() {
     return () => document.removeEventListener("mousedown", handleClickOutside)
   }, [openUserMenu])
 
-  const menuList = [
-    { id: 1, name: 'Dashboard', icon: LayoutIcon, path: '/dashboard' },
-    { id: 2, name: 'Students', icon: GraduationCap, path: '/dashboard/students' },
-    { id: 3, name: 'Teachers', icon: Users, path: '/dashboard/teachers' },
-    { id: 4, name: 'Attendance', icon: Hand, path: '/dashboard/attendance' },
-  ]
+  // ─── Menu items (change based on current program) ───
+  const isAcademy = program === 'academy'
+
+  const menuList = isAcademy
+    ? [
+        { id: 1, name: 'Dashboard', icon: LayoutIcon, path: '/dashboard/academy' },
+        { id: 2, name: 'Students', icon: GraduationCap, path: '/dashboard/academy/students' },
+        { id: 3, name: 'Teachers', icon: Users, path: '/dashboard/academy/teachers' },
+        { id: 4, name: 'Attendance', icon: Hand, path: '/dashboard/academy/attendance' },
+      ]
+    : [
+        { id: 1, name: 'Dashboard', icon: LayoutIcon, path: '/dashboard' },
+        { id: 2, name: 'Students', icon: GraduationCap, path: '/dashboard/students' },
+        { id: 3, name: 'Teachers', icon: Users, path: '/dashboard/teachers' },
+        { id: 4, name: 'Attendance', icon: Hand, path: '/dashboard/attendance' },
+      ]
 
   const academicItems = [
     { name: 'Testing', icon: FlaskConical, path: '/dashboard/academic-performance/testing' },
     { name: 'Examination', icon: FileText, path: '/dashboard/academic-performance/examination' },
   ]
 
+  // In academy mode, replace "Academic" dropdown with a Courses link
+  const showAcademicDropdown = !isAcademy
+
   const isActive = (p) => path === p
 
   const itemClass = (active) =>
     `relative flex items-center gap-3 p-3 my-1 rounded-xl cursor-pointer transition-all duration-300 group/item ${active ? "bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-500/30" : "text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700/60 hover:text-blue-700 dark:hover:text-blue-300"} ${collapsed ? "justify-center" : ""}`
+
+  const itemClassAcademy = (active) =>
+    `relative flex items-center gap-3 p-3 my-1 rounded-xl cursor-pointer transition-all duration-300 group/item ${active ? "bg-gradient-to-r from-purple-600 to-fuchsia-600 text-white shadow-lg shadow-purple-500/30" : "text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700/60 hover:text-purple-700 dark:hover:text-purple-300"} ${collapsed ? "justify-center" : ""}`
 
   const subItemClass = (active) =>
     `relative flex items-center gap-2 py-2 px-3 my-1 rounded-lg cursor-pointer transition-all duration-300 ${active ? "bg-blue-500 text-white shadow-sm" : "text-slate-500 dark:text-slate-400 hover:bg-blue-50 dark:hover:bg-slate-700 hover:text-blue-700 dark:hover:text-blue-300"} ${collapsed ? "justify-center px-1" : "ml-2"}`
@@ -128,20 +144,49 @@ function SideNav() {
     ? school.name.slice(0, 22).trimEnd() + "…"
     : school.name
 
+  const handleSectionClick = (targetSection) => {
+    if (!sections) return
+    const pkg = sections.package || 'school'
+    const sSection = sections.schoolSection || {}
+    const aSection = sections.academySection || {}
+
+    if (targetSection === 'school') {
+      if (!sSection.active) {
+        if (pkg === 'school') {
+          router.replace('/payment-due')
+        }
+        return
+      }
+      setProgram('school')
+      return
+    }
+
+    if (targetSection === 'academy') {
+      if (aSection.needsPayment) {
+        router.push('/dashboard/pay/academy')
+        return
+      }
+      setProgram('academy')
+      return
+    }
+  }
+
   if (!mounted) {
     return <div className="border shadow-md h-screen w-64 bg-white dark:bg-slate-800 dark:border-slate-700" />
   }
 
-  // Section switcher only when package = both AND both sections active
   const pkg = sections?.package || 'school'
-  const sActive = sections?.schoolSection?.active === true
-  const aActive = sections?.academySection?.active === true
-  const showSwitcher = pkg === 'both' && sActive && aActive
+  const sSection = sections?.schoolSection || {}
+  const aSection = sections?.academySection || {}
+  const showSchool = pkg === 'school' || pkg === 'both'
+  const showAcademy = pkg === 'academy' || pkg === 'both'
+  const showSwitcher = showSchool && showAcademy
+
+  const MenuItemClass = isAcademy ? itemClassAcademy : itemClass
 
   return (
     <div className={`relative border shadow-lg h-screen flex flex-col bg-white dark:bg-slate-800 dark:border-slate-700 transition-all duration-300 ease-in-out ${collapsed ? "w-[72px] p-3" : "w-64 p-4"}`}>
 
-      {/* Toggle button */}
       <button
         onClick={() => setCollapsed(!collapsed)}
         className="absolute top-5 z-30 flex items-center justify-center w-7 h-7 rounded-full bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-slate-500 dark:text-slate-300 shadow-md hover:shadow-lg hover:text-blue-600 dark:hover:text-blue-400 hover:scale-110 active:scale-95 transition-all duration-300 -right-3.5"
@@ -150,7 +195,6 @@ function SideNav() {
         {collapsed ? <PanelLeftOpen size={13} strokeWidth={2.5} /> : <PanelLeftClose size={13} strokeWidth={2.5} />}
       </button>
 
-      {/* School logo + name */}
       <div
         className={`flex items-center gap-3 mb-2 mt-1 transition-all duration-300 ${collapsed ? "justify-center" : ""}`}
         onMouseEnter={() => setShowFullName(true)}
@@ -164,8 +208,8 @@ function SideNav() {
               className={`object-contain rounded-xl transition-all duration-300 ease-out ${collapsed ? "w-10 h-10" : "w-11 h-11"}`}
             />
           ) : (
-            <div className={`flex items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 text-white shadow-sm transition-all duration-300 ${collapsed ? "w-10 h-10" : "w-11 h-11"}`}>
-              <GraduationCap size={collapsed ? 19 : 21} />
+            <div className={`flex items-center justify-center rounded-xl bg-gradient-to-br ${isAcademy ? "from-purple-500 to-fuchsia-600" : "from-blue-500 to-indigo-600"} text-white shadow-sm transition-all duration-300 ${collapsed ? "w-10 h-10" : "w-11 h-11"}`}>
+              {isAcademy ? <Library size={collapsed ? 19 : 21} /> : <GraduationCap size={collapsed ? 19 : 21} />}
             </div>
           )}
 
@@ -185,56 +229,68 @@ function SideNav() {
         </h1>
       </div>
 
-      {/* Section Switcher (only when package = both and both active) */}
       {showSwitcher && (
-        <>
-          <div className={`mt-2 ${collapsed ? "" : "px-0"}`}>
-            {collapsed ? (
-              <div className="flex flex-col items-center gap-2">
-                <button
-                  onClick={() => setProgram('school')}
-                  title="School Section"
-                  className={`w-10 h-10 rounded-xl flex items-center justify-center transition ${program === 'school' ? 'bg-blue-600 text-white shadow' : 'bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600'}`}
-                >
-                  <School size={18} />
-                </button>
-                <button
-                  onClick={() => setProgram('academy')}
-                  title="Academy Section"
-                  className={`w-10 h-10 rounded-xl flex items-center justify-center transition ${program === 'academy' ? 'bg-purple-600 text-white shadow' : 'bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600'}`}
-                >
-                  <Library size={18} />
-                </button>
-              </div>
-            ) : (
-              <div className="grid grid-cols-2 gap-1.5 p-1 bg-slate-100 dark:bg-slate-700/50 rounded-xl">
-                <button
-                  onClick={() => setProgram('school')}
-                  className={`flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-bold transition ${program === 'school' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-600'}`}
-                >
-                  <School size={14} /> School
-                </button>
-                <button
-                  onClick={() => setProgram('academy')}
-                  className={`flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-bold transition ${program === 'academy' ? 'bg-purple-600 text-white shadow-sm' : 'text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-600'}`}
-                >
-                  <Library size={14} /> Academy
-                </button>
-              </div>
-            )}
-          </div>
-        </>
+        <div className={`mt-2 ${collapsed ? "" : ""}`}>
+          {collapsed ? (
+            <div className="flex flex-col items-center gap-2">
+              <button
+                onClick={() => handleSectionClick('school')}
+                title={`School Section${sSection.expired ? ' (Expired)' : ''}`}
+                className={`relative w-10 h-10 rounded-xl flex items-center justify-center transition ${program === 'school' ? 'bg-blue-600 text-white shadow' : 'bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600'}`}
+              >
+                <School size={18} />
+                {sSection.expired && (
+                  <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full border-2 border-white dark:border-slate-800" />
+                )}
+              </button>
+              <button
+                onClick={() => handleSectionClick('academy')}
+                title={`Academy Section${aSection.expired ? ' (Expired)' : ''}`}
+                className={`relative w-10 h-10 rounded-xl flex items-center justify-center transition ${program === 'academy' ? 'bg-purple-600 text-white shadow' : 'bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600'}`}
+              >
+                <Library size={18} />
+                {aSection.expired && (
+                  <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full border-2 border-white dark:border-slate-800" />
+                )}
+              </button>
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-1.5 p-1 bg-slate-100 dark:bg-slate-700/50 rounded-xl">
+              <button
+                onClick={() => handleSectionClick('school')}
+                className={`relative flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-bold transition ${program === 'school' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-600'}`}
+              >
+                <School size={14} /> School
+                {sSection.expired && (
+                  <span className="ml-1 text-[9px] bg-red-500 text-white px-1.5 py-0.5 rounded-full font-extrabold uppercase tracking-wide">
+                    Exp
+                  </span>
+                )}
+              </button>
+              <button
+                onClick={() => handleSectionClick('academy')}
+                className={`relative flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-bold transition ${program === 'academy' ? 'bg-purple-600 text-white shadow-sm' : 'text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-600'}`}
+              >
+                <Library size={14} /> Academy
+                {aSection.expired && (
+                  <span className="ml-1 text-[9px] bg-red-500 text-white px-1.5 py-0.5 rounded-full font-extrabold uppercase tracking-wide">
+                    Exp
+                  </span>
+                )}
+              </button>
+            </div>
+          )}
+        </div>
       )}
 
       <div className="border-t border-slate-200 dark:border-slate-700 my-2" />
 
-      {/* Menu list */}
       <div className="flex-1 overflow-y-auto overflow-x-hidden -mr-2 pr-2">
         {menuList.map((m) => {
           const active = isActive(m.path)
           return (
             <Link key={m.id} href={m.path}>
-              <div className={itemClass(active)} title={collapsed ? m.name : ""}>
+              <div className={MenuItemClass(active)} title={collapsed ? m.name : ""}>
                 {active && <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-white rounded-r-full" />}
                 <m.icon size={19} className={`shrink-0 transition-transform duration-300 ${active ? "" : "group-hover/item:scale-110"}`} />
                 <Label className="font-semibold text-sm">{m.name}</Label>
@@ -243,58 +299,78 @@ function SideNav() {
           )
         })}
 
-        {/* Academic Performance */}
-        <div>
-          <button
-            type="button"
-            onClick={() => {
-              if (collapsed) {
-                setCollapsed(false)
-                setTimeout(() => setOpenAcademic(true), 300)
-              } else {
-                setOpenAcademic(!openAcademic)
-              }
-            }}
-            title={collapsed ? "Academic Performance" : ""}
-            className={`${itemClass(path?.startsWith('/dashboard/academic-performance'))} w-full text-left`}
-          >
-            {path?.startsWith('/dashboard/academic-performance') && <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-white rounded-r-full" />}
-            <BookOpen size={19} className="shrink-0 transition-transform duration-300 group-hover/item:scale-110" />
-            <Label className="font-semibold text-sm flex-1">Academic</Label>
-            <span className={`transition-all duration-300 ease-out ${collapsed ? "opacity-0 w-0 pointer-events-none" : "opacity-100 w-auto"}`}>
-              {openAcademic ? <ChevronDown size={15} className="text-current" /> : <ChevronRight size={15} className="text-current" />}
-            </span>
-          </button>
+        {showAcademicDropdown && (
+          <div>
+            <button
+              type="button"
+              onClick={() => {
+                if (collapsed) {
+                  setCollapsed(false)
+                  setTimeout(() => setOpenAcademic(true), 300)
+                } else {
+                  setOpenAcademic(!openAcademic)
+                }
+              }}
+              title={collapsed ? "Academic Performance" : ""}
+              className={`${itemClass(path?.startsWith('/dashboard/academic-performance'))} w-full text-left`}
+            >
+              {path?.startsWith('/dashboard/academic-performance') && <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-white rounded-r-full" />}
+              <BookOpen size={19} className="shrink-0 transition-transform duration-300 group-hover/item:scale-110" />
+              <Label className="font-semibold text-sm flex-1">Academic</Label>
+              <span className={`transition-all duration-300 ease-out ${collapsed ? "opacity-0 w-0 pointer-events-none" : "opacity-100 w-auto"}`}>
+                {openAcademic ? <ChevronDown size={15} className="text-current" /> : <ChevronRight size={15} className="text-current" />}
+              </span>
+            </button>
 
-          <div className={`overflow-hidden transition-all duration-300 ease-in-out ${openAcademic && !collapsed ? "max-h-40 opacity-100 mt-1" : "max-h-0 opacity-0"}`}>
-            <div className="ml-3 border-l-2 border-blue-200 dark:border-slate-600 pl-2">
-              {academicItems.map((item) => {
-                const active = isActive(item.path)
-                return (
-                  <Link key={item.path} href={item.path}>
-                    <div className={subItemClass(active)}>
-                      <item.icon size={14} className="shrink-0" />
-                      <Label className="text-xs font-medium">{item.name}</Label>
-                    </div>
-                  </Link>
-                )
-              })}
+            <div className={`overflow-hidden transition-all duration-300 ease-in-out ${openAcademic && !collapsed ? "max-h-40 opacity-100 mt-1" : "max-h-0 opacity-0"}`}>
+              <div className="ml-3 border-l-2 border-blue-200 dark:border-slate-600 pl-2">
+                {academicItems.map((item) => {
+                  const active = isActive(item.path)
+                  return (
+                    <Link key={item.path} href={item.path}>
+                      <div className={subItemClass(active)}>
+                        <item.icon size={14} className="shrink-0" />
+                        <Label className="text-xs font-medium">{item.name}</Label>
+                      </div>
+                    </Link>
+                  )
+                })}
+              </div>
             </div>
           </div>
-        </div>
+        )}
 
-        {/* Fee Management */}
-        <Link href="/dashboard/fee-management">
-          <div className={itemClass(isActive('/dashboard/fee-management'))} title={collapsed ? "Fee Management" : ""}>
-            {isActive('/dashboard/fee-management') && <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-white rounded-r-full" />}
-            <Wallet size={19} className="shrink-0 transition-transform duration-300 group-hover/item:scale-110" />
-            <Label className="font-semibold text-sm">Fee</Label>
-          </div>
-        </Link>
+        {/* Academy mode: Courses link (replaces Academic dropdown) */}
+        {isAcademy && (
+          <Link href="/dashboard/academy/courses">
+            <div className={MenuItemClass(isActive('/dashboard/academy/courses'))} title={collapsed ? "Courses" : ""}>
+              {isActive('/dashboard/academy/courses') && <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-white rounded-r-full" />}
+              <BookOpen size={19} className="shrink-0 transition-transform duration-300 group-hover/item:scale-110" />
+              <Label className="font-semibold text-sm">Courses</Label>
+            </div>
+          </Link>
+        )}
 
-        {/* Settings */}
+        {isAcademy ? (
+          <Link href="/dashboard/academy/fees">
+            <div className={MenuItemClass(isActive('/dashboard/academy/fees'))} title={collapsed ? "Fee" : ""}>
+              {isActive('/dashboard/academy/fees') && <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-white rounded-r-full" />}
+              <Wallet size={19} className="shrink-0 transition-transform duration-300 group-hover/item:scale-110" />
+              <Label className="font-semibold text-sm">Fee</Label>
+            </div>
+          </Link>
+        ) : (
+          <Link href="/dashboard/fee-management">
+            <div className={itemClass(isActive('/dashboard/fee-management'))} title={collapsed ? "Fee Management" : ""}>
+              {isActive('/dashboard/fee-management') && <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-white rounded-r-full" />}
+              <Wallet size={19} className="shrink-0 transition-transform duration-300 group-hover/item:scale-110" />
+              <Label className="font-semibold text-sm">Fee</Label>
+            </div>
+          </Link>
+        )}
+
         <Link href="/dashboard/settings">
-          <div className={itemClass(isActive('/dashboard/settings'))} title={collapsed ? "Settings" : ""}>
+          <div className={MenuItemClass(isActive('/dashboard/settings'))} title={collapsed ? "Settings" : ""}>
             {isActive('/dashboard/settings') && <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-white rounded-r-full" />}
             <Settings size={19} className="shrink-0 transition-transform duration-300 group-hover/item:scale-110" />
             <Label className="font-semibold text-sm">Settings</Label>
@@ -302,7 +378,6 @@ function SideNav() {
         </Link>
       </div>
 
-      {/* User card */}
       <div className="relative mt-2 pt-3 border-t border-slate-200 dark:border-slate-700" ref={menuRef}>
         {openUserMenu && !collapsed && (
           <div className="absolute bottom-full left-0 right-0 mb-2 bg-white dark:bg-slate-800 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 overflow-hidden animate-user-menu z-50">
