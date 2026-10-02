@@ -9,7 +9,10 @@ const PUBLIC_PATHS = [
   "/",
   "/login",
   "/register",
-  "/api/auth",
+  "/api/auth",             // includes /api/auth/check-school
+  "/api/org",              // includes /api/org/sections  ← NEW
+  "/api/admin",            // admin APIs — owner-only, checked inside the route  ← NEW
+  "/api/payments",         // payment submission  ← NEW
   "/payment-due",
   "/no-access",
   "/dashboard/no-section",
