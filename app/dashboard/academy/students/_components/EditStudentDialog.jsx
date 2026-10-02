@@ -15,7 +15,6 @@ import { LoaderIcon, Upload, X, User, Plus, Loader2 } from 'lucide-react'
 
 const SECTIONS = ["A", "B", "C"]
 
-// Infinite years: 2025 → current + 30
 const START_YEAR = 2025
 const END_YEAR = new Date().getFullYear() + 30
 const YEARS = []
@@ -29,7 +28,6 @@ function EditStudentDialog({ student, open, onOpenChange, refreshData, students 
     const [courses, setCourses] = useState([])
     const [coursesLoading, setCoursesLoading] = useState(false)
 
-    // Add-course mini dialog
     const [addCourseOpen, setAddCourseOpen] = useState(false)
     const [newCourseName, setNewCourseName] = useState("")
     const [newCourseCategory, setNewCourseCategory] = useState("Custom")
@@ -37,7 +35,6 @@ function EditStudentDialog({ student, open, onOpenChange, refreshData, students 
 
     const { register, handleSubmit, reset, setValue, formState: { errors } } = useForm()
 
-    // Load courses when dialog opens
     useEffect(() => {
         if (!open || !email) return
         setCoursesLoading(true)
@@ -91,7 +88,7 @@ function EditStudentDialog({ student, open, onOpenChange, refreshData, students 
     const isRollNoDuplicate = (rollNo, course, section, year) => {
         if (!rollNo || !course) return false
         return students.some((s) => {
-            if (s.id === student.id) return false
+            if (s._id === student._id) return false
             const sameRoll = Number(s.rollNo) === Number(rollNo)
             const sameCourse = String(s.subject || "").trim().toLowerCase() === String(course).trim().toLowerCase()
             const sameSection = section ? String(s.section || "").trim() === String(section).trim() : true
@@ -104,7 +101,7 @@ function EditStudentDialog({ student, open, onOpenChange, refreshData, students 
         if (!admissionNo) return false
         return students.some(
             (s) =>
-                s.id !== student.id &&
+                s._id !== student._id &&
                 String(s.admissionNo || "").trim() === String(admissionNo).trim()
         )
     }
@@ -135,6 +132,7 @@ function EditStudentDialog({ student, open, onOpenChange, refreshData, students 
             const payload = {
                 email,
                 id: student.id,
+                _id: student._id,
                 name: data.studentName,
                 fatherName: data.fatherName || "",
                 fatherOccupation: data.fatherOccupation || "",
@@ -233,7 +231,6 @@ function EditStudentDialog({ student, open, onOpenChange, refreshData, students 
 
                 <form onSubmit={handleSubmit(onSubmit)} className="px-6 py-6 space-y-5 max-h-[75vh] overflow-y-auto">
 
-                    {/* Image Upload */}
                     <div className="flex items-start gap-6">
                         <div className="flex flex-col items-center gap-2">
                             <div className="relative">
@@ -266,7 +263,6 @@ function EditStudentDialog({ student, open, onOpenChange, refreshData, students 
 
                     <div className="grid grid-cols-2 gap-4">
 
-                        {/* Student Name */}
                         <div>
                             <label className={labelClass}>Student Name <span className="text-red-500">*</span></label>
                             <input className={inputClass}
@@ -278,7 +274,6 @@ function EditStudentDialog({ student, open, onOpenChange, refreshData, students 
                             {errors.studentName && <p className="text-red-500 text-xs mt-1">{errors.studentName.message}</p>}
                         </div>
 
-                        {/* Father Name */}
                         <div>
                             <label className={labelClass}>Father Name</label>
                             <input className={inputClass}
@@ -289,7 +284,6 @@ function EditStudentDialog({ student, open, onOpenChange, refreshData, students 
                             {errors.fatherName && <p className="text-red-500 text-xs mt-1">{errors.fatherName.message}</p>}
                         </div>
 
-                        {/* Father Occupation */}
                         <div>
                             <label className={labelClass}>Father Occupation</label>
                             <input className={inputClass}
@@ -300,7 +294,6 @@ function EditStudentDialog({ student, open, onOpenChange, refreshData, students 
                             {errors.fatherOccupation && <p className="text-red-500 text-xs mt-1">{errors.fatherOccupation.message}</p>}
                         </div>
 
-                        {/* Contact No */}
                         <div>
                             <label className={labelClass}>Contact No</label>
                             <input className={inputClass} maxLength={11}
@@ -312,7 +305,6 @@ function EditStudentDialog({ student, open, onOpenChange, refreshData, students 
                             {errors.contactNo && <p className="text-red-500 text-xs mt-1">{errors.contactNo.message}</p>}
                         </div>
 
-                        {/* Admission No */}
                         <div>
                             <label className={labelClass}>Admission No</label>
                             <input className={inputClass}
@@ -324,13 +316,11 @@ function EditStudentDialog({ student, open, onOpenChange, refreshData, students 
                             {errors.admissionNo && <p className="text-red-500 text-xs mt-1">{errors.admissionNo.message}</p>}
                         </div>
 
-                        {/* Admission Date */}
                         <div>
                             <label className={labelClass}>Admission Date</label>
                             <input type="date" className={inputClass} {...register("admissionDate")} />
                         </div>
 
-                        {/* Course + Add Course button */}
                         <div>
                             <label className={labelClass}>Course <span className="text-red-500">*</span></label>
                             <div className="flex gap-2">
@@ -355,7 +345,6 @@ function EditStudentDialog({ student, open, onOpenChange, refreshData, students 
                             </div>
                         </div>
 
-                        {/* Section */}
                         <div>
                             <label className={labelClass}>Section</label>
                             <select className={inputClass} {...register("section")}>
@@ -364,7 +353,6 @@ function EditStudentDialog({ student, open, onOpenChange, refreshData, students 
                             </select>
                         </div>
 
-                        {/* Roll No */}
                         <div>
                             <label className={labelClass}>Roll No</label>
                             <input type="number" className={inputClass}
@@ -374,7 +362,6 @@ function EditStudentDialog({ student, open, onOpenChange, refreshData, students 
                             {errors.rollNo && <p className="text-red-500 text-xs mt-1">{errors.rollNo.message}</p>}
                         </div>
 
-                        {/* Year */}
                         <div>
                             <label className={labelClass}>Year</label>
                             <select className={inputClass} {...register("year")}>
@@ -383,7 +370,6 @@ function EditStudentDialog({ student, open, onOpenChange, refreshData, students 
                             </select>
                         </div>
 
-                        {/* Fee */}
                         <div>
                             <label className={labelClass}>Fee</label>
                             <div className="relative">
@@ -396,7 +382,6 @@ function EditStudentDialog({ student, open, onOpenChange, refreshData, students 
                             {errors.fee && <p className="text-red-500 text-xs mt-1">{errors.fee.message}</p>}
                         </div>
 
-                        {/* Address */}
                         <div>
                             <label className={labelClass}>Address</label>
                             <input className={inputClass} {...register("address")} />
@@ -415,7 +400,6 @@ function EditStudentDialog({ student, open, onOpenChange, refreshData, students 
                 </form>
             </DialogContent>
 
-            {/* Mini dialog: Add Course */}
             <Dialog open={addCourseOpen} onOpenChange={setAddCourseOpen}>
                 <DialogContent className="max-w-md bg-white rounded-2xl shadow-xl border-0 p-0 overflow-hidden z-[10001]">
                     <div className="bg-gradient-to-r from-purple-600 to-fuchsia-600 px-6 py-5">
