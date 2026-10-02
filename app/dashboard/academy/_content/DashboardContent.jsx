@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { useKindeBrowserClient } from '@kinde-oss/kinde-auth-nextjs'
 import MonthSelection from '@/app/dashboard/attendance/_components/MonthSelection'
 import CourseSelection from '../_components/CourseSelection'
@@ -11,19 +11,32 @@ import StatusList from '../_components/StatusList'
 import AttendanceChart from '../_components/AttendanceChart'
 import FeeSummaryCards from '../_components/FeeSummaryCards'
 
-const STORAGE_KEY = 'academy_dashboard_filters_v3'
+const STORAGE_KEY = 'academy_dashboard_filters_v4'
 
-const monthNameToKey = (name) => {
+const monthNameToNumber = (name) => {
   const map = {
     January: "01", February: "02", March: "03", April: "04",
     May: "05", June: "06", July: "07", August: "08",
     September: "09", October: "10", November: "11", December: "12",
   }
-  return map[name] || null
+  return map[name] || ""
+}
+
+const monthNameToKey = (name) => {
+  const num = monthNameToNumber(name)
+  return num ? `${num}/${new Date().getFullYear()}` : ""
+}
+
+const extractMonthNum = (raw) => {
+  if (!raw) return ""
+  const parts = String(raw).split(/[\/\-\.]/)
+  const m = parts[0]
+  if (!m) return ""
+  return m.padStart(2, "0")
 }
 
 export default function DashboardContent() {
-  const { user } = useKindeBrowserClient() || {}
+  const { user, isLoading } = useKindeBrowserClient() || {}
   const email = user?.email
 
   const [selectedMonth, setSelectedMonth] = useState('')
@@ -33,11 +46,11 @@ export default function DashboardContent() {
   const [selectedYear, setSelectedYear] = useState('')
 
   const [allStudents, setAllStudents] = useState([])
-  const [classStudents, setClassStudents] = useState([])
-  const [attendanceList, setAttendanceList] = useState([])
-  const [fees, setFees] = useState([])
+  const [allFees, setAllFees] = useState([])
+  const [attendanceRaw, setAttendanceRaw] = useState([])
   const [hydrated, setHydrated] = useState(false)
 
+  // Restore filters
   useEffect(() => {
     try {
       const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}')
@@ -61,7 +74,7 @@ export default function DashboardContent() {
     }))
   }, [selectedMonth, selectedCourse, selectedSection, selectedBatch, selectedYear, hydrated])
 
-  // All academy students (for total count)
+  // Load ALL students once
   useEffect(() => {
     if (!email) return
     fetch(`/api/academy/student?email=${encodeURIComponent(email)}`, { cache: 'no-store' })
@@ -70,73 +83,54 @@ export default function DashboardContent() {
       .catch(() => {})
   }, [email])
 
-  // Class students (course + section + batch + year)
+  // Load ALL fees once
   useEffect(() => {
     if (!email) return
-    if (!selectedCourse) { setClassStudents([]); return }
-    fetch(`/api/academy/student?email=${encodeURIComponent(email)}`, { cache: 'no-store' })
+    fetch(`/api/academy/fees?orgEmail=${encodeURIComponent(email)}`, { cache: 'no-store' })
       .then(r => r.json())
-      .then(d => {
-        if (d.success) {
-          let list = d.students || []
-          list = list.filter(s => s.subject === selectedCourse)
-          if (selectedSection) list = list.filter(s => s.section === selectedSection)
-          if (selectedBatch) list = list.filter(s => s.batchNo === selectedBatch)
-          if (selectedYear) list = list.filter(s => String(s.year) === String(selectedYear))
-          setClassStudents(list)
-        }
-      })
+      .then(d => setAllFees(Array.isArray(d) ? d : []))
       .catch(() => {})
-  }, [email, selectedCourse, selectedSection, selectedBatch, selectedYear])
+  }, [email])
 
-  // Attendance (flat list)
+  // Load attendance for the selected course+section+batch+year+month
   useEffect(() => {
     if (!email) return
-    if (!selectedMonth || !selectedCourse) { setAttendanceList([]); return }
+    if (!selectedMonth || !selectedCourse) { setAttendanceRaw([]); return }
 
-    const monthNum = monthNameToKey(selectedMonth)
-    const monthKey = monthNum
-      ? `${monthNum}/${new Date().getFullYear()}`
-      : selectedMonth
-
-    const params = new URLSearchParams({
-      email,
-      course: selectedCourse,
-      month: monthKey,
-    })
+    const monthKey = monthNameToKey(selectedMonth)
+    const params = new URLSearchParams({ email, course: selectedCourse, month: monthKey })
     if (selectedSection) params.append('section', selectedSection)
     if (selectedBatch) params.append('batch', selectedBatch)
     if (selectedYear) params.append('year', selectedYear)
 
     fetch(`/api/academy/attendance/flat?${params.toString()}`, { cache: 'no-store' })
       .then(r => r.json())
-      .then(data => setAttendanceList(Array.isArray(data) ? data : []))
-      .catch(() => setAttendanceList([]))
+      .then(data => setAttendanceRaw(Array.isArray(data) ? data : []))
+      .catch(() => setAttendanceRaw([]))
   }, [email, selectedMonth, selectedCourse, selectedSection, selectedBatch, selectedYear])
 
-  // Fees (for the selected month + filters)
-  useEffect(() => {
-    if (!email) return
-    if (!selectedMonth || !selectedCourse) { setFees([]); return }
+  const monthNum = selectedMonth ? monthNameToNumber(selectedMonth) : ""
 
-    const monthNum = monthNameToKey(selectedMonth)
-    const monthKey = monthNum
-      ? `${monthNum}/${new Date().getFullYear()}`
-      : selectedMonth
+  // Filtered students
+  const classStudents = useMemo(() => {
+    if (!selectedCourse) return []
+    let list = allStudents.filter(s => s.subject === selectedCourse)
+    if (selectedSection) list = list.filter(s => s.section === selectedSection)
+    if (selectedBatch) list = list.filter(s => s.batchNo === selectedBatch)
+    if (selectedYear) list = list.filter(s => String(s.year) === String(selectedYear))
+    return list
+  }, [allStudents, selectedCourse, selectedSection, selectedBatch, selectedYear])
 
-    const params = new URLSearchParams({
-      orgEmail: email,
-      course: selectedCourse,
-      month: monthKey,
-    })
-    if (selectedSection) params.append('section', selectedSection)
-    if (selectedYear) params.append('year', selectedYear)
-
-    fetch(`/api/academy/fees?${params.toString()}`, { cache: 'no-store' })
-      .then(r => r.json())
-      .then(data => setFees(Array.isArray(data) ? data : []))
-      .catch(() => setFees([]))
-  }, [email, selectedMonth, selectedCourse, selectedSection, selectedYear])
+  // Filtered fees for selected month
+  const monthFees = useMemo(() => {
+    if (!monthNum) return []
+    let list = allFees.filter(f => extractMonthNum(f.month) === monthNum)
+    if (selectedCourse) list = list.filter(f => f.course === selectedCourse)
+    if (selectedSection) list = list.filter(f => f.section === selectedSection)
+    if (selectedBatch) list = list.filter(f => f.batchNo === selectedBatch)
+    if (selectedYear) list = list.filter(f => String(f.year) === String(selectedYear))
+    return list
+  }, [allFees, monthNum, selectedCourse, selectedSection, selectedBatch, selectedYear])
 
   return (
     <div className="p-8 bg-slate-50 min-h-screen">
@@ -147,6 +141,7 @@ export default function DashboardContent() {
         </div>
       </div>
 
+      {/* Filters */}
       <div className="bg-white border rounded-2xl shadow-sm p-4 mb-6 flex flex-wrap items-center gap-3">
         <div className="flex items-center gap-2">
           <label className="text-sm font-medium text-slate-600">Month</label>
@@ -186,19 +181,19 @@ export default function DashboardContent() {
       <StatusList
         allStudents={allStudents}
         classStudents={classStudents}
-        attendanceList={attendanceList}
+        attendanceList={attendanceRaw}
         selectedMonth={selectedMonth}
         selectedCourse={selectedCourse}
       />
 
       <FeeSummaryCards
         students={classStudents}
-        fees={fees}
+        fees={monthFees}
         monthLabel={selectedMonth}
       />
 
       <AttendanceChart
-        attendanceList={attendanceList}
+        attendanceList={attendanceRaw}
         selectedMonth={selectedMonth}
       />
     </div>
