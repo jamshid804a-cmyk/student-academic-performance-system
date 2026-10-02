@@ -42,7 +42,7 @@ export default function TeacherPublicPage() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50">
         <div className="text-center">
-          <Loader2 className="w-10 h-10 text-indigo-600 animate-spin mx-auto" />
+          <Loader2 className="w-10 h-10 text-purple-600 animate-spin mx-auto" />
           <p className="mt-3 text-slate-500 text-sm">Loading your portal...</p>
         </div>
       </div>
@@ -69,47 +69,31 @@ export default function TeacherPublicPage() {
   }
 
   const isAcademy = teacher.program === "academy"
+  const classChips = Array.isArray(teacher.classes) ? teacher.classes : []
 
-  // Format teacher's classes / courses
-  const classChips = Array.isArray(teacher.classes) && teacher.classes.length > 0
-    ? teacher.classes
-    : []
-
-  // Academy: only Attendance for now
-  // School: Attendance + Testing + Examination
-  const sections = isAcademy
-    ? [
-        {
-          title: "Attendance",
-          description: "Mark daily student attendance for your courses",
-          icon: ClipboardCheck,
-          color: "sky",
-          href: `/teacher/${token}/attendance`,
-        },
-      ]
-    : [
-        {
-          title: "Attendance",
-          description: "Mark daily student attendance for your classes",
-          icon: ClipboardCheck,
-          color: "sky",
-          href: `/teacher/${token}/attendance`,
-        },
-        {
-          title: "Testing",
-          description: "Enter monthly, weekly, and daily test marks",
-          icon: FlaskConical,
-          color: "indigo",
-          href: `/teacher/${token}/testing`,
-        },
-        {
-          title: "Examination",
-          description: "Enter Mid Term and Final Term exam marks",
-          icon: FileText,
-          color: "purple",
-          href: `/teacher/${token}/examination`,
-        },
-      ]
+  const sections = [
+    {
+      title: "Attendance",
+      description: "Mark daily student attendance for your classes",
+      icon: ClipboardCheck,
+      color: "sky",
+      href: `/teacher/${token}/attendance`,
+    },
+    {
+      title: "Testing",
+      description: "Enter monthly, weekly, and daily test marks",
+      icon: FlaskConical,
+      color: "indigo",
+      href: `/teacher/${token}/testing`,
+    },
+    {
+      title: "Examination",
+      description: "Enter Mid Term and Final Term exam marks",
+      icon: FileText,
+      color: "purple",
+      href: `/teacher/${token}/examination`,
+    },
+  ]
 
   const colorMap = {
     sky: "from-sky-500 to-cyan-600",
@@ -117,7 +101,6 @@ export default function TeacherPublicPage() {
     purple: "from-purple-500 to-pink-600",
   }
 
-  // Theme colors
   const headerBg = isAcademy
     ? "bg-gradient-to-r from-purple-700 via-fuchsia-700 to-pink-700"
     : "bg-gradient-to-r from-indigo-700 via-purple-700 to-pink-700"
@@ -128,7 +111,6 @@ export default function TeacherPublicPage() {
 
   return (
     <div className={`min-h-screen ${bodyBg}`}>
-      {/* Header */}
       <div className={`${headerBg} text-white`}>
         <div className="max-w-5xl mx-auto px-6 py-10">
           <div className="flex items-center gap-4">
@@ -141,14 +123,11 @@ export default function TeacherPublicPage() {
               </p>
               <h1 className="text-3xl font-bold mt-1">{teacher.name}</h1>
               <p className="text-white/90 text-sm mt-1">
-                {teacher.teacherId}
-                {teacher.subject ? ` · ${teacher.subject}` : ""}
-                {teacher.qualification ? ` · ${teacher.qualification}` : ""}
+                {teacher.teacherId} · Master
               </p>
             </div>
           </div>
 
-          {/* Class / Course chips */}
           {classChips.length > 0 && (
             <div className="flex flex-wrap gap-2 mt-5">
               <span className="text-xs font-semibold text-white/80 mr-1 self-center">
@@ -169,18 +148,15 @@ export default function TeacherPublicPage() {
         </div>
       </div>
 
-      {/* Body */}
       <div className="max-w-5xl mx-auto px-6 py-10">
         <div className="mb-8">
-          <h2 className="text-lg font-bold text-slate-800">
-            {isAcademy ? "Your Sections" : "Your Sections"}
-          </h2>
+          <h2 className="text-lg font-bold text-slate-800">Your Sections</h2>
           <p className="text-sm text-slate-500 mt-1">
             Open any section to manage your {isAcademy ? "courses" : "classes"}.
           </p>
         </div>
 
-        <div className={`grid grid-cols-1 gap-5 ${isAcademy ? "md:grid-cols-1 max-w-md" : "md:grid-cols-3"}`}>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
           {sections.map((s) => {
             const Icon = s.icon
             return (
@@ -211,7 +187,6 @@ export default function TeacherPublicPage() {
           })}
         </div>
 
-        {/* Students summary */}
         <div className="mt-10 bg-white rounded-2xl shadow-md border border-slate-100 p-6">
           <div className="flex items-center gap-3">
             <div className={`w-10 h-10 rounded-xl ${isAcademy ? "bg-purple-50 text-purple-600" : "bg-indigo-50 text-indigo-600"} flex items-center justify-center`}>
@@ -222,7 +197,7 @@ export default function TeacherPublicPage() {
                 {students.length} student{students.length === 1 ? "" : "s"} in your {isAcademy ? "courses" : "classes"}
               </p>
               <p className="text-xs text-slate-500">
-                These students appear in Attendance{isAcademy ? "" : ", Testing, and Examination"}.
+                These students appear in Attendance, Testing, and Examination.
               </p>
             </div>
           </div>
