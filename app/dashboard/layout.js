@@ -7,7 +7,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import { ProgramProvider, useProgram } from "@/src/context/ProgramContext"
 import GlobalApi from "@/app/_services/GlobalApi"
 
-// ✅ Load SideNav and Header ONLY on the client — they use Kinde/Theme contexts
+// ✅ Load SideNav and Header ONLY on the client
 const SideNav = dynamic(() => import('./_component/SideNav'), { ssr: false })
 const Header = dynamic(() => import('./_component/Header'), { ssr: false })
 
@@ -19,9 +19,6 @@ function DashboardLayout({ children }) {
   )
 }
 
-// ─────────────────────────────────────────────
-// Runs the section-status check + renders the shell
-// ─────────────────────────────────────────────
 function GuardAndShell({ children }) {
   const router = useRouter()
   const path = usePathname()
@@ -30,7 +27,6 @@ function GuardAndShell({ children }) {
   const [checked, setChecked] = useState(false)
   const [sections, setSections] = useState(null)
 
-  // Fetch section state
   useEffect(() => {
     let cancelled = false
     GlobalApi.GetOrgSections()
@@ -47,7 +43,6 @@ function GuardAndShell({ children }) {
     }
   }, [path])
 
-  // Enforcement logic
   useEffect(() => {
     if (!checked || !sections || !programHydrated) return
 
@@ -58,55 +53,68 @@ function GuardAndShell({ children }) {
       path?.startsWith('/admin')
     if (bypass) return
 
-    // Owner bypasses all
     if (sections.isOwner) return
 
     const pkg = sections.package || 'school'
     const sActive = sections.schoolSection?.active === true
     const aActive = sections.academySection?.active === true
 
-    // ─── Nothing active anywhere ───
+    // ─── Step 1: If the current program doesn't belong to the org's package,
+    //              auto-correct it before doing any redirect. ───
+    let corrected = program
+
+    // Package is academy-only → force academy
+    if (pkg === 'academy') {
+      if (program !== 'academy') {
+        setProgram('academy')
+        corrected = 'academy'
+      }
+    }
+    // Package is school-only → force school
+    else if (pkg === 'school') {
+      if (program !== 'school') {
+        setProgram('school')
+        corrected = 'school'
+      }
+    }
+    // Package is both → if current program is inactive but the other is active, switch
+    else if (pkg === 'both') {
+      if (program === 'school' && !sActive && aActive) {
+        setProgram('academy')
+        corrected = 'academy'
+      } else if (program === 'academy' && !aActive && sActive) {
+        setProgram('school')
+        corrected = 'school'
+      }
+    }
+
+    // ─── Step 2: With corrected program, decide if we must redirect. ───
+
+    // Nothing active anywhere
     if (!sActive && !aActive) {
-      // School-only → old page
       if (pkg === 'school') {
         router.replace('/payment-due')
-        return
+      } else {
+        router.replace('/dashboard/no-section')
       }
-      // Academy-only or Both → new no-section page
-      router.replace('/dashboard/no-section')
       return
     }
 
-    // ─── Current program is ACADEMY ───
-    if (program === 'academy') {
-      if (!aActive) {
-        // Academy not usable. If school is usable, auto-switch to school.
-        if (sActive && (pkg === 'both' || pkg === 'school')) {
-          setProgram('school')
-          return
-        }
-        // Otherwise go to academy pay page
-        router.replace('/dashboard/pay/academy')
-        return
-      }
-      // Academy active → OK
+    // Current (corrected) program is academy but academy is not active
+    if (corrected === 'academy' && !aActive) {
+      router.replace('/dashboard/pay/academy')
       return
     }
 
-    // ─── Current program is SCHOOL ───
-    if (program === 'school') {
-      if (!sActive) {
-        // School not usable.
-        if (pkg === 'both' && aActive) {
-          // Auto-switch to Academy
-          setProgram('academy')
-          return
-        }
-        // School-only or both-with-academy-dead → old payment-due page
-        router.replace('/payment-due')
+    // Current (corrected) program is school but school is not active
+    if (corrected === 'school' && !sActive) {
+      // If academy is available, switch there instead
+      if (aActive) {
+        setProgram('academy')
         return
       }
-      // School active → OK
+      router.replace('/payment-due')
+      return
     }
   }, [checked, sections, program, programHydrated, path, router, setProgram])
 
