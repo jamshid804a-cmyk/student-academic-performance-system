@@ -3,8 +3,8 @@
 import dynamic from "next/dynamic"
 import { Loader2 } from "lucide-react"
 
-const AcademyHomeContent = dynamic(
-  () => import("./_component/AcademyHomeContent"),
+const DashboardContent = dynamic(
+  () => import("./_content/DashboardContent"),
   {
     ssr: false,
     loading: () => (
@@ -16,5 +16,5 @@ const AcademyHomeContent = dynamic(
 )
 
 export default function AcademyHomePage() {
-  return <AcademyHomeContent />
+  return <DashboardContent />
 }
