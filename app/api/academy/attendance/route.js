@@ -89,6 +89,7 @@ export async function GET(req) {
       studentId: s.id,
       name: s.name,
       course: s.subject,
+      grade: s.subject,
       section: s.section,
       year: s.year,
       rollNo: s.rollNo ?? null,
