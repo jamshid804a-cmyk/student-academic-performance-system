@@ -22,29 +22,27 @@ const MONTHS = [
   "July","August","September","October","November","December"
 ]
 
-const STORAGE_KEY = "academy_fee_filters_v2"
+const STORAGE_KEY = "academy_fee_filters_v3"
 
-const monthNameToKey = (name) => {
+const monthNameToNumber = (name) => {
   const map = {
     January: "01", February: "02", March: "03", April: "04",
     May: "05", June: "06", July: "07", August: "08",
     September: "09", October: "10", November: "11", December: "12",
   }
-  return `${map[name]}/${new Date().getFullYear()}`
+  return map[name] || ""
 }
 
-const MONTH_NAMES = ["January","February","March","April","May","June","July","August","September","October","November","December"]
+// Extract month number ("01") from any format: "01/2026", "1/2026", "01-2026", etc.
+const extractMonthNum = (raw) => {
+  if (!raw) return ""
+  const parts = String(raw).split(/[\/\-\.]/)
+  const m = parts[0]
+  if (!m) return ""
+  return m.padStart(2, "0")
+}
 
 const FILTER_CLASS = "px-3 py-2 rounded-lg border border-gray-300 bg-white text-sm text-slate-800 outline-none focus:border-purple-500 transition"
-
-function monthNumToKey(monthNum, year) {
-  return `${String(monthNum).padStart(2, "0")}/${year}`
-}
-
-function monthKeyToNum(monthKey) {
-  const parts = String(monthKey).split("/")
-  return Number(parts[0])
-}
 
 export default function FeeManagementContent() {
   const { user, isLoading } = useKindeBrowserClient() || {}
@@ -57,13 +55,11 @@ export default function FeeManagementContent() {
   const [month, setMonth] = useState("")
 
   const [courses, setCourses] = useState([])
-  const [students, setStudents] = useState([])
-  const [payments, setPayments] = useState([])
-  const [allPayments, setAllPayments] = useState([])
+  const [allStudents, setAllStudents] = useState([])
+  const [allFees, setAllFees] = useState([])
   const [schoolInfo, setSchoolInfo] = useState(null)
   const [loading, setLoading] = useState(false)
   const [hydrated, setHydrated] = useState(false)
-  const debounceRef = useRef(null)
   const reqRef = useRef(0)
 
   const [payDialog, setPayDialog] = useState(null)
@@ -101,102 +97,97 @@ export default function FeeManagementContent() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({ course, section, batchNo, year, month }))
   }, [course, section, batchNo, year, month, hydrated])
 
+  // Fetch ALL students + ALL fees ONCE — filter locally after
   const fetchAll = useCallback(async () => {
-    if (!orgEmail || !course || !month) {
-      setStudents([]); setPayments([]); setAllPayments([]); return
-    }
+    if (!orgEmail) return
     const reqId = ++reqRef.current
     setLoading(true)
     try {
-      const monthKey = monthNameToKey(month)
-
-      // Students
-      const studentResp = await fetch(
-        `/api/academy/student?email=${encodeURIComponent(orgEmail)}`,
-        { cache: 'no-store' }
-      ).then(r => r.json()).then(d => d.students || [])
-
-      let filtered = studentResp.filter(s => s.subject === course)
-      if (section) filtered = filtered.filter(s => s.section === section)
-      if (batchNo) filtered = filtered.filter(s => s.batchNo === batchNo)
-      if (year) filtered = filtered.filter(s => String(s.year) === String(year))
-
-      // Month fees — pass month as encoded param to be safe
-      const monthParams = new URLSearchParams()
-      monthParams.append('orgEmail', orgEmail)
-      monthParams.append('course', course)
-      monthParams.append('month', monthKey)
-      if (section) monthParams.append('section', section)
-      if (batchNo) monthParams.append('batchNo', batchNo)
-      if (year) monthParams.append('year', year)
-
-      const monthFees = await fetch(
-        `/api/academy/fees?${monthParams.toString()}`,
-        { cache: 'no-store' }
-      ).then(r => r.json())
-
-      // All fees
-      const allParams = new URLSearchParams()
-      allParams.append('orgEmail', orgEmail)
-      allParams.append('course', course)
-      if (section) allParams.append('section', section)
-      if (batchNo) allParams.append('batchNo', batchNo)
-      if (year) allParams.append('year', year)
-      const allFees = await fetch(
-        `/api/academy/fees?${allParams.toString()}`,
-        { cache: 'no-store' }
-      ).then(r => r.json())
+      const [studentResp, feesResp] = await Promise.all([
+        fetch(`/api/academy/student?email=${encodeURIComponent(orgEmail)}`, { cache: 'no-store' })
+          .then(r => r.json())
+          .then(d => d.students || []),
+        fetch(`/api/academy/fees?orgEmail=${encodeURIComponent(orgEmail)}`, { cache: 'no-store' })
+          .then(r => r.json()),
+      ])
 
       if (reqId !== reqRef.current) return
 
-      console.log("[FEE] fetchAll URL:", monthParams.toString())
-      console.log("[FEE] fetchAll monthKey:", monthKey)
-      console.log("[FEE] fetchAll monthFees count:", (monthFees || []).length)
-      console.log("[FEE] fetchAll monthFees raw:", monthFees)
+      console.log("[FEE] all students:", studentResp.length)
+      console.log("[FEE] all fees:", Array.isArray(feesResp) ? feesResp.length : feesResp)
+      console.log("[FEE] fees raw:", feesResp)
 
-      setStudents(filtered)
-      setPayments(Array.isArray(monthFees) ? monthFees : [])
-      setAllPayments(Array.isArray(allFees) ? allFees : [])
+      setAllStudents(studentResp)
+      setAllFees(Array.isArray(feesResp) ? feesResp : [])
     } catch (err) {
       console.error(err)
       toast.error("Failed to load")
     } finally {
       if (reqId === reqRef.current) setLoading(false)
     }
-  }, [orgEmail, course, section, batchNo, year, month])
+  }, [orgEmail])
 
   useEffect(() => {
-    if (!hydrated) return
-    if (debounceRef.current) clearTimeout(debounceRef.current)
-    debounceRef.current = setTimeout(fetchAll, 150)
-    return () => debounceRef.current && clearTimeout(debounceRef.current)
-  }, [fetchAll, hydrated])
+    if (orgEmail && hydrated) fetchAll()
+  }, [orgEmail, hydrated, fetchAll])
 
-  const monthKey = month ? monthNameToKey(month) : ""
+  const monthKeyNum = month ? monthNameToNumber(month) : ""
+
+  // ─── Filtered students ───
+  const students = useMemo(() => {
+    let list = allStudents
+    if (course) list = list.filter(s => s.subject === course)
+    if (section) list = list.filter(s => s.section === section)
+    if (batchNo) list = list.filter(s => s.batchNo === batchNo)
+    if (year) list = list.filter(s => String(s.year) === String(year))
+    return list
+  }, [allStudents, course, section, batchNo, year])
+
+  // ─── Filtered fees (for the selected month) ───
+  const monthFees = useMemo(() => {
+    if (!monthKeyNum) return []
+    const currentYear = new Date().getFullYear()
+    let list = allFees
+    // Match month number only (ignore year inside month key for flexibility)
+    list = list.filter(f => extractMonthNum(f.month) === monthKeyNum)
+    if (course) list = list.filter(f => f.course === course)
+    if (section) list = list.filter(f => f.section === section)
+    if (batchNo) list = list.filter(f => f.batchNo === batchNo)
+    if (year) list = list.filter(f => String(f.year) === String(year))
+    return list
+  }, [allFees, monthKeyNum, course, section, batchNo, year])
+
+  // ─── All fees for the current org+course (for "previous months") ───
+  const allFilteredFees = useMemo(() => {
+    let list = allFees
+    if (course) list = list.filter(f => f.course === course)
+    if (section) list = list.filter(f => f.section === section)
+    if (batchNo) list = list.filter(f => f.batchNo === batchNo)
+    if (year) list = list.filter(f => String(f.year) === String(year))
+    return list
+  }, [allFees, course, section, batchNo, year])
 
   const paymentsByStudent = useMemo(() => {
     const map = {}
-    payments.forEach((p) => {
+    monthFees.forEach((p) => {
       const sid = String(p.studentId)
       if (!map[sid]) map[sid] = []
       map[sid].push(p)
     })
-    console.log("[FEE] grouped keys:", Object.keys(map))
     return map
-  }, [payments])
+  }, [monthFees])
 
   const allPaymentsByStudent = useMemo(() => {
     const map = {}
-    allPayments.forEach((p) => {
+    allFilteredFees.forEach((p) => {
       const sid = String(p.studentId)
       if (!map[sid]) map[sid] = []
       map[sid].push(p)
     })
     return map
-  }, [allPayments])
+  }, [allFilteredFees])
 
   const rows = useMemo(() => {
-    console.log("[FEE] student ids:", students.map(s => String(s.id)))
     return students.map((s) => {
       const sid = String(s.id)
       const list = paymentsByStudent[sid] || []
@@ -218,6 +209,8 @@ export default function FeeManagementContent() {
     const pending = rows.reduce((sum, r) => sum + r.pending, 0)
     return { totalStudents, paidCount, partialCount, unpaidCount, expected, collected, pending }
   }, [rows])
+
+  const monthKey = month ? `${monthKeyNum}/${new Date().getFullYear()}` : ""
 
   const handleSendAll = async () => {
     const toRemind = rows.filter((r) => r.status !== "Paid").map((r) => r.student.id)
@@ -264,23 +257,20 @@ export default function FeeManagementContent() {
     const sid = String(row.student.id)
     const y = Number(row.student.year) || new Date().getFullYear()
     const monthlyFee = Number(row.student.fee || row.student.monthlyFee || 0)
-    const currentMonthNum = month ? Number(monthNameToKey(month).split("/")[0]) : 12
     const all = allPaymentsByStudent[sid] || []
-    const paidByMonth = {}
+    const paidByMonthNum = {}
     all.forEach((p) => {
-      const key = String(p.month || "")
-      if (!key) return
-      const num = monthKeyToNum(key)
-      if (num < 1 || num > 12) return
-      if (!paidByMonth[key]) paidByMonth[key] = 0
-      paidByMonth[key] += Number(p.amount || 0)
+      const num = extractMonthNum(p.month)
+      if (!num) return
+      paidByMonthNum[num] = (paidByMonthNum[num] || 0) + Number(p.amount || 0)
     })
     const list = []
-    for (let num = 1; num < currentMonthNum; num++) {
-      const key = monthNumToKey(num, y)
-      const paid = paidByMonth[key] || 0
+    const currentNum = monthKeyNum ? Number(monthKeyNum) : 12
+    for (let num = 1; num < currentNum; num++) {
+      const key = String(num).padStart(2, "0")
+      const paid = paidByMonthNum[key] || 0
       const short = Math.max(0, monthlyFee - paid)
-      if (short > 0) list.push({ label: MONTH_NAMES[num - 1], monthKey: key, paid, short })
+      if (short > 0) list.push({ label: MONTHS[num - 1], monthKey: `${key}/${y}`, paid, short })
     }
     return list
   }
@@ -339,7 +329,6 @@ export default function FeeManagementContent() {
         <td>${r.status}</td>
       </tr>
     `).join("")
-
     w.document.write(`
       <html><head><title>Academy Fee Report</title>
       <style>
@@ -368,7 +357,7 @@ export default function FeeManagementContent() {
 
   const handleAfterPay = () => {
     setPayDialog(null)
-    setTimeout(() => fetchAll(), 300)
+    setTimeout(() => fetchAll(), 400)
   }
 
   if (isLoading || !orgEmail || !hydrated) {
