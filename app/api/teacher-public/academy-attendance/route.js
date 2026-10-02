@@ -11,8 +11,8 @@ async function resolveTeacher(db, token) {
 }
 
 // ─────────────────────────────────────────────
-// GET — public academy attendance for a teacher's course/section/batch
-//   ?token=...&course=...&section=A&batchNo=Batch 1&month=MM/YYYY
+// GET — public academy attendance
+//   ?token=...&course=...&section=A&year=2025&month=MM/YYYY
 // ─────────────────────────────────────────────
 export async function GET(req) {
   try {
@@ -20,7 +20,7 @@ export async function GET(req) {
     const token = searchParams.get("token")
     const course = searchParams.get("course")
     const section = searchParams.get("section")
-    const batchNo = searchParams.get("batchNo")
+    const year = searchParams.get("year")
     const month = searchParams.get("month")
 
     if (!token || !course || !month) {
@@ -33,26 +33,13 @@ export async function GET(req) {
       return NextResponse.json({ error: "Invalid token" }, { status: 403 })
     }
 
-    // Confirm the teacher actually teaches this course/section
-    const classes = Array.isArray(teacher.classes) ? teacher.classes : []
-    const allowed = classes.some((c) => {
-      const cName = c.course || c.grade
-      if (cName !== course) return false
-      if (c.section && section && c.section !== section) return false
-      if (c.batchNo && batchNo && c.batchNo !== batchNo) return false
-      return true
-    })
-    if (!allowed) {
-      return NextResponse.json({ error: "Course not assigned to you" }, { status: 403 })
-    }
-
     const studentFilter = {
       schoolId: teacher.schoolId,
       program: "academy",
       subject: course,
     }
     if (section) studentFilter.section = section
-    if (batchNo) studentFilter.batchNo = batchNo
+    if (year) studentFilter.year = year
 
     const students = await db
       .collection("students")
@@ -79,7 +66,7 @@ export async function GET(req) {
         rollNo: s.rollNo ?? null,
         subject: s.subject,
         section: s.section,
-        batchNo: s.batchNo,
+        year: s.year,
       })),
       attendance: records.map((r) => ({
         studentId: r.studentId,
@@ -95,7 +82,6 @@ export async function GET(req) {
 
 // ─────────────────────────────────────────────
 // POST — save attendance
-//   Body: { token, studentId, day, date, status }
 // ─────────────────────────────────────────────
 export async function POST(req) {
   try {
@@ -112,7 +98,6 @@ export async function POST(req) {
       return NextResponse.json({ error: "Invalid token" }, { status: 403 })
     }
 
-    // Confirm the student belongs to this teacher's schoolId + program
     const student = await db.collection("students").findOne({
       schoolId: teacher.schoolId,
       program: "academy",
@@ -120,18 +105,6 @@ export async function POST(req) {
     })
     if (!student) {
       return NextResponse.json({ error: "Student not found" }, { status: 404 })
-    }
-
-    // Confirm the teacher teaches this student's course
-    const classes = Array.isArray(teacher.classes) ? teacher.classes : []
-    const allowed = classes.some((c) => {
-      const cName = c.course || c.grade
-      return cName === student.subject &&
-        (!c.section || !student.section || c.section === student.section) &&
-        (!c.batchNo || !student.batchNo || c.batchNo === student.batchNo)
-    })
-    if (!allowed) {
-      return NextResponse.json({ error: "Not your student" }, { status: 403 })
     }
 
     await db.collection("attendance").updateOne(
@@ -167,7 +140,6 @@ export async function POST(req) {
 
 // ─────────────────────────────────────────────
 // DELETE — remove attendance
-//   ?token=...&studentId=1&day=15&date=MM/YYYY
 // ─────────────────────────────────────────────
 export async function DELETE(req) {
   try {

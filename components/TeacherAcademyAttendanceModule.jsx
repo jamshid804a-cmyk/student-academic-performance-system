@@ -1,13 +1,18 @@
 "use client"
 
 import React, { useEffect, useState, useMemo, useCallback } from "react"
-import { Loader2, ClipboardCheck, Users, Send, X } from "lucide-react"
+import { Loader2, Users, Send, X } from "lucide-react"
 import { toast } from "sonner"
 
 const MONTHS = [
   "January","February","March","April","May","June",
   "July","August","September","October","November","December"
 ]
+const SECTIONS = ["A", "B", "C"]
+const START_YEAR = 2025
+const END_YEAR = new Date().getFullYear() + 30
+const YEARS = []
+for (let y = START_YEAR; y <= END_YEAR; y++) YEARS.push(String(y))
 
 const monthNameToKey = (name) => {
   const map = {
@@ -34,11 +39,14 @@ const getDaysInMonth = (monthName) => {
 
 const RISK_THRESHOLD = 75
 
-export default function TeacherAcademyAttendanceModule({ teacher, allowedClasses = [], token }) {
+export default function TeacherAcademyAttendanceModule({ teacher, token }) {
   const [course, setCourse] = useState("")
   const [section, setSection] = useState("")
-  const [batchNo, setBatchNo] = useState("")
+  const [year, setYear] = useState("")
   const [month, setMonth] = useState(MONTHS[new Date().getMonth()])
+
+  const [courses, setCourses] = useState([])
+  const [coursesLoading, setCoursesLoading] = useState(true)
   const [loading, setLoading] = useState(false)
   const [students, setStudents] = useState([])
   const [attendance, setAttendance] = useState({})
@@ -50,25 +58,30 @@ export default function TeacherAcademyAttendanceModule({ teacher, allowedClasses
 
   const daysInMonth = useMemo(() => month ? getDaysInMonth(month) : 31, [month])
 
-  const classCombos = useMemo(() => {
-    return (allowedClasses || [])
-      .filter((c) => c && (c.course || c.grade))
-      .map((c, i) => ({
-        id: i,
-        course: c.course || c.grade,
-        section: c.section || "",
-        batchNo: c.batchNo || "",
-      }))
-  }, [allowedClasses])
-
+  // Load all courses via public endpoint
   useEffect(() => {
-    if (classCombos.length > 0 && !course) {
-      const first = classCombos[0]
-      setCourse(first.course)
-      setSection(first.section)
-      setBatchNo(first.batchNo)
+    if (!token) return
+    setCoursesLoading(true)
+    fetch(`/api/teacher-public/courses?token=${encodeURIComponent(token)}`, { cache: 'no-store' })
+      .then(r => r.json())
+      .then(d => { if (d.success) setCourses(d.courses || []) })
+      .catch(() => {})
+      .finally(() => setCoursesLoading(false))
+  }, [token])
+
+  // Auto-select first course from teacher's assigned classes
+  useEffect(() => {
+    if (courses.length === 0 || course) return
+    const assigned = Array.isArray(teacher?.classes) ? teacher.classes : []
+    if (assigned.length > 0) {
+      const first = assigned[0]
+      const courseName = first.course || first.grade
+      if (courseName) {
+        setCourse(courseName)
+        if (first.section) setSection(first.section)
+      }
     }
-  }, [classCombos])
+  }, [courses, teacher, course])
 
   const fetchAll = useCallback(async () => {
     if (!token || !course || !month) {
@@ -79,7 +92,7 @@ export default function TeacherAcademyAttendanceModule({ teacher, allowedClasses
       const monthKey = monthNameToKey(month)
       const params = new URLSearchParams({ token, course, month: monthKey })
       if (section) params.append('section', section)
-      if (batchNo) params.append('batchNo', batchNo)
+      if (year) params.append('year', year)
 
       const res = await fetch(`/api/teacher-public/academy-attendance?${params.toString()}`, { cache: 'no-store' })
       const data = await res.json()
@@ -98,7 +111,7 @@ export default function TeacherAcademyAttendanceModule({ teacher, allowedClasses
       toast.error("Failed to load attendance")
     }
     setLoading(false)
-  }, [token, course, section, batchNo, month])
+  }, [token, course, section, year, month])
 
   useEffect(() => { fetchAll() }, [fetchAll])
 
@@ -124,7 +137,6 @@ export default function TeacherAcademyAttendanceModule({ teacher, allowedClasses
         })
       }
 
-      // Detect end-of-week → trigger risk box
       const lastDayOfWeek = Math.min(Math.ceil(day / 7) * 7, daysInMonth)
       const firstDayOfWeek = Math.floor((day - 1) / 7) * 7 + 1
       if (Number(day) === lastDayOfWeek) {
@@ -153,12 +165,10 @@ export default function TeacherAcademyAttendanceModule({ teacher, allowedClasses
     return "bg-slate-100 text-slate-400"
   }
 
-  // ─── At-risk students for the current week ───
   const atRiskStudents = useMemo(() => {
     if (!weekRange || students.length === 0) return []
     const { weekStart, weekEnd } = weekRange
     const totalDays = weekEnd - weekStart + 1
-
     const list = []
     students.forEach((s) => {
       const sid = String(s.id)
@@ -171,15 +181,9 @@ export default function TeacherAcademyAttendanceModule({ teacher, allowedClasses
       const pct = Math.round((present / totalDays) * 100)
       if (pct < RISK_THRESHOLD) {
         list.push({
-          studentId: sid,
-          name: s.name,
-          course: s.subject || course,
-          percentage: pct,
-          presentDays: present,
-          totalDays,
-          weekStart,
-          weekEnd,
-          presentDaysList: presentDays,
+          studentId: sid, name: s.name, course: s.subject || course,
+          percentage: pct, presentDays: present, totalDays,
+          weekStart, weekEnd, presentDaysList: presentDays,
         })
       }
     })
@@ -194,12 +198,7 @@ export default function TeacherAcademyAttendanceModule({ teacher, allowedClasses
       const res = await fetch("/api/teacher-public/notify", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          token,
-          studentId: student.studentId,
-          message,
-          type: "attendance",
-        }),
+        body: JSON.stringify({ token, studentId: student.studentId, message, type: "attendance" }),
       })
       const data = await res.json()
       if (data.success) {
@@ -225,30 +224,50 @@ export default function TeacherAcademyAttendanceModule({ teacher, allowedClasses
 
   return (
     <div className="max-w-6xl mx-auto px-4 pb-10">
+      {/* Filters */}
       <div className="bg-white border rounded-2xl shadow-sm p-4 mb-5 flex flex-wrap items-center gap-3">
         <div className="flex items-center gap-2">
           <label className="text-sm font-medium text-slate-600">Course</label>
-          <select className="border rounded-lg px-3 py-2 bg-white text-sm outline-none focus:border-purple-500"
-            value={`${course}__${section}__${batchNo}`}
-            onChange={(e) => {
-              const [c, s, b] = e.target.value.split("__")
-              setCourse(c); setSection(s); setBatchNo(b)
-            }}>
-            <option value="">Select Course</option>
-            {classCombos.map((c, i) => (
-              <option key={i} value={`${c.course}__${c.section}__${c.batchNo}`}>
-                {c.course}{c.section ? ` - ${c.section}` : ""}{c.batchNo ? ` · ${c.batchNo}` : ""}
-              </option>
+          <select
+            className="border rounded-lg px-3 py-2 bg-white text-sm outline-none focus:border-purple-500 min-w-[180px]"
+            value={course}
+            onChange={(e) => setCourse(e.target.value)}
+            disabled={coursesLoading}
+          >
+            <option value="">{coursesLoading ? "Loading…" : "Select Course"}</option>
+            {courses.map((c) => (
+              <option key={c._id} value={c.name}>{c.name}</option>
             ))}
           </select>
         </div>
+
+        <div className="flex items-center gap-2">
+          <label className="text-sm font-medium text-slate-600">Section</label>
+          <select className="border rounded-lg px-3 py-2 bg-white text-sm outline-none focus:border-purple-500"
+            value={section} onChange={(e) => setSection(e.target.value)}>
+            <option value="">All Sections</option>
+            {SECTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
+          </select>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <label className="text-sm font-medium text-slate-600">Year</label>
+          <select className="border rounded-lg px-3 py-2 bg-white text-sm outline-none focus:border-purple-500"
+            value={year} onChange={(e) => setYear(e.target.value)}>
+            <option value="">All Years</option>
+            {YEARS.map((y) => <option key={y} value={y}>{y}</option>)}
+          </select>
+        </div>
+
         <div className="flex items-center gap-2">
           <label className="text-sm font-medium text-slate-600">Month</label>
           <select className="border rounded-lg px-3 py-2 bg-white text-sm outline-none focus:border-purple-500"
             value={month} onChange={(e) => setMonth(e.target.value)}>
+            <option value="">Select Month</option>
             {MONTHS.map((m) => <option key={m} value={m}>{m}</option>)}
           </select>
         </div>
+
         <button onClick={fetchAll}
           className="px-4 py-2 rounded-lg bg-purple-600 hover:bg-purple-700 text-white text-sm font-semibold">
           Refresh
@@ -263,7 +282,7 @@ export default function TeacherAcademyAttendanceModule({ teacher, allowedClasses
         <div className="bg-white border rounded-2xl p-12 text-center text-slate-400">
           <Users size={40} className="mx-auto mb-3 opacity-40" />
           <p className="text-base font-medium">No students found</p>
-          <p className="text-sm mt-1">Select a course and month</p>
+          <p className="text-sm mt-1">Select a Course and Month to load attendance</p>
         </div>
       ) : (
         <>
@@ -285,7 +304,7 @@ export default function TeacherAcademyAttendanceModule({ teacher, allowedClasses
                 <div className="flex items-center gap-2">
                   {atRiskStudents.filter((s) => !sentNotifications[s.studentId]).length > 0 && (
                     <button onClick={handleSendAll} disabled={sending}
-                      className="bg-red-500 hover:bg-red-600 text-white text-sm font-semibold py-2 px-4 rounded-lg transition-all disabled:opacity-50">
+                      className="bg-red-500 hover:bg-red-600 text-white text-sm font-semibold py-2 px-4 rounded-lg disabled:opacity-50">
                       {sending ? "Sending..." : "📱 Send All"}
                     </button>
                   )}
@@ -331,13 +350,11 @@ export default function TeacherAcademyAttendanceModule({ teacher, allowedClasses
                   {sentNotifications[st.studentId] ? (
                     <div className="mt-3 flex items-center gap-2 bg-green-50 rounded-lg p-2">
                       <span>✅</span>
-                      <p className="text-xs text-green-600 font-medium">
-                        Notification sent to parent
-                      </p>
+                      <p className="text-xs text-green-600 font-medium">Notification sent to parent</p>
                     </div>
                   ) : (
                     <button onClick={() => handleSendNotification(st)} disabled={sending}
-                      className="mt-3 w-full bg-red-500 hover:bg-red-600 text-white text-sm font-semibold py-2 px-4 rounded-lg transition-all disabled:opacity-50 flex items-center justify-center gap-2">
+                      className="mt-3 w-full bg-red-500 hover:bg-red-600 text-white text-sm font-semibold py-2 px-4 rounded-lg disabled:opacity-50 flex items-center justify-center gap-2">
                       {sending ? "Sending..." : <><Send size={14} /> Send Notification to Parent</>}
                     </button>
                   )}
@@ -346,7 +363,7 @@ export default function TeacherAcademyAttendanceModule({ teacher, allowedClasses
             </div>
           )}
 
-          {/* Attendance grid */}
+          {/* Grid */}
           <div className="bg-white rounded-2xl shadow-lg border overflow-hidden">
             <div className="h-1 bg-gradient-to-r from-purple-500 via-fuchsia-500 to-pink-500" />
             <div className="overflow-x-auto">
@@ -399,7 +416,7 @@ export default function TeacherAcademyAttendanceModule({ teacher, allowedClasses
               </table>
             </div>
             <div className="px-4 py-3 bg-slate-50 border-t text-xs text-slate-500">
-              Click any cell to cycle: <b>· → P → A → L → ·</b>. Changes save automatically. After the last day of each week, at-risk students appear above.
+              Click any cell to cycle: <b>· → P → A → L → ·</b>. Changes save automatically.
             </div>
           </div>
         </>
