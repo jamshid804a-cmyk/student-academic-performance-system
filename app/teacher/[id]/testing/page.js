@@ -6,6 +6,7 @@ import Link from "next/link"
 import { Loader2, ArrowLeft, FlaskConical } from "lucide-react"
 import GlobalApi from "@/app/_services/GlobalApi"
 import TestingModule from "@/components/TestingModule"
+import TeacherAcademyTestingModule from "@/components/TeacherAcademyTestingModule"
 
 export default function TeacherTestingPage() {
   const params = useParams()
@@ -52,47 +53,42 @@ export default function TeacherTestingPage() {
             href={`/teacher/${token}/public`}
             className="inline-block mt-4 text-indigo-600 font-semibold text-sm"
           >
-            ← Back to home
+            ← Back to portal
           </Link>
         </div>
       </div>
     )
   }
 
-  return (
-    <div className="min-h-screen bg-slate-50">
-      <div className="bg-gradient-to-r from-indigo-600 to-purple-700 text-white">
-        <div className="max-w-7xl mx-auto px-6 py-6 flex items-center gap-3">
+  const isAcademy = teacher.program === "academy"
+  const allowedClasses = Array.isArray(teacher.classes) ? teacher.classes : []
+
+  if (isAcademy) {
+    return (
+      <div className="min-h-screen bg-slate-50">
+        <div className="max-w-6xl mx-auto px-4 pt-6">
           <Link
             href={`/teacher/${token}/public`}
-            className="w-10 h-10 rounded-xl bg-white/15 hover:bg-white/25 flex items-center justify-center transition"
+            className="inline-flex items-center gap-1 text-sm text-slate-500 hover:text-slate-800 mb-4"
           >
-            <ArrowLeft size={20} />
+            <ArrowLeft size={14} /> Back to portal
           </Link>
-          <div className="flex items-center gap-3">
-            <div className="w-11 h-11 rounded-xl bg-white/20 flex items-center justify-center">
-              <FlaskConical size={22} />
+          <div className="flex items-center gap-3 mb-6">
+            <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 text-white flex items-center justify-center shadow-md">
+              <FlaskConical size={24} />
             </div>
             <div>
-              <p className="text-xs text-indigo-100 font-semibold uppercase tracking-widest">
-                Testing
+              <h1 className="text-2xl font-bold text-slate-800">Academy Testing</h1>
+              <p className="text-sm text-slate-500">
+                {teacher.name} · {teacher.teacherId}
               </p>
-              <h1 className="text-xl font-bold">{teacher.name}</h1>
             </div>
           </div>
         </div>
+        <TeacherAcademyTestingModule teacher={teacher} token={token} />
       </div>
+    )
+  }
 
-      <div className="max-w-7xl mx-auto px-6 py-6">
-        <div className="bg-white rounded-2xl shadow-md border border-slate-100 p-5">
-          <TestingModule
-            teacherMode={true}
-            allowedClasses={teacher.classes || []}
-            teacherName={teacher.name}
-            storagePrefix={`teacher_testing_${teacher._id}`}
-          />
-        </div>
-      </div>
-    </div>
-  )
+  return <TestingModule teacherMode={true} allowedClasses={allowedClasses} teacherName={teacher.name} />
 }
