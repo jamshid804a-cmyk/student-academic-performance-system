@@ -108,6 +108,77 @@ const SaveSchoolInfo = (data) => axios.post('/api/school', data);
 // Org Sections (package + section active status)
 const GetOrgSections = () => axios.get('/api/org/sections');
 
+// ─────────────────────────────────────────────
+// ACADEMY APIs
+// ─────────────────────────────────────────────
+
+// Academy Students
+const GetAcademyStudents = (email) =>
+    axios.get('/api/academy/student?email=' + encodeURIComponent(email));
+const CreateAcademyStudent = (data) => axios.post('/api/academy/student', data);
+const UpdateAcademyStudent = (data) => axios.put('/api/academy/student', data);
+const DeleteAcademyStudent = (email, id) =>
+    axios.delete(
+        '/api/academy/student?email=' + encodeURIComponent(email) + '&id=' + id
+    );
+
+// Academy Teachers
+const GetAcademyTeachers = (email) =>
+    axios.get('/api/academy/teacher?email=' + encodeURIComponent(email));
+const CreateAcademyTeacher = (data) => axios.post('/api/academy/teacher', data);
+const DeleteAcademyTeacher = (email, id) =>
+    axios.delete(
+        '/api/academy/teacher?email=' + encodeURIComponent(email) + '&id=' + id
+    );
+
+// Academy Courses
+const GetAcademyCourses = (email) =>
+    axios.get('/api/academy/courses?email=' + encodeURIComponent(email));
+const CreateAcademyCourse = (data) => axios.post('/api/academy/courses', data);
+const DeleteAcademyCourse = (email, id) =>
+    axios.delete(
+        '/api/academy/courses?email=' + encodeURIComponent(email) + '&id=' + id
+    );
+
+// Academy Fees
+const GetAcademyFees = (email, filters = {}) => {
+    const params = new URLSearchParams({ email });
+    if (filters.month) params.append('month', filters.month);
+    if (filters.studentId) params.append('studentId', filters.studentId);
+    return axios.get('/api/academy/fee?' + params.toString());
+};
+const SaveAcademyFee = (data) => axios.post('/api/academy/fee', data);
+const DeleteAcademyFee = (email, id) =>
+    axios.delete(
+        '/api/academy/fee?email=' + encodeURIComponent(email) + '&id=' + id
+    );
+
+// Academy Attendance
+const GetAcademyAttendanceList = (email, course, monthKey, section, year) => {
+    const params = new URLSearchParams({ email });
+    if (course) params.append('course', course);
+    if (monthKey) params.append('month', monthKey);
+    if (section) params.append('section', section);
+    if (year) params.append('year', year);
+    return axios.get('/api/academy/attendance?' + params.toString());
+};
+const SaveAcademyAttendance = (data) => axios.post('/api/academy/attendance', data);
+const DeleteAcademyAttendance = (email, studentId, day, date) =>
+    axios.delete(
+        '/api/academy/attendance?email=' + encodeURIComponent(email) +
+        '&studentId=' + studentId +
+        '&day=' + day +
+        '&date=' + encodeURIComponent(date)
+    );
+
+// Academy Attendance Flat (for dashboard)
+const GetAcademyAttendanceFlat = (email, course, monthKey, section, year) => {
+    const params = new URLSearchParams({ email, course, month: monthKey });
+    if (section) params.append('section', section);
+    if (year) params.append('year', year);
+    return axios.get('/api/academy/attendance/flat?' + params.toString());
+};
+
 export default {
     GetAllGrades,
     CreateNewStudent,
@@ -145,4 +216,23 @@ export default {
     GetSchoolInfo,
     SaveSchoolInfo,
     GetOrgSections,
+
+    // Academy
+    GetAcademyStudents,
+    CreateAcademyStudent,
+    UpdateAcademyStudent,
+    DeleteAcademyStudent,
+    GetAcademyTeachers,
+    CreateAcademyTeacher,
+    DeleteAcademyTeacher,
+    GetAcademyCourses,
+    CreateAcademyCourse,
+    DeleteAcademyCourse,
+    GetAcademyFees,
+    SaveAcademyFee,
+    DeleteAcademyFee,
+    GetAcademyAttendanceList,
+    SaveAcademyAttendance,
+    DeleteAcademyAttendance,
+    GetAcademyAttendanceFlat,
 };
