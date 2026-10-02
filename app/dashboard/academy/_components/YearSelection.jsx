@@ -2,13 +2,13 @@
 import React, { useMemo } from "react"
 
 export default function YearSelection({ selectedYear, defaultYear }) {
-  // Generate years from 2025 → current year + 10
+  // Generate years from 2025 → current year + 30 (auto-grows each year)
   const years = useMemo(() => {
-    const start = 2025
-    const current = new Date().getFullYear()
-    const end = Math.max(current + 10, 2035)
+    const START = 2025
+    const currentYear = new Date().getFullYear()
+    const END = currentYear + 30
     const list = []
-    for (let y = start; y <= end; y++) list.push(y)
+    for (let y = START; y <= END; y++) list.push(y)
     return list
   }, [])
 

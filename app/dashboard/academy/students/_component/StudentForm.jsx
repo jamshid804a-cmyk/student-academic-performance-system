@@ -77,10 +77,11 @@ export default function StudentForm({ email, onClose, onCreated }) {
     return acc
   }, {})
 
+  // ─── INFINITE year dropdown: 2025 → current year + 30 ───
+  const START_YEAR = 2025
+  const END_YEAR = new Date().getFullYear() + 30
   const years = []
-  const start = 2025
-  const end = Math.max(new Date().getFullYear() + 10, 2035)
-  for (let y = start; y <= end; y++) years.push(String(y))
+  for (let y = START_YEAR; y <= END_YEAR; y++) years.push(String(y))
 
   return (
     <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
