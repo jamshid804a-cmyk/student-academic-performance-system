@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server"
 import { getDb } from "@/utils"
 
-async function loadAcademyOrg(db, email) {
-  if (!email) return { error: "email required", status: 400 }
+async function loadAcademyOrg(db, orgEmail) {
+  if (!orgEmail) return { error: "orgEmail required", status: 400 }
   const org = await db
     .collection("schools")
-    .findOne({ email: String(email).toLowerCase().trim() })
+    .findOne({ email: String(orgEmail).toLowerCase().trim() })
   if (!org) return { error: "No organization", status: 404 }
 
   const pkg = org.package || "school"
@@ -16,13 +16,12 @@ async function loadAcademyOrg(db, email) {
 }
 
 // ─────────────────────────────────────────────
-// GET — academy teacher attendance
-//   ?email=...&month=MM/YYYY&teacherId=ATCH-001
+// GET — ?orgEmail=...&month=MM/YYYY&teacherId=ATCH-001
 // ─────────────────────────────────────────────
 export async function GET(req) {
   try {
     const { searchParams } = new URL(req.url)
-    const email = searchParams.get("email")
+    const orgEmail = searchParams.get("orgEmail")
     const month = searchParams.get("month")
     const teacherId = searchParams.get("teacherId")
 
@@ -31,7 +30,7 @@ export async function GET(req) {
     }
 
     const db = await getDb()
-    const { org, error, status } = await loadAcademyOrg(db, email)
+    const { org, error, status } = await loadAcademyOrg(db, orgEmail)
     if (error) return NextResponse.json({ error }, { status })
 
     const filter = { schoolId: org.schoolId, program: "academy", month: String(month) }
@@ -53,22 +52,23 @@ export async function GET(req) {
 }
 
 // ─────────────────────────────────────────────
-// POST — save one teacher's attendance
+// POST — Body: { orgEmail, teacherId, month, day, status }
 // ─────────────────────────────────────────────
 export async function POST(req) {
   try {
     const data = await req.json()
-    const { email, teacherId, month, day, status } = data
+    const orgEmail = data.orgEmail
+    const { teacherId, month, day, status } = data
 
-    if (!email || !teacherId || !month || day === undefined || !status) {
+    if (!orgEmail || !teacherId || !month || day === undefined || !status) {
       return NextResponse.json(
-        { error: "email, teacherId, month, day, status are required" },
+        { error: "orgEmail, teacherId, month, day, status are required" },
         { status: 400 }
       )
     }
 
     const db = await getDb()
-    const { org, error, status: errStatus } = await loadAcademyOrg(db, email)
+    const { org, error, status: errStatus } = await loadAcademyOrg(db, orgEmail)
     if (error) return NextResponse.json({ error }, { status: errStatus })
 
     await db.collection("teacher_attendance").updateOne(
@@ -103,25 +103,25 @@ export async function POST(req) {
 }
 
 // ─────────────────────────────────────────────
-// DELETE — remove one day's teacher attendance
+// DELETE — ?orgEmail=...&teacherId=...&month=MM/YYYY&day=15
 // ─────────────────────────────────────────────
 export async function DELETE(req) {
   try {
     const { searchParams } = new URL(req.url)
-    const email = searchParams.get("email")
+    const orgEmail = searchParams.get("orgEmail")
     const teacherId = searchParams.get("teacherId")
     const month = searchParams.get("month")
     const day = searchParams.get("day")
 
-    if (!email || !teacherId || !month || day === null) {
+    if (!orgEmail || !teacherId || !month || day === null) {
       return NextResponse.json(
-        { error: "email, teacherId, month, day are required" },
+        { error: "orgEmail, teacherId, month, day are required" },
         { status: 400 }
       )
     }
 
     const db = await getDb()
-    const { org, error, status } = await loadAcademyOrg(db, email)
+    const { org, error, status } = await loadAcademyOrg(db, orgEmail)
     if (error) return NextResponse.json({ error }, { status })
 
     await db.collection("teacher_attendance").deleteOne({

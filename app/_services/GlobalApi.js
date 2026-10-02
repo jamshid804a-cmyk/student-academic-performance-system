@@ -105,14 +105,14 @@ const DeleteTeacherAttendance = (teacherId, month, day) =>
 const GetSchoolInfo = () => axios.get('/api/school');
 const SaveSchoolInfo = (data) => axios.post('/api/school', data);
 
-// Org Sections (package + section active status)
+// Org Sections
 const GetOrgSections = () => axios.get('/api/org/sections');
 
 // ─────────────────────────────────────────────
 // ACADEMY APIs
 // ─────────────────────────────────────────────
 
-// Academy Students
+// Academy Students (uses `email` = owner email)
 const GetAcademyStudents = (email) =>
     axios.get('/api/academy/student?email=' + encodeURIComponent(email));
 const CreateAcademyStudent = (data) => axios.post('/api/academy/student', data);
@@ -122,36 +122,36 @@ const DeleteAcademyStudent = (email, id) =>
         '/api/academy/student?email=' + encodeURIComponent(email) + '&id=' + id
     );
 
-// Academy Teachers
-const GetAcademyTeachers = (email, filters = {}) => {
-    const params = new URLSearchParams({ email });
+// Academy Teachers (uses `orgEmail` = owner email to avoid collision with teacher's own email)
+const GetAcademyTeachers = (orgEmail, filters = {}) => {
+    const params = new URLSearchParams({ orgEmail });
     if (filters.subject) params.append('subject', filters.subject);
     if (filters.status) params.append('status', filters.status);
     return axios.get('/api/academy/teacher?' + params.toString());
 };
 const CreateAcademyTeacher = (data) => axios.post('/api/academy/teacher', data);
 const UpdateAcademyTeacher = (data) => axios.put('/api/academy/teacher', data);
-const RegenerateAcademyTeacherToken = (email, _id) =>
-    axios.patch('/api/academy/teacher', { email, _id });
-const DeleteAcademyTeacher = (email, id) =>
+const RegenerateAcademyTeacherToken = (orgEmail, _id) =>
+    axios.patch('/api/academy/teacher', { orgEmail, _id });
+const DeleteAcademyTeacher = (orgEmail, id) =>
     axios.delete(
-        '/api/academy/teacher?email=' + encodeURIComponent(email) + '&id=' + id
+        '/api/academy/teacher?orgEmail=' + encodeURIComponent(orgEmail) + '&id=' + id
     );
 
-// Academy Teacher Attendance
-const GetAcademyTeacherAttendance = (email, month, teacherId) => {
-    const params = new URLSearchParams({ email, month });
+// Academy Teacher Attendance (uses `orgEmail`)
+const GetAcademyTeacherAttendance = (orgEmail, month, teacherId) => {
+    const params = new URLSearchParams({ orgEmail, month });
     if (teacherId) params.append('teacherId', teacherId);
     return axios.get('/api/academy/teacher-attendance?' + params.toString());
 };
 const SaveAcademyTeacherAttendance = (data) => axios.post('/api/academy/teacher-attendance', data);
-const DeleteAcademyTeacherAttendance = (email, teacherId, month, day) =>
+const DeleteAcademyTeacherAttendance = (orgEmail, teacherId, month, day) =>
     axios.delete(
-        '/api/academy/teacher-attendance?email=' + encodeURIComponent(email) +
+        '/api/academy/teacher-attendance?orgEmail=' + encodeURIComponent(orgEmail) +
         '&teacherId=' + teacherId + '&month=' + encodeURIComponent(month) + '&day=' + day
     );
 
-// Academy Courses
+// Academy Courses (uses `email`)
 const GetAcademyCourses = (email) =>
     axios.get('/api/academy/courses?email=' + encodeURIComponent(email));
 const CreateAcademyCourse = (data) => axios.post('/api/academy/courses', data);
@@ -160,7 +160,7 @@ const DeleteAcademyCourse = (email, id) =>
         '/api/academy/courses?email=' + encodeURIComponent(email) + '&id=' + id
     );
 
-// Academy Fees
+// Academy Fees (uses `email`)
 const GetAcademyFees = (email, filters = {}) => {
     const params = new URLSearchParams({ email });
     if (filters.month) params.append('month', filters.month);
@@ -173,7 +173,7 @@ const DeleteAcademyFee = (email, id) =>
         '/api/academy/fee?email=' + encodeURIComponent(email) + '&id=' + id
     );
 
-// Academy Attendance
+// Academy Attendance (uses `email`)
 const GetAcademyAttendanceList = (email, course, monthKey, section, year) => {
     const params = new URLSearchParams({ email });
     if (course) params.append('course', course);
@@ -191,7 +191,7 @@ const DeleteAcademyAttendance = (email, studentId, day, date) =>
         '&date=' + encodeURIComponent(date)
     );
 
-// Academy Attendance Flat (for dashboard)
+// Academy Attendance Flat
 const GetAcademyAttendanceFlat = (email, course, monthKey, section, year) => {
     const params = new URLSearchParams({ email, course, month: monthKey });
     if (section) params.append('section', section);
