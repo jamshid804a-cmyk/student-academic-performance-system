@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button'
 import {
     Printer, X, User, Users, Phone, MapPin,
     Hash, BookOpen, Calendar, CreditCard, Briefcase,
-    Layers, CalendarDays, IdCard, Clock, Hash as HashIcon
+    Layers, CalendarDays, IdCard, Clock
 } from 'lucide-react'
 
 function StudentDetailsDialog({ student, open, onOpenChange }) {
@@ -75,7 +75,7 @@ function StudentDetailsDialog({ student, open, onOpenChange }) {
                 ${imageHtml}
                 <h1>Academy Student Report</h1>
                 <div class="sub">Student Academic Performance System</div>
-                <table>${rows.map(([l,v]) => `<tr><td class="label">${l}</td><td>${v ?? "N/A"}</td></tr>`).join("")}</table>
+                <table>${rows.map(([l, v]) => `<tr><td class="label">${l}</td><td>${v ?? "N/A"}</td></tr>`).join("")}</table>
                 <script>window.onload = () => window.print();</script>
             </body></html>
         `)
@@ -163,7 +163,7 @@ function StudentDetailsDialog({ student, open, onOpenChange }) {
                         <Field icon={Layers} label="Section" value={student.section} accent="pink" />
                         <Field icon={Calendar} label="Year" value={student.year} accent="violet" />
                         <Field icon={Clock} label="Course Duration" value={student.courseDuration} accent="amber" />
-                        <Field icon={HashIcon} label="Batch No" value={student.batchNo} accent="indigo" />
+                        <Field icon={Hash} label="Batch No" value={student.batchNo} accent="indigo" />
                         <Field icon={CalendarDays} label="Admission Date" value={student.admissionDate} accent="green" />
                     </div>
 
