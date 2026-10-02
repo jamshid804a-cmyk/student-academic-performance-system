@@ -16,14 +16,9 @@ async function loadAcademyOrg(db, email) {
   return { org }
 }
 
-// ─────────────────────────────────────────────
-// Locate an academy student by sequential `id` OR Mongo `_id`
-// Returns Mongo _id or null.
-// ─────────────────────────────────────────────
 async function resolveStudentId(db, org, body) {
   const { id, _id } = body
 
-  // Try sequential id first (short string like "1", "23")
   if (id !== undefined && id !== null && String(id).length < 12) {
     const found = await db.collection("students").findOne({
       schoolId: org.schoolId,
@@ -33,12 +28,10 @@ async function resolveStudentId(db, org, body) {
     if (found) return found._id
   }
 
-  // Try explicit Mongo _id if provided
   if (_id) {
     try { return new ObjectId(_id) } catch {}
   }
 
-  // Try id as Mongo _id (24-char hex)
   if (typeof id === "string" && id.length === 24) {
     try { return new ObjectId(id) } catch {}
   }
@@ -64,13 +57,12 @@ export async function GET(req) {
       .sort({ createdAt: 1 })
       .toArray()
 
-    // Backfill sequential ids for legacy docs
+    // Backfill sequential ids
     const missing = students.filter((s) => s.id === undefined || s.id === null)
     if (missing.length > 0) {
       let maxId = students
         .map((s) => Number(s.id) || 0)
         .reduce((a, b) => Math.max(a, b), 0)
-
       for (const s of missing) {
         maxId += 1
         try {
@@ -101,8 +93,11 @@ export async function GET(req) {
         section: s.section || "",
         rollNo: s.rollNo ?? null,
         year: s.year || "",
+        courseDuration: s.courseDuration || "",
+        batchNo: s.batchNo || "",
         admissionDate: s.admissionDate || null,
-        fee: Number(s.fee) || 0,
+        fee: Number(s.fee) || Number(s.monthlyFee) || 0,
+        monthlyFee: Number(s.monthlyFee) || Number(s.fee) || 0,
         address: s.address || "",
         image: s.image || null,
         createdAt: s.createdAt,
@@ -159,8 +154,11 @@ export async function POST(req) {
       section,
       rollNo: body.rollNo ? Number(body.rollNo) : null,
       year,
+      courseDuration: String(body.courseDuration || "").trim(),
+      batchNo: String(body.batchNo || "").trim(),
       admissionDate: body.admissionDate || null,
       fee: Number(body.fee) || 0,
+      monthlyFee: Number(body.fee) || 0,
       address: String(body.address || "").trim(),
       image: body.image || null,
       schoolId: org.schoolId,
@@ -210,8 +208,13 @@ export async function PUT(req) {
     if (body.section !== undefined) patch.section = String(body.section).trim()
     if (body.rollNo !== undefined) patch.rollNo = body.rollNo ? Number(body.rollNo) : null
     if (body.year !== undefined) patch.year = String(body.year).trim()
+    if (body.courseDuration !== undefined) patch.courseDuration = String(body.courseDuration).trim()
+    if (body.batchNo !== undefined) patch.batchNo = String(body.batchNo).trim()
     if (body.admissionDate !== undefined) patch.admissionDate = body.admissionDate || null
-    if (body.fee !== undefined) patch.fee = Number(body.fee) || 0
+    if (body.fee !== undefined) {
+      patch.fee = Number(body.fee) || 0
+      patch.monthlyFee = Number(body.fee) || 0
+    }
     if (body.address !== undefined) patch.address = String(body.address).trim()
     if (body.image !== undefined) patch.image = body.image || null
 
