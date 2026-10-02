@@ -18,7 +18,6 @@ async function loadAcademyOrg(db, email) {
 
 // ─────────────────────────────────────────────
 // GET — list academy students
-//   ?email=user@example.com
 // ─────────────────────────────────────────────
 export async function GET(req) {
   try {
@@ -27,28 +26,32 @@ export async function GET(req) {
 
     const db = await getDb()
     const { org, error, status } = await loadAcademyOrg(db, email)
-    if (error) {
-      return NextResponse.json({ error }, { status })
-    }
+    if (error) return NextResponse.json({ error }, { status })
 
     const students = await db
       .collection("students")
       .find({ schoolId: org.schoolId, program: "academy" })
-      .sort({ createdAt: -1 })
+      .sort({ id: 1 })
       .toArray()
 
     return NextResponse.json({
       success: true,
       students: students.map((s) => ({
         _id: s._id.toString(),
+        id: s.id ?? null,
         name: s.name || "",
         fatherName: s.fatherName || "",
-        phone: s.phone || "",
-        subject: s.subject || "",
+        fatherOccupation: s.fatherOccupation || "",
+        admissionNo: s.admissionNo ?? null,
+        contact: s.contact || "",
+        subject: s.subject || "",     // Course
         section: s.section || "",
+        rollNo: s.rollNo ?? null,
         year: s.year || "",
-        monthlyFee: Number(s.monthlyFee) || 0,
         admissionDate: s.admissionDate || null,
+        fee: Number(s.fee) || 0,
+        address: s.address || "",
+        image: s.image || null,
         createdAt: s.createdAt,
       })),
     })
@@ -60,7 +63,6 @@ export async function GET(req) {
 
 // ─────────────────────────────────────────────
 // POST — create academy student
-//   Body: { email, name, subject, section, year, fatherName?, phone?, monthlyFee?, admissionDate? }
 // ─────────────────────────────────────────────
 export async function POST(req) {
   try {
@@ -70,16 +72,9 @@ export async function POST(req) {
     const subject = String(body.subject || "").trim()
     const section = String(body.section || "").trim()
     const year = String(body.year || "").trim()
-    const fatherName = String(body.fatherName || "").trim()
-    const phone = String(body.phone || "").trim()
-    const monthlyFee = Number(body.monthlyFee) || 0
-    const admissionDate = body.admissionDate || null
 
     if (!name || name.length < 2) {
-      return NextResponse.json(
-        { error: "Student name is required" },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: "Student name is required" }, { status: 400 })
     }
     if (!subject) {
       return NextResponse.json({ error: "Course is required" }, { status: 400 })
@@ -90,19 +85,22 @@ export async function POST(req) {
 
     const db = await getDb()
     const { org, error, status } = await loadAcademyOrg(db, email)
-    if (error) {
-      return NextResponse.json({ error }, { status })
-    }
+    if (error) return NextResponse.json({ error }, { status })
 
     const doc = {
       name,
-      fatherName,
-      phone,
+      fatherName: String(body.fatherName || "").trim(),
+      fatherOccupation: String(body.fatherOccupation || "").trim(),
+      admissionNo: body.admissionNo ? Number(body.admissionNo) : null,
+      contact: String(body.contact || "").trim(),
       subject,
       section,
+      rollNo: body.rollNo ? Number(body.rollNo) : null,
       year,
-      monthlyFee,
-      admissionDate: admissionDate ? new Date(admissionDate) : new Date(),
+      admissionDate: body.admissionDate || null,
+      fee: Number(body.fee) || 0,
+      address: String(body.address || "").trim(),
+      image: body.image || null,
       schoolId: org.schoolId,
       orgId: org._id.toString(),
       program: "academy",
@@ -113,10 +111,7 @@ export async function POST(req) {
 
     return NextResponse.json({
       success: true,
-      student: {
-        _id: result.insertedId.toString(),
-        ...doc,
-      },
+      student: { _id: result.insertedId.toString(), ...doc },
     })
   } catch (err) {
     console.error("❌ POST /api/academy/student:", err.message)
@@ -125,8 +120,65 @@ export async function POST(req) {
 }
 
 // ─────────────────────────────────────────────
-// DELETE — remove academy student
-//   ?id=xxx&email=user@example.com
+// PUT — update academy student
+//   Body: { email, id, ...fields }
+// ─────────────────────────────────────────────
+export async function PUT(req) {
+  try {
+    const body = await req.json()
+    const email = body.email
+    const id = body.id
+
+    if (!id) return NextResponse.json({ error: "id required" }, { status: 400 })
+
+    const db = await getDb()
+    const { org, error, status } = await loadAcademyOrg(db, email)
+    if (error) return NextResponse.json({ error }, { status })
+
+    let _id
+    try { _id = new ObjectId(id) } catch {
+      return NextResponse.json({ error: "Invalid id" }, { status: 400 })
+    }
+
+    const patch = {}
+    if (body.name !== undefined) patch.name = String(body.name).trim()
+    if (body.fatherName !== undefined) patch.fatherName = String(body.fatherName).trim()
+    if (body.fatherOccupation !== undefined) patch.fatherOccupation = String(body.fatherOccupation).trim()
+    if (body.admissionNo !== undefined) patch.admissionNo = body.admissionNo ? Number(body.admissionNo) : null
+    if (body.contact !== undefined) patch.contact = String(body.contact).trim()
+    if (body.subject !== undefined) patch.subject = String(body.subject).trim()
+    if (body.section !== undefined) patch.section = String(body.section).trim()
+    if (body.rollNo !== undefined) patch.rollNo = body.rollNo ? Number(body.rollNo) : null
+    if (body.year !== undefined) patch.year = String(body.year).trim()
+    if (body.admissionDate !== undefined) patch.admissionDate = body.admissionDate || null
+    if (body.fee !== undefined) patch.fee = Number(body.fee) || 0
+    if (body.address !== undefined) patch.address = String(body.address).trim()
+    if (body.image !== undefined) patch.image = body.image || null
+
+    if (Object.keys(patch).length === 0) {
+      return NextResponse.json({ error: "Nothing to update" }, { status: 400 })
+    }
+
+    const result = await db
+      .collection("students")
+      .updateOne(
+        { _id, schoolId: org.schoolId, program: "academy" },
+        { $set: patch }
+      )
+
+    if (result.matchedCount === 0) {
+      return NextResponse.json({ error: "Student not found" }, { status: 404 })
+    }
+
+    return NextResponse.json({ success: true })
+  } catch (err) {
+    console.error("❌ PUT /api/academy/student:", err.message)
+    return NextResponse.json({ error: err.message }, { status: 500 })
+  }
+}
+
+// ─────────────────────────────────────────────
+// DELETE
 // ─────────────────────────────────────────────
 export async function DELETE(req) {
   try {
@@ -135,22 +187,15 @@ export async function DELETE(req) {
     const email = searchParams.get("email")
 
     if (!id || !email) {
-      return NextResponse.json(
-        { error: "id and email required" },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: "id and email required" }, { status: 400 })
     }
 
     const db = await getDb()
     const { org, error, status } = await loadAcademyOrg(db, email)
-    if (error) {
-      return NextResponse.json({ error }, { status })
-    }
+    if (error) return NextResponse.json({ error }, { status })
 
     let _id
-    try {
-      _id = new ObjectId(id)
-    } catch {
+    try { _id = new ObjectId(id) } catch {
       return NextResponse.json({ error: "Invalid id" }, { status: 400 })
     }
 
