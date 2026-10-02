@@ -16,6 +16,20 @@ async function loadAcademyOrg(db, orgEmail) {
   return { org }
 }
 
+// Normalize month to "MM/YYYY" form
+function normalizeMonth(raw) {
+  if (!raw) return ""
+  let s = String(raw).trim()
+  // Replace hyphens or dots with slashes
+  s = s.replace(/[-.]/g, "/")
+  // Ensure MM is padded
+  const parts = s.split("/")
+  if (parts.length === 2 && parts[0].length === 1) {
+    s = `0${parts[0]}/${parts[1]}`
+  }
+  return s
+}
+
 // ─────────────────────────────────────────────
 // GET — academy fee payments
 //   ?orgEmail=...&course=X&section=A&batchNo=Batch 1&year=2025&month=MM/YYYY
@@ -39,7 +53,7 @@ export async function GET(req) {
     if (section) filter.section = section
     if (batchNo) filter.batchNo = batchNo
     if (year) filter.year = year
-    if (month) filter.month = month
+    if (month) filter.month = normalizeMonth(month)
 
     const records = await db
       .collection("fees")
@@ -83,7 +97,7 @@ export async function POST(req) {
       section: section || "",
       batchNo: batchNo || "",
       year: year || "",
-      month,
+      month: normalizeMonth(month),
       amount: Number(amount),
       paidDate: paidDate || "",
       note: note || "",
@@ -127,7 +141,7 @@ export async function PUT(req) {
       schoolId: org.schoolId,
       program: "academy",
       studentId: String(studentId),
-      month,
+      month: normalizeMonth(month),
     })
 
     return NextResponse.json({ success: true, deletedCount: result.deletedCount })

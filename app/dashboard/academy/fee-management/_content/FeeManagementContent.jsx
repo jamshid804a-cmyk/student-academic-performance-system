@@ -110,6 +110,7 @@ export default function FeeManagementContent() {
     try {
       const monthKey = monthNameToKey(month)
 
+      // Students
       const studentResp = await fetch(
         `/api/academy/student?email=${encodeURIComponent(orgEmail)}`,
         { cache: 'no-store' }
@@ -120,16 +121,24 @@ export default function FeeManagementContent() {
       if (batchNo) filtered = filtered.filter(s => s.batchNo === batchNo)
       if (year) filtered = filtered.filter(s => String(s.year) === String(year))
 
-      const monthParams = new URLSearchParams({ orgEmail, course, month: monthKey })
+      // Month fees — pass month as encoded param to be safe
+      const monthParams = new URLSearchParams()
+      monthParams.append('orgEmail', orgEmail)
+      monthParams.append('course', course)
+      monthParams.append('month', monthKey)
       if (section) monthParams.append('section', section)
       if (batchNo) monthParams.append('batchNo', batchNo)
       if (year) monthParams.append('year', year)
+
       const monthFees = await fetch(
         `/api/academy/fees?${monthParams.toString()}`,
         { cache: 'no-store' }
       ).then(r => r.json())
 
-      const allParams = new URLSearchParams({ orgEmail, course })
+      // All fees
+      const allParams = new URLSearchParams()
+      allParams.append('orgEmail', orgEmail)
+      allParams.append('course', course)
       if (section) allParams.append('section', section)
       if (batchNo) allParams.append('batchNo', batchNo)
       if (year) allParams.append('year', year)
@@ -140,6 +149,7 @@ export default function FeeManagementContent() {
 
       if (reqId !== reqRef.current) return
 
+      console.log("[FEE] fetchAll URL:", monthParams.toString())
       console.log("[FEE] fetchAll monthKey:", monthKey)
       console.log("[FEE] fetchAll monthFees count:", (monthFees || []).length)
       console.log("[FEE] fetchAll monthFees raw:", monthFees)
@@ -358,7 +368,7 @@ export default function FeeManagementContent() {
 
   const handleAfterPay = () => {
     setPayDialog(null)
-    setTimeout(() => fetchAll(), 250)
+    setTimeout(() => fetchAll(), 300)
   }
 
   if (isLoading || !orgEmail || !hydrated) {
