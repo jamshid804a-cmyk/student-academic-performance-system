@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useEffect, useState, useMemo, useRef } from 'react'
+import React, { useEffect, useState, useMemo, useRef, useCallback } from 'react'
 import dynamic from 'next/dynamic'
 import { useKindeBrowserClient } from '@kinde-oss/kinde-auth-nextjs'
 import { LoaderIcon, Wallet, Send, Printer, Trash2, BellRing } from 'lucide-react'
@@ -11,6 +11,7 @@ const PayDialog = dynamic(() => import('../_components/PayDialog'), { ssr: false
 const HistoryDialog = dynamic(() => import('../_components/HistoryDialog'), { ssr: false })
 
 const SECTIONS = ["A", "B", "C"]
+const BATCHES = Array.from({ length: 20 }, (_, i) => `Batch ${i + 1}`)
 const START_YEAR = 2025
 const END_YEAR = new Date().getFullYear() + 30
 const YEARS = []
@@ -21,7 +22,7 @@ const MONTHS = [
   "July","August","September","October","November","December"
 ]
 
-const STORAGE_KEY = "academy_fee_filters_v1"
+const STORAGE_KEY = "academy_fee_filters_v2"
 
 const monthNameToKey = (name) => {
   const map = {
@@ -34,7 +35,7 @@ const monthNameToKey = (name) => {
 
 const MONTH_NAMES = ["January","February","March","April","May","June","July","August","September","October","November","December"]
 
-const FILTER_CLASS = "px-3 py-2 rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-sm text-slate-800 dark:text-slate-100 outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-100 transition"
+const FILTER_CLASS = "px-3 py-2 rounded-lg border border-gray-300 bg-white text-sm text-slate-800 outline-none focus:border-purple-500 transition"
 
 function monthNumToKey(monthNum, year) {
   return `${String(monthNum).padStart(2, "0")}/${year}`
@@ -51,6 +52,7 @@ export default function FeeManagementContent() {
 
   const [course, setCourse] = useState("")
   const [section, setSection] = useState("")
+  const [batchNo, setBatchNo] = useState("")
   const [year, setYear] = useState("")
   const [month, setMonth] = useState("")
 
@@ -62,6 +64,7 @@ export default function FeeManagementContent() {
   const [loading, setLoading] = useState(false)
   const [hydrated, setHydrated] = useState(false)
   const debounceRef = useRef(null)
+  const reqRef = useRef(0)
 
   const [payDialog, setPayDialog] = useState(null)
   const [historyDialog, setHistoryDialog] = useState(null)
@@ -71,6 +74,7 @@ export default function FeeManagementContent() {
       const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}")
       if (saved.course) setCourse(saved.course)
       if (saved.section) setSection(saved.section)
+      if (saved.batchNo) setBatchNo(saved.batchNo)
       if (saved.year) setYear(saved.year)
       if (saved.month) setMonth(saved.month)
     } catch {}
@@ -94,17 +98,19 @@ export default function FeeManagementContent() {
 
   useEffect(() => {
     if (!hydrated) return
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ course, section, year, month }))
-  }, [course, section, year, month, hydrated])
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ course, section, batchNo, year, month }))
+  }, [course, section, batchNo, year, month, hydrated])
 
-  const fetchAll = async () => {
+  const fetchAll = useCallback(async () => {
     if (!orgEmail || !course || !month) {
       setStudents([]); setPayments([]); setAllPayments([]); return
     }
+    const reqId = ++reqRef.current
     setLoading(true)
     try {
       const monthKey = monthNameToKey(month)
 
+      // Students — all academy students, filtered client-side
       const studentResp = await fetch(
         `/api/academy/student?email=${encodeURIComponent(orgEmail)}`,
         { cache: 'no-store' }
@@ -112,23 +118,31 @@ export default function FeeManagementContent() {
 
       let filtered = studentResp.filter(s => s.subject === course)
       if (section) filtered = filtered.filter(s => s.section === section)
+      if (batchNo) filtered = filtered.filter(s => s.batchNo === batchNo)
       if (year) filtered = filtered.filter(s => String(s.year) === String(year))
 
+      // Month fees
       const monthParams = new URLSearchParams({ orgEmail, course, month: monthKey })
       if (section) monthParams.append('section', section)
+      if (batchNo) monthParams.append('batchNo', batchNo)
       if (year) monthParams.append('year', year)
       const monthFees = await fetch(
         `/api/academy/fees?${monthParams.toString()}`,
         { cache: 'no-store' }
       ).then(r => r.json())
 
+      // All fees
       const allParams = new URLSearchParams({ orgEmail, course })
       if (section) allParams.append('section', section)
+      if (batchNo) allParams.append('batchNo', batchNo)
       if (year) allParams.append('year', year)
       const allFees = await fetch(
         `/api/academy/fees?${allParams.toString()}`,
         { cache: 'no-store' }
       ).then(r => r.json())
+
+      // Ignore stale responses
+      if (reqId !== reqRef.current) return
 
       setStudents(filtered)
       setPayments(Array.isArray(monthFees) ? monthFees : [])
@@ -136,17 +150,18 @@ export default function FeeManagementContent() {
     } catch (err) {
       console.error(err)
       toast.error("Failed to load")
+    } finally {
+      if (reqId === reqRef.current) setLoading(false)
     }
-    setLoading(false)
-  }
+  }, [orgEmail, course, section, batchNo, year, month])
 
+  // Faster debounce (150ms) + cancel previous
   useEffect(() => {
     if (!hydrated) return
     if (debounceRef.current) clearTimeout(debounceRef.current)
-    debounceRef.current = setTimeout(fetchAll, 250)
+    debounceRef.current = setTimeout(fetchAll, 150)
     return () => debounceRef.current && clearTimeout(debounceRef.current)
-    // eslint-disable-next-line
-  }, [course, section, year, month, hydrated])
+  }, [fetchAll, hydrated])
 
   const monthKey = month ? monthNameToKey(month) : ""
 
@@ -175,15 +190,10 @@ export default function FeeManagementContent() {
       const sid = String(s.id)
       const list = paymentsByStudent[sid] || []
       const paid = list.reduce((sum, p) => sum + Number(p.amount || 0), 0)
-      const fee = Number(s.monthlyFee || 0)
+      const fee = Number(s.fee || s.monthlyFee || 0)
       const pending = Math.max(0, fee - paid)
       const status = paid === 0 ? "Unpaid" : pending === 0 ? "Paid" : "Partial"
-
-      return {
-        student: s,
-        fee, paid, pending, status,
-        paymentList: list,
-      }
+      return { student: s, fee, paid, pending, status, paymentList: list }
     })
   }, [students, paymentsByStudent])
 
@@ -230,10 +240,8 @@ export default function FeeManagementContent() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          studentId: row.student.id,
-          message,
-          blockNumber: 0, weekStart: 0, weekEnd: 0,
-          type: "fee",
+          studentId: row.student.id, message,
+          blockNumber: 0, weekStart: 0, weekEnd: 0, type: "fee",
         }),
       })
       if (!res.ok) throw new Error("Failed")
@@ -244,10 +252,9 @@ export default function FeeManagementContent() {
   const computePreviousMonths = (row) => {
     const sid = String(row.student.id)
     const y = Number(row.student.year) || new Date().getFullYear()
-    const monthlyFee = Number(row.student.monthlyFee || 0)
+    const monthlyFee = Number(row.student.fee || row.student.monthlyFee || 0)
     const currentMonthNum = month ? Number(monthNameToKey(month).split("/")[0]) : 12
     const all = allPaymentsByStudent[sid] || []
-
     const paidByMonth = {}
     all.forEach((p) => {
       const key = String(p.month || "")
@@ -257,15 +264,12 @@ export default function FeeManagementContent() {
       if (!paidByMonth[key]) paidByMonth[key] = 0
       paidByMonth[key] += Number(p.amount || 0)
     })
-
     const list = []
     for (let num = 1; num < currentMonthNum; num++) {
       const key = monthNumToKey(num, y)
       const paid = paidByMonth[key] || 0
       const short = Math.max(0, monthlyFee - paid)
-      if (short > 0) {
-        list.push({ label: MONTH_NAMES[num - 1], monthKey: key, paid, short })
-      }
+      if (short > 0) list.push({ label: MONTH_NAMES[num - 1], monthKey: key, paid, short })
     }
     return list
   }
@@ -281,9 +285,7 @@ export default function FeeManagementContent() {
       const tb = new Date(b.paidAt || b.paidDate || 0).getTime()
       return tb - ta
     })[0]
-
     const previousMonths = computePreviousMonths(row)
-
     printAcademyFeeSlip({
       student: row.student,
       month,
@@ -319,6 +321,7 @@ export default function FeeManagementContent() {
       <tr>
         <td>${r.student.rollNo ?? ""}</td>
         <td style="text-align:left">${r.student.name}</td>
+        <td>${r.student.batchNo || ""}</td>
         <td>Rs. ${r.fee}</td>
         <td>Rs. ${r.paid}</td>
         <td>Rs. ${r.pending}</td>
@@ -337,11 +340,11 @@ export default function FeeManagementContent() {
         th { background:#f3f4f6; }
       </style></head><body>
         <h2>Academy Fee Report — ${month}</h2>
-        <p class="sub">Course ${course} • Section ${section || "All"} • Year ${year || "All"}</p>
+        <p class="sub">Course ${course} • Section ${section || "All"} • Batch ${batchNo || "All"} • Year ${year || "All"}</p>
         <p class="sub">Expected: Rs. ${summary.expected} · Collected: Rs. ${summary.collected} • Pending: Rs. ${summary.pending}</p>
         <table>
           <thead><tr>
-            <th>Roll No</th><th style="text-align:left">Name</th>
+            <th>Roll No</th><th style="text-align:left">Name</th><th>Batch</th>
             <th>Fee</th><th>Paid</th><th>Pending</th><th>Status</th>
           </tr></thead>
           <tbody>${body}</tbody>
@@ -350,6 +353,12 @@ export default function FeeManagementContent() {
       </body></html>
     `)
     w.document.close()
+  }
+
+  // Called after PayDialog saves → small delay ensures DB write visible, then refetch
+  const handleAfterPay = () => {
+    setPayDialog(null)
+    setTimeout(() => fetchAll(), 250)
   }
 
   if (isLoading || !orgEmail || !hydrated) {
@@ -386,7 +395,7 @@ export default function FeeManagementContent() {
 
       <div className="bg-white border rounded-2xl shadow-sm p-5 mb-5">
         <h3 className="text-sm font-semibold text-slate-700 mb-3">Filters</h3>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
           <select className={FILTER_CLASS} value={course} onChange={(e) => setCourse(e.target.value)}>
             <option value="">Course</option>
             {courses.map((c) => <option key={c._id} value={c.name}>{c.name}</option>)}
@@ -394,6 +403,10 @@ export default function FeeManagementContent() {
           <select className={FILTER_CLASS} value={section} onChange={(e) => setSection(e.target.value)}>
             <option value="">Section</option>
             {SECTIONS.map((s) => <option key={s}>{s}</option>)}
+          </select>
+          <select className={FILTER_CLASS} value={batchNo} onChange={(e) => setBatchNo(e.target.value)}>
+            <option value="">Batch</option>
+            {BATCHES.map((b) => <option key={b}>{b}</option>)}
           </select>
           <select className={FILTER_CLASS} value={year} onChange={(e) => setYear(e.target.value)}>
             <option value="">Year</option>
@@ -422,6 +435,7 @@ export default function FeeManagementContent() {
                 <tr>
                   <th className="p-3 text-left font-semibold text-slate-700">Roll No</th>
                   <th className="p-3 text-left font-semibold text-slate-700">Name</th>
+                  <th className="p-3 text-center font-semibold text-slate-700">Batch</th>
                   <th className="p-3 text-right font-semibold text-slate-700">Fee</th>
                   <th className="p-3 text-right font-semibold text-slate-700">Paid</th>
                   <th className="p-3 text-right font-semibold text-slate-700">Pending</th>
@@ -437,6 +451,9 @@ export default function FeeManagementContent() {
                   <tr key={r.student.id} className="border-b hover:bg-purple-50/40">
                     <td className="p-3">{r.student.rollNo ?? "—"}</td>
                     <td className="p-3 font-medium">{r.student.name}</td>
+                    <td className="p-3 text-center text-xs font-semibold text-purple-600">
+                      {r.student.batchNo || "—"}
+                    </td>
                     <td className="p-3 text-right">Rs. {r.fee}</td>
                     <td className="p-3 text-right text-emerald-600 font-semibold">Rs. {r.paid}</td>
                     <td className="p-3 text-right text-red-600 font-semibold">Rs. {r.pending}</td>
@@ -514,10 +531,11 @@ export default function FeeManagementContent() {
           month={monthKey}
           course={course}
           section={section}
+          batchNo={batchNo}
           year={year}
           orgEmail={orgEmail}
           onClose={() => setPayDialog(null)}
-          onSaved={() => { setPayDialog(null); fetchAll() }}
+          onSaved={handleAfterPay}
         />
       )}
 

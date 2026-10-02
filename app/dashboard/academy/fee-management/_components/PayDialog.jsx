@@ -3,7 +3,7 @@ import React, { useState } from 'react'
 import { X, LoaderIcon } from 'lucide-react'
 import { toast } from 'sonner'
 
-export default function PayDialog({ row, month, course, section, year, orgEmail, onClose, onSaved }) {
+export default function PayDialog({ row, month, course, section, batchNo, year, orgEmail, onClose, onSaved }) {
   const [amount, setAmount] = useState(String(row.pending || row.fee || ""))
   const today = new Date()
   const [d, setD] = useState(today.getDate())
@@ -28,6 +28,7 @@ export default function PayDialog({ row, month, course, section, year, orgEmail,
           studentId: row.student.id,
           course,
           section,
+          batchNo,
           year,
           month,
           amount: Number(amount),

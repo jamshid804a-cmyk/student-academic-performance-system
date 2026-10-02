@@ -18,7 +18,7 @@ async function loadAcademyOrg(db, orgEmail) {
 
 // ─────────────────────────────────────────────
 // GET — academy fee payments
-//   ?orgEmail=...&course=X&section=A&year=2025&month=MM/YYYY
+//   ?orgEmail=...&course=X&section=A&batchNo=Batch 1&year=2025&month=MM/YYYY
 // ─────────────────────────────────────────────
 export async function GET(req) {
   try {
@@ -26,6 +26,7 @@ export async function GET(req) {
     const orgEmail = searchParams.get("orgEmail")
     const course = searchParams.get("course")
     const section = searchParams.get("section")
+    const batchNo = searchParams.get("batchNo")
     const year = searchParams.get("year")
     const month = searchParams.get("month")
 
@@ -36,6 +37,7 @@ export async function GET(req) {
     const filter = { schoolId: org.schoolId, program: "academy" }
     if (course) filter.subject = course
     if (section) filter.section = section
+    if (batchNo) filter.batchNo = batchNo
     if (year) filter.year = year
     if (month) filter.month = month
 
@@ -56,13 +58,12 @@ export async function GET(req) {
 
 // ─────────────────────────────────────────────
 // POST — record a fee payment
-//   Body: { orgEmail, studentId, course, section, year, month, amount, paidDate, note }
 // ─────────────────────────────────────────────
 export async function POST(req) {
   try {
     const data = await req.json()
     const orgEmail = data.orgEmail
-    const { studentId, course, section, year, month, amount, paidDate, note } = data
+    const { studentId, course, section, batchNo, year, month, amount, paidDate, note } = data
 
     if (!orgEmail) return NextResponse.json({ error: "orgEmail required" }, { status: 400 })
     if (!studentId || !course || !month || !amount) {
@@ -80,6 +81,7 @@ export async function POST(req) {
       studentId: String(studentId),
       course,
       section: section || "",
+      batchNo: batchNo || "",
       year: year || "",
       month,
       amount: Number(amount),
@@ -103,7 +105,6 @@ export async function POST(req) {
 
 // ─────────────────────────────────────────────
 // PUT — delete all fee records for a student + month
-//   Body: { orgEmail, studentId, month }
 // ─────────────────────────────────────────────
 export async function PUT(req) {
   try {
@@ -138,7 +139,6 @@ export async function PUT(req) {
 
 // ─────────────────────────────────────────────
 // DELETE — remove one payment by id
-//   ?orgEmail=...&id=xxx
 // ─────────────────────────────────────────────
 export async function DELETE(req) {
   try {
