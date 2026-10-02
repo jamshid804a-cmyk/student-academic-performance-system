@@ -28,11 +28,35 @@ export async function GET(req) {
     const { org, error, status } = await loadAcademyOrg(db, email)
     if (error) return NextResponse.json({ error }, { status })
 
-    const students = await db
+    let students = await db
       .collection("students")
       .find({ schoolId: org.schoolId, program: "academy" })
-      .sort({ id: 1 })
+      .sort({ createdAt: 1 })
       .toArray()
+
+    // ─── Backfill: assign sequential `id` to any student missing one ───
+    const missing = students.filter((s) => s.id === undefined || s.id === null)
+    if (missing.length > 0) {
+      let maxId = students
+        .map((s) => Number(s.id) || 0)
+        .reduce((a, b) => Math.max(a, b), 0)
+
+      for (const s of missing) {
+        maxId += 1
+        try {
+          await db.collection("students").updateOne(
+            { _id: s._id },
+            { $set: { id: maxId } }
+          )
+          s.id = maxId
+        } catch (e) {
+          console.error("Backfill id failed:", e.message)
+        }
+      }
+    }
+
+    // Sort by numeric id (1, 2, 3, ...)
+    students.sort((a, b) => (Number(a.id) || 0) - (Number(b.id) || 0))
 
     return NextResponse.json({
       success: true,
@@ -44,7 +68,7 @@ export async function GET(req) {
         fatherOccupation: s.fatherOccupation || "",
         admissionNo: s.admissionNo ?? null,
         contact: s.contact || "",
-        subject: s.subject || "",     // Course
+        subject: s.subject || "",
         section: s.section || "",
         rollNo: s.rollNo ?? null,
         year: s.year || "",
@@ -62,7 +86,7 @@ export async function GET(req) {
 }
 
 // ─────────────────────────────────────────────
-// POST — create academy student
+// POST — create academy student (assigns sequential id)
 // ─────────────────────────────────────────────
 export async function POST(req) {
   try {
@@ -87,7 +111,17 @@ export async function POST(req) {
     const { org, error, status } = await loadAcademyOrg(db, email)
     if (error) return NextResponse.json({ error }, { status })
 
+    // ─── Compute next sequential id for this org's academy students ───
+    const lastStudent = await db
+      .collection("students")
+      .find({ schoolId: org.schoolId, program: "academy" })
+      .sort({ id: -1 })
+      .limit(1)
+      .toArray()
+    const nextId = (Number(lastStudent[0]?.id) || 0) + 1
+
     const doc = {
+      id: nextId,
       name,
       fatherName: String(body.fatherName || "").trim(),
       fatherOccupation: String(body.fatherOccupation || "").trim(),
@@ -121,7 +155,6 @@ export async function POST(req) {
 
 // ─────────────────────────────────────────────
 // PUT — update academy student
-//   Body: { email, id, ...fields }
 // ─────────────────────────────────────────────
 export async function PUT(req) {
   try {
@@ -135,9 +168,18 @@ export async function PUT(req) {
     const { org, error, status } = await loadAcademyOrg(db, email)
     if (error) return NextResponse.json({ error }, { status })
 
+    // Find the student by Mongo _id — client passes `_id` OR `id` (whichever)
+    // We look up by _id if it's a valid ObjectId
     let _id
     try { _id = new ObjectId(id) } catch {
-      return NextResponse.json({ error: "Invalid id" }, { status: 400 })
+      // Not a valid ObjectId — maybe they sent sequential `id`. Try finding by id.
+      const found = await db.collection("students").findOne({
+        schoolId: org.schoolId,
+        program: "academy",
+        id: Number(id),
+      })
+      if (!found) return NextResponse.json({ error: "Invalid id" }, { status: 400 })
+      _id = found._id
     }
 
     const patch = {}
@@ -196,7 +238,14 @@ export async function DELETE(req) {
 
     let _id
     try { _id = new ObjectId(id) } catch {
-      return NextResponse.json({ error: "Invalid id" }, { status: 400 })
+      // Not a valid ObjectId — try by sequential id
+      const found = await db.collection("students").findOne({
+        schoolId: org.schoolId,
+        program: "academy",
+        id: Number(id),
+      })
+      if (!found) return NextResponse.json({ error: "Invalid id" }, { status: 400 })
+      _id = found._id
     }
 
     const result = await db.collection("students").deleteOne({
