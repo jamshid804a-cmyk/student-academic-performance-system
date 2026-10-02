@@ -123,12 +123,32 @@ const DeleteAcademyStudent = (email, id) =>
     );
 
 // Academy Teachers
-const GetAcademyTeachers = (email) =>
-    axios.get('/api/academy/teacher?email=' + encodeURIComponent(email));
+const GetAcademyTeachers = (email, filters = {}) => {
+    const params = new URLSearchParams({ email });
+    if (filters.subject) params.append('subject', filters.subject);
+    if (filters.status) params.append('status', filters.status);
+    return axios.get('/api/academy/teacher?' + params.toString());
+};
 const CreateAcademyTeacher = (data) => axios.post('/api/academy/teacher', data);
+const UpdateAcademyTeacher = (data) => axios.put('/api/academy/teacher', data);
+const RegenerateAcademyTeacherToken = (email, _id) =>
+    axios.patch('/api/academy/teacher', { email, _id });
 const DeleteAcademyTeacher = (email, id) =>
     axios.delete(
         '/api/academy/teacher?email=' + encodeURIComponent(email) + '&id=' + id
+    );
+
+// Academy Teacher Attendance
+const GetAcademyTeacherAttendance = (email, month, teacherId) => {
+    const params = new URLSearchParams({ email, month });
+    if (teacherId) params.append('teacherId', teacherId);
+    return axios.get('/api/academy/teacher-attendance?' + params.toString());
+};
+const SaveAcademyTeacherAttendance = (data) => axios.post('/api/academy/teacher-attendance', data);
+const DeleteAcademyTeacherAttendance = (email, teacherId, month, day) =>
+    axios.delete(
+        '/api/academy/teacher-attendance?email=' + encodeURIComponent(email) +
+        '&teacherId=' + teacherId + '&month=' + encodeURIComponent(month) + '&day=' + day
     );
 
 // Academy Courses
@@ -180,6 +200,7 @@ const GetAcademyAttendanceFlat = (email, course, monthKey, section, year) => {
 };
 
 export default {
+    // School
     GetAllGrades,
     CreateNewStudent,
     GetAllStudents,
@@ -222,15 +243,24 @@ export default {
     CreateAcademyStudent,
     UpdateAcademyStudent,
     DeleteAcademyStudent,
+
     GetAcademyTeachers,
     CreateAcademyTeacher,
+    UpdateAcademyTeacher,
+    RegenerateAcademyTeacherToken,
     DeleteAcademyTeacher,
+    GetAcademyTeacherAttendance,
+    SaveAcademyTeacherAttendance,
+    DeleteAcademyTeacherAttendance,
+
     GetAcademyCourses,
     CreateAcademyCourse,
     DeleteAcademyCourse,
+
     GetAcademyFees,
     SaveAcademyFee,
     DeleteAcademyFee,
+
     GetAcademyAttendanceList,
     SaveAcademyAttendance,
     DeleteAcademyAttendance,

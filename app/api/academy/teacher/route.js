@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { getDb } from "@/utils"
 import { ObjectId } from "mongodb"
+import crypto from "crypto"
 
 async function loadAcademyOrg(db, email) {
   if (!email) return { error: "email required", status: 400 }
@@ -16,39 +17,62 @@ async function loadAcademyOrg(db, email) {
   return { org }
 }
 
+async function generateTeacherId(db, schoolId) {
+  const last = await db
+    .collection("teachers")
+    .find({ schoolId, program: "academy", teacherId: { $regex: "^ATCH-" } })
+    .sort({ teacherId: -1 })
+    .limit(1)
+    .toArray()
+
+  if (last.length === 0) return "ATCH-001"
+  const lastNum = parseInt(String(last[0].teacherId).replace("ATCH-", ""), 10)
+  const nextNum = isNaN(lastNum) ? 1 : lastNum + 1
+  return `ATCH-${String(nextNum).padStart(3, "0")}`
+}
+
 // ─────────────────────────────────────────────
 // GET — list academy teachers
-//   ?email=user@example.com
 // ─────────────────────────────────────────────
 export async function GET(req) {
   try {
     const { searchParams } = new URL(req.url)
     const email = searchParams.get("email")
+    const subject = searchParams.get("subject")
+    const status = searchParams.get("status")
 
     const db = await getDb()
-    const { org, error, status } = await loadAcademyOrg(db, email)
-    if (error) {
-      return NextResponse.json({ error }, { status })
-    }
+    const { org, error, status: errStatus } = await loadAcademyOrg(db, email)
+    if (error) return NextResponse.json({ error }, { status: errStatus })
+
+    const filter = { schoolId: org.schoolId, program: "academy" }
+    if (subject) filter.subject = subject
+    if (status) filter.status = status
 
     const teachers = await db
       .collection("teachers")
-      .find({ schoolId: org.schoolId, program: "academy" })
-      .sort({ createdAt: -1 })
+      .find(filter)
+      .sort({ teacherId: 1 })
       .toArray()
 
-    return NextResponse.json({
-      success: true,
-      teachers: teachers.map((t) => ({
+    return NextResponse.json(
+      teachers.map((t) => ({
         _id: t._id.toString(),
+        teacherId: t.teacherId || "",
         name: t.name || "",
-        subject: t.subject || "",
+        email: t.email || "",
         phone: t.phone || "",
+        subject: t.subject || "",
+        classes: Array.isArray(t.classes) ? t.classes : [],
+        qualification: t.qualification || "",
+        joiningDate: t.joiningDate || "",
         salary: Number(t.salary) || 0,
-        joiningDate: t.joiningDate || null,
+        address: t.address || "",
+        status: t.status || "Active",
+        publicToken: t.publicToken || "",
         createdAt: t.createdAt,
-      })),
-    })
+      }))
+    )
   } catch (err) {
     console.error("❌ GET /api/academy/teacher:", err.message)
     return NextResponse.json({ error: err.message }, { status: 500 })
@@ -57,51 +81,70 @@ export async function GET(req) {
 
 // ─────────────────────────────────────────────
 // POST — create academy teacher
-//   Body: { email, name, subject, phone?, salary?, joiningDate? }
 // ─────────────────────────────────────────────
 export async function POST(req) {
   try {
-    const body = await req.json()
-    const email = body.email
-    const name = String(body.name || "").trim()
-    const subject = String(body.subject || "").trim()
-    const phone = String(body.phone || "").trim()
-    const salary = Number(body.salary) || 0
-    const joiningDate = body.joiningDate || null
+    const data = await req.json()
+    const {
+      email, name, email: teacherEmail, phone, classes, qualification,
+      subject, joiningDate, salary, address, status,
+    } = data
 
-    if (!name || name.length < 2) {
-      return NextResponse.json(
-        { error: "Teacher name is required" },
-        { status: 400 }
-      )
+    if (!email) {
+      return NextResponse.json({ error: "email required" }, { status: 400 })
     }
-    if (!subject) {
-      return NextResponse.json({ error: "Subject is required" }, { status: 400 })
+    if (!name || !teacherEmail) {
+      return NextResponse.json({ error: "Name and email are required" }, { status: 400 })
     }
 
     const db = await getDb()
-    const { org, error, status } = await loadAcademyOrg(db, email)
-    if (error) {
-      return NextResponse.json({ error }, { status })
+    const { org, error, status: errStatus } = await loadAcademyOrg(db, email)
+    if (error) return NextResponse.json({ error }, { status: errStatus })
+
+    const collection = db.collection("teachers")
+
+    const existing = await collection.findOne({
+      schoolId: org.schoolId,
+      program: "academy",
+      email: String(teacherEmail).trim().toLowerCase(),
+    })
+    if (existing) {
+      return NextResponse.json(
+        { error: "A teacher with this email already exists in your academy" },
+        { status: 400 }
+      )
     }
 
+    const teacherId = await generateTeacherId(db, org.schoolId)
+    const publicToken = crypto.randomBytes(16).toString("hex")
+
     const doc = {
-      name,
-      subject,
-      phone,
-      salary,
-      joiningDate: joiningDate ? new Date(joiningDate) : new Date(),
       schoolId: org.schoolId,
       orgId: org._id.toString(),
       program: "academy",
+      teacherId,
+      name: String(name).trim(),
+      email: String(teacherEmail).trim().toLowerCase(),
+      phone: phone ? String(phone).trim() : "",
+      classes: Array.isArray(classes) ? classes : [],
+      qualification: qualification ? String(qualification).trim() : "",
+      subject: subject ? String(subject).trim() : "",
+      joiningDate: joiningDate || "",
+      salary: Number(salary) || 0,
+      address: address ? String(address).trim() : "",
+      status: status || "Active",
+      publicToken,
       createdAt: new Date(),
+      updatedAt: new Date(),
     }
 
-    const result = await db.collection("teachers").insertOne(doc)
+    const result = await collection.insertOne(doc)
 
     return NextResponse.json({
       success: true,
-      teacher: { _id: result.insertedId.toString(), ...doc },
+      id: result.insertedId.toString(),
+      teacherId,
+      publicToken,
     })
   } catch (err) {
     console.error("❌ POST /api/academy/teacher:", err.message)
@@ -110,32 +153,115 @@ export async function POST(req) {
 }
 
 // ─────────────────────────────────────────────
-// DELETE — remove academy teacher
-//   ?id=xxx&email=user@example.com
+// PUT — update academy teacher
 // ─────────────────────────────────────────────
-export async function DELETE(req) {
+export async function PUT(req) {
   try {
-    const { searchParams } = new URL(req.url)
-    const id = searchParams.get("id")
-    const email = searchParams.get("email")
+    const data = await req.json()
+    const { email, _id: teacherMongoId, ...fields } = data
 
-    if (!id || !email) {
-      return NextResponse.json(
-        { error: "id and email required" },
-        { status: 400 }
-      )
+    if (!email) {
+      return NextResponse.json({ error: "email required" }, { status: 400 })
+    }
+    if (!teacherMongoId) {
+      return NextResponse.json({ error: "teacher _id required" }, { status: 400 })
     }
 
     const db = await getDb()
     const { org, error, status } = await loadAcademyOrg(db, email)
-    if (error) {
-      return NextResponse.json({ error }, { status })
-    }
+    if (error) return NextResponse.json({ error }, { status })
 
     let _id
-    try {
-      _id = new ObjectId(id)
-    } catch {
+    try { _id = new ObjectId(teacherMongoId) } catch {
+      return NextResponse.json({ error: "Invalid _id" }, { status: 400 })
+    }
+
+    const patch = { updatedAt: new Date() }
+    if (fields.name !== undefined) patch.name = String(fields.name).trim()
+    if (fields.email !== undefined) patch.email = String(fields.email).trim().toLowerCase()
+    if (fields.phone !== undefined) patch.phone = String(fields.phone).trim()
+    if (fields.subject !== undefined) patch.subject = String(fields.subject).trim()
+    if (fields.qualification !== undefined) patch.qualification = String(fields.qualification).trim()
+    if (fields.joiningDate !== undefined) patch.joiningDate = fields.joiningDate || ""
+    if (fields.salary !== undefined) patch.salary = Number(fields.salary) || 0
+    if (fields.address !== undefined) patch.address = String(fields.address).trim()
+    if (fields.status !== undefined) patch.status = fields.status
+    if (fields.classes !== undefined) patch.classes = Array.isArray(fields.classes) ? fields.classes : []
+
+    const result = await db.collection("teachers").updateOne(
+      { _id, schoolId: org.schoolId, program: "academy" },
+      { $set: patch }
+    )
+
+    if (result.matchedCount === 0) {
+      return NextResponse.json({ error: "Teacher not found" }, { status: 404 })
+    }
+
+    return NextResponse.json({ success: true })
+  } catch (err) {
+    console.error("❌ PUT /api/academy/teacher:", err.message)
+    return NextResponse.json({ error: err.message }, { status: 500 })
+  }
+}
+
+// ─────────────────────────────────────────────
+// PATCH — regenerate public token
+// ─────────────────────────────────────────────
+export async function PATCH(req) {
+  try {
+    const data = await req.json()
+    const { email, _id: teacherMongoId } = data
+
+    if (!email || !teacherMongoId) {
+      return NextResponse.json({ error: "email and _id required" }, { status: 400 })
+    }
+
+    const db = await getDb()
+    const { org, error, status } = await loadAcademyOrg(db, email)
+    if (error) return NextResponse.json({ error }, { status })
+
+    let _id
+    try { _id = new ObjectId(teacherMongoId) } catch {
+      return NextResponse.json({ error: "Invalid _id" }, { status: 400 })
+    }
+
+    const publicToken = crypto.randomBytes(16).toString("hex")
+
+    const result = await db.collection("teachers").updateOne(
+      { _id, schoolId: org.schoolId, program: "academy" },
+      { $set: { publicToken, updatedAt: new Date() } }
+    )
+
+    if (result.matchedCount === 0) {
+      return NextResponse.json({ error: "Teacher not found" }, { status: 404 })
+    }
+
+    return NextResponse.json({ success: true, publicToken })
+  } catch (err) {
+    console.error("❌ PATCH /api/academy/teacher:", err.message)
+    return NextResponse.json({ error: err.message }, { status: 500 })
+  }
+}
+
+// ─────────────────────────────────────────────
+// DELETE — remove academy teacher
+// ─────────────────────────────────────────────
+export async function DELETE(req) {
+  try {
+    const { searchParams } = new URL(req.url)
+    const email = searchParams.get("email")
+    const id = searchParams.get("id")
+
+    if (!email || !id) {
+      return NextResponse.json({ error: "email and id required" }, { status: 400 })
+    }
+
+    const db = await getDb()
+    const { org, error, status } = await loadAcademyOrg(db, email)
+    if (error) return NextResponse.json({ error }, { status })
+
+    let _id
+    try { _id = new ObjectId(id) } catch {
       return NextResponse.json({ error: "Invalid id" }, { status: 400 })
     }
 
