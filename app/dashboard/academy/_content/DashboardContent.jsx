@@ -9,6 +9,7 @@ import BatchSelection from '../_components/BatchSelection'
 import YearSelection from '../_components/YearSelection'
 import StatusList from '../_components/StatusList'
 import AttendanceChart from '../_components/AttendanceChart'
+import FeeSummaryCards from '../_components/FeeSummaryCards'
 
 const STORAGE_KEY = 'academy_dashboard_filters_v3'
 
@@ -34,6 +35,7 @@ export default function DashboardContent() {
   const [allStudents, setAllStudents] = useState([])
   const [classStudents, setClassStudents] = useState([])
   const [attendanceList, setAttendanceList] = useState([])
+  const [fees, setFees] = useState([])
   const [hydrated, setHydrated] = useState(false)
 
   useEffect(() => {
@@ -112,12 +114,36 @@ export default function DashboardContent() {
       .catch(() => setAttendanceList([]))
   }, [email, selectedMonth, selectedCourse, selectedSection, selectedBatch, selectedYear])
 
+  // Fees (for the selected month + filters)
+  useEffect(() => {
+    if (!email) return
+    if (!selectedMonth || !selectedCourse) { setFees([]); return }
+
+    const monthNum = monthNameToKey(selectedMonth)
+    const monthKey = monthNum
+      ? `${monthNum}/${new Date().getFullYear()}`
+      : selectedMonth
+
+    const params = new URLSearchParams({
+      orgEmail: email,
+      course: selectedCourse,
+      month: monthKey,
+    })
+    if (selectedSection) params.append('section', selectedSection)
+    if (selectedYear) params.append('year', selectedYear)
+
+    fetch(`/api/academy/fees?${params.toString()}`, { cache: 'no-store' })
+      .then(r => r.json())
+      .then(data => setFees(Array.isArray(data) ? data : []))
+      .catch(() => setFees([]))
+  }, [email, selectedMonth, selectedCourse, selectedSection, selectedYear])
+
   return (
     <div className="p-8 bg-slate-50 min-h-screen">
       <div className="flex items-center justify-between mb-6">
         <div>
           <h2 className="font-bold text-3xl text-slate-800">Academy Dashboard</h2>
-          <p className="text-sm text-slate-500 mt-1">Attendance overview</p>
+          <p className="text-sm text-slate-500 mt-1">Attendance & Fee overview</p>
         </div>
       </div>
 
@@ -163,6 +189,12 @@ export default function DashboardContent() {
         attendanceList={attendanceList}
         selectedMonth={selectedMonth}
         selectedCourse={selectedCourse}
+      />
+
+      <FeeSummaryCards
+        students={classStudents}
+        fees={fees}
+        monthLabel={selectedMonth}
       />
 
       <AttendanceChart
