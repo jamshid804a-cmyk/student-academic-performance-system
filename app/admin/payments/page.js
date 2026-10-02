@@ -1,6 +1,7 @@
 "use client"
 
 import React, { useEffect, useState } from "react"
+import Link from "next/link"
 import {
   Loader2, RefreshCw, CheckCircle2, XCircle, Wallet,
   School, Library, Mail, Phone, Hash, Clock,
