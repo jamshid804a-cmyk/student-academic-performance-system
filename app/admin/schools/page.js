@@ -4,6 +4,7 @@ import React, { useEffect, useState } from "react"
 import {
   Loader2, Plus, Power, Trash2, Building2, Users, GraduationCap,
   Bell, RefreshCw, X, Mail, Calendar, Search, School, BookOpen, Layers,
+  Wallet, Save
 } from "lucide-react"
 
 function formatDate(d) {
@@ -29,6 +30,7 @@ export default function AdminSchoolsPage() {
   const [filterPackage, setFilterPackage] = useState("all")
   const [showAdd, setShowAdd] = useState(false)
   const [toast, setToast] = useState(null)
+  const [priceInput, setPriceInput] = useState({}) // { [schoolId]: "2000" }
 
   const [form, setForm] = useState({
     schoolName: "",
@@ -49,16 +51,26 @@ export default function AdminSchoolsPage() {
     try {
       const res = await fetch("/api/admin/schools", { cache: "no-store" })
       const data = await res.json()
-      if (data.success) setSchools(data.schools || [])
-      else showToast(data.error || "Failed to load", "err")
-    } catch { showToast("Failed to load", "err") }
+      if (data.success) {
+        setSchools(data.schools || [])
+        // Seed price inputs from current data
+        const seeded = {}
+        for (const s of data.schools || []) {
+          seeded[s._id] = String(s.academySection?.price ?? 0)
+        }
+        setPriceInput(seeded)
+      } else {
+        showToast(data.error || "Failed to load", "err")
+      }
+    } catch {
+      showToast("Failed to load", "err")
+    }
     setLoading(false)
   }
 
   useEffect(() => { load() }, [])
 
   const toggleSection = async (school, section) => {
-    // section = "schoolSection" | "academySection"
     const current = school[section]?.active === true
     setBusyId(school._id + section)
     try {
@@ -78,7 +90,43 @@ export default function AdminSchoolsPage() {
         )
         showToast(`${section === "schoolSection" ? "School" : "Academy"} section ${!current ? "activated" : "suspended"}`)
       } else showToast(data.error || "Failed", "err")
-    } catch { showToast("Failed", "err") }
+    } catch {
+      showToast("Failed", "err")
+    }
+    setBusyId(null)
+  }
+
+  const saveAcademyPrice = async (school) => {
+    const raw = priceInput[school._id]
+    const price = Number(raw) || 0
+    if (price < 0) {
+      showToast("Price cannot be negative", "err")
+      return
+    }
+    setBusyId(school._id + "price")
+    try {
+      const res = await fetch(`/api/admin/schools/${school._id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ academySection: { price } }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        setSchools((prev) =>
+          prev.map((s) =>
+            s._id === school._id
+              ? {
+                  ...s,
+                  academySection: { ...(s.academySection || {}), price },
+                }
+              : s
+          )
+        )
+        showToast(`Academy price set to Rs. ${price}`)
+      } else showToast(data.error || "Failed", "err")
+    } catch {
+      showToast("Failed", "err")
+    }
     setBusyId(null)
   }
 
@@ -92,7 +140,9 @@ export default function AdminSchoolsPage() {
         setSchools((prev) => prev.filter((s) => s._id !== school._id))
         showToast(`${school.schoolName} deleted`)
       } else showToast(data.error || "Failed", "err")
-    } catch { showToast("Failed", "err") }
+    } catch {
+      showToast("Failed", "err")
+    }
     setBusyId(null)
   }
 
@@ -115,7 +165,9 @@ export default function AdminSchoolsPage() {
         setForm({ schoolName: "", email: "", ownerName: "", note: "", package: "school" })
         load()
       } else showToast(data.error || "Failed", "err")
-    } catch { showToast("Failed", "err") }
+    } catch {
+      showToast("Failed", "err")
+    }
     setSaving(false)
   }
 
@@ -244,7 +296,6 @@ export default function AdminSchoolsPage() {
                       </div>
                     </div>
 
-                    {/* Package badge */}
                     <span
                       className="text-[10px] font-extrabold uppercase px-3 py-1 rounded-full"
                       style={{ backgroundColor: pkgStyle.bg, color: pkgStyle.color }}
@@ -252,7 +303,6 @@ export default function AdminSchoolsPage() {
                       {pkgStyle.label}
                     </span>
 
-                    {/* Counts */}
                     <div className="flex gap-3 flex-wrap">
                       <div className="text-center px-3">
                         <div className="flex items-center gap-1 text-slate-500 text-[10px] uppercase font-bold">
@@ -301,6 +351,13 @@ export default function AdminSchoolsPage() {
                         price={s.academySection?.price}
                         busy={busyId === s._id + "academySection"}
                         onToggle={() => toggleSection(s, "academySection")}
+                        editablePrice
+                        priceValue={priceInput[s._id] ?? ""}
+                        onPriceChange={(v) =>
+                          setPriceInput((p) => ({ ...p, [s._id]: v }))
+                        }
+                        onSavePrice={() => saveAcademyPrice(s)}
+                        priceBusy={busyId === s._id + "price"}
                       />
                     )}
                     {!showSchool && !showAcademy && (
@@ -332,7 +389,6 @@ export default function AdminSchoolsPage() {
             </div>
 
             <div className="p-6 space-y-4">
-              {/* Package picker */}
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-2 uppercase tracking-wide">
                   Package *
@@ -429,42 +485,78 @@ export default function AdminSchoolsPage() {
 }
 
 // ─────────────────────────────────────────────
-// Section row component
+// Section row with optional price editor
 // ─────────────────────────────────────────────
-function SectionRow({ icon: Icon, label, active, expiresAt, price, busy, onToggle }) {
+function SectionRow({
+  icon: Icon, label, active, expiresAt, price, busy, onToggle,
+  editablePrice, priceValue, onPriceChange, onSavePrice, priceBusy,
+}) {
+  const original = Number(price) || 0
+  const current = Number(priceValue) || 0
+  const dirty = editablePrice && String(original) !== String(current)
+
   return (
-    <div className={`rounded-xl border p-4 flex items-center gap-3 ${
+    <div className={`rounded-xl border p-4 ${
       active ? "border-emerald-200 bg-emerald-50/40" : "border-red-200 bg-red-50/40"
     }`}>
-      <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
-        active ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-600"
-      }`}>
-        <Icon size={18} />
-      </div>
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2">
-          <p className="text-sm font-bold text-slate-800">{label}</p>
-          <span className={`text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full ${
-            active ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-700"
-          }`}>
-            {active ? "Active" : "Suspended"}
-          </span>
-        </div>
-        <p className="text-[11px] text-slate-500 mt-0.5 flex items-center gap-1">
-          <Calendar size={10} />
-          Expires: {expiresAt ? new Date(expiresAt).toLocaleDateString("en-GB") : "—"}
-          {price > 0 ? ` · Rs. ${price}/mo` : ""}
-        </p>
-      </div>
-      <button onClick={onToggle} disabled={busy}
-        className={`px-3 py-2 rounded-lg text-xs font-bold transition disabled:opacity-50 flex items-center gap-1 ${
-          active
-            ? "bg-red-50 hover:bg-red-100 text-red-700"
-            : "bg-emerald-50 hover:bg-emerald-100 text-emerald-700"
+      <div className="flex items-center gap-3">
+        <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
+          active ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-600"
         }`}>
-        {busy ? <Loader2 size={12} className="animate-spin" /> : <Power size={12} />}
-        {active ? "Suspend" : "Activate"}
-      </button>
+          <Icon size={18} />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <p className="text-sm font-bold text-slate-800">{label}</p>
+            <span className={`text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full ${
+              active ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-700"
+            }`}>
+              {active ? "Active" : "Suspended"}
+            </span>
+          </div>
+          <p className="text-[11px] text-slate-500 mt-0.5 flex items-center gap-1">
+            <Calendar size={10} />
+            Expires: {expiresAt ? new Date(expiresAt).toLocaleDateString("en-GB") : "—"}
+            {!editablePrice && original > 0 ? ` · Rs. ${original}/mo` : ""}
+          </p>
+        </div>
+        <button onClick={onToggle} disabled={busy}
+          className={`px-3 py-2 rounded-lg text-xs font-bold transition disabled:opacity-50 flex items-center gap-1 ${
+            active
+              ? "bg-red-50 hover:bg-red-100 text-red-700"
+              : "bg-emerald-50 hover:bg-emerald-100 text-emerald-700"
+          }`}>
+          {busy ? <Loader2 size={12} className="animate-spin" /> : <Power size={12} />}
+          {active ? "Suspend" : "Activate"}
+        </button>
+      </div>
+
+      {/* Price editor (academy only) */}
+      {editablePrice && (
+        <div className="mt-3 pt-3 border-t border-slate-200/70 flex items-center gap-2">
+          <Wallet size={14} className="text-slate-400 shrink-0" />
+          <span className="text-xs font-bold text-slate-600 shrink-0">Rs.</span>
+          <input
+            type="number"
+            value={priceValue}
+            onChange={(e) => onPriceChange(e.target.value)}
+            placeholder="2000"
+            className="w-24 px-2 py-1.5 rounded-lg border border-slate-300 outline-none focus:border-indigo-500 text-sm"
+          />
+          <span className="text-[11px] text-slate-400 shrink-0">/ month</span>
+          <button
+            onClick={onSavePrice}
+            disabled={!dirty || priceBusy}
+            className={`ml-auto flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+              dirty && !priceBusy
+                ? "bg-indigo-600 hover:bg-indigo-700 text-white"
+                : "bg-slate-100 text-slate-400 cursor-not-allowed"
+            }`}>
+            {priceBusy ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
+            Save
+          </button>
+        </div>
+      )}
     </div>
   )
 }
