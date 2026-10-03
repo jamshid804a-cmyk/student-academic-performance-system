@@ -43,10 +43,8 @@ export default function TeacherAcademyTestingModule({ teacher, token }) {
 
   const [subjectModal, setSubjectModal] = useState(null)
   const [newSubjectName, setNewSubjectName] = useState("")
-  const [bulkSaving, setBulkSaving] = useState(false)
   const [deletingSubject, setDeletingSubject] = useState(null)
 
-  // Load courses
   useEffect(() => {
     if (!token) return
     fetch(`/api/teacher-public/courses?token=${encodeURIComponent(token)}`, { cache: 'no-store' })
@@ -55,7 +53,6 @@ export default function TeacherAcademyTestingModule({ teacher, token }) {
       .catch(() => {})
   }, [token])
 
-  // Auto-select first assigned course
   useEffect(() => {
     if (courses.length === 0 || course) return
     const assigned = Array.isArray(teacher?.classes) ? teacher.classes : []
@@ -83,7 +80,6 @@ export default function TeacherAcademyTestingModule({ teacher, token }) {
       )
       const testArr = await testRes.json()
 
-      // Students — use public attendance endpoint to get them
       const attParams = new URLSearchParams({ token, course, month: monthKey })
       if (section) attParams.append('section', section)
       if (year) attParams.append('year', year)
@@ -102,7 +98,6 @@ export default function TeacherAcademyTestingModule({ teacher, token }) {
       })
       setTests(marks)
 
-      // Load subjects from localStorage (per teacher token)
       try {
         const key = `tch_subjects_${token}`
         const saved = JSON.parse(localStorage.getItem(key) || "{}")
@@ -117,7 +112,6 @@ export default function TeacherAcademyTestingModule({ teacher, token }) {
 
   useEffect(() => { fetchAll() }, [fetchAll])
 
-  // Persist local subjects
   useEffect(() => {
     if (!token) return
     try {
@@ -276,17 +270,39 @@ export default function TeacherAcademyTestingModule({ teacher, token }) {
   }, [rows, searchInput])
 
   const handleSend = async (row) => {
-    if (row.lowSubjects.length === 0) { toast.info("No subjects below 50%"); return }
-    const lines = row.lowSubjects.map((s) => `${s.subject}: ${s.obtained}/${s.total} (${s.percentage}%)`).join(", ")
+    if (row.lowSubjects.length === 0) {
+      toast.info("No subjects below 50% — nothing to send")
+      return
+    }
+    const lines = row.lowSubjects
+      .map((s) => `${s.subject}: ${s.obtained}/${s.total} (${s.percentage}%)`)
+      .join(", ")
     const message = `Dear Parent, your child ${row.student.name} scored below 50% in: ${lines} for the ${testType} test in ${month}.`
+
+    const toastId = toast.loading(`Sending to ${row.student.name}'s parent...`)
+
     try {
-      await fetch("/api/teacher-public/notify", {
+      const res = await fetch("/api/teacher-public/notify", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token, studentId: row.student.id, message, type: "test" }),
+        body: JSON.stringify({
+          token,
+          studentId: row.student.id,
+          message,
+          type: "test",
+        }),
       })
-      toast.success(`Notification sent for ${row.student.name}`)
-    } catch (err) { console.error(err); toast.error("Failed to send") }
+      const data = await res.json()
+
+      if (res.ok && data.success) {
+        toast.success(`Notification sent to ${row.student.name}'s parent ✅`, { id: toastId })
+      } else {
+        toast.error(data.error || `Failed to send for ${row.student.name}`, { id: toastId })
+      }
+    } catch (err) {
+      console.error(err)
+      toast.error(`Failed to send for ${row.student.name}`, { id: toastId })
+    }
   }
 
   const filterClass = "px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-sm outline-none focus:border-indigo-500"

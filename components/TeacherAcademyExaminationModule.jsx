@@ -270,17 +270,39 @@ export default function TeacherAcademyExaminationModule({ teacher, token }) {
   }, [rows, searchInput])
 
   const handleSend = async (row) => {
-    if (row.lowSubjects.length === 0) { toast.info("No subjects below 50%"); return }
-    const lines = row.lowSubjects.map((s) => `${s.subject}: ${s.obtained}/${s.total} (${s.percentage}%)`).join(", ")
+    if (row.lowSubjects.length === 0) {
+      toast.info("No subjects below 50% — nothing to send")
+      return
+    }
+    const lines = row.lowSubjects
+      .map((s) => `${s.subject}: ${s.obtained}/${s.total} (${s.percentage}%)`)
+      .join(", ")
     const message = `Dear Parent, your child ${row.student.name} scored below 50% in: ${lines} for the ${examType} exam in ${month}.`
+
+    const toastId = toast.loading(`Sending to ${row.student.name}'s parent...`)
+
     try {
-      await fetch("/api/teacher-public/notify", {
+      const res = await fetch("/api/teacher-public/notify", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token, studentId: row.student.id, message, type: "examination" }),
+        body: JSON.stringify({
+          token,
+          studentId: row.student.id,
+          message,
+          type: "examination",
+        }),
       })
-      toast.success(`Notification sent for ${row.student.name}`)
-    } catch (err) { console.error(err); toast.error("Failed to send") }
+      const data = await res.json()
+
+      if (res.ok && data.success) {
+        toast.success(`Notification sent to ${row.student.name}'s parent ✅`, { id: toastId })
+      } else {
+        toast.error(data.error || `Failed to send for ${row.student.name}`, { id: toastId })
+      }
+    } catch (err) {
+      console.error(err)
+      toast.error(`Failed to send for ${row.student.name}`, { id: toastId })
+    }
   }
 
   const filterClass = "px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-sm outline-none focus:border-purple-500"
