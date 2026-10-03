@@ -1,19 +1,12 @@
 import { NextResponse } from "next/server"
 import { getDb } from "@/utils"
 import { ObjectId } from "mongodb"
-import { getKindeServerSession } from "@kinde-oss/kinde-auth-nextjs/server"
 
 const OWNER_EMAIL = "jamshid804a@gmail.com"
 
-async function isOwner() {
-  try {
-    const { getUser } = getKindeServerSession()
-    const user = await getUser()
-    if (!user?.email) return false
-    return String(user.email).toLowerCase().trim() === OWNER_EMAIL.toLowerCase()
-  } catch {
-    return false
-  }
+function isOwnerEmail(email) {
+  if (!email) return false
+  return String(email).toLowerCase().trim() === OWNER_EMAIL.toLowerCase()
 }
 
 async function resolveId(db, id) {
@@ -26,11 +19,14 @@ async function resolveId(db, id) {
 }
 
 // ─────────────────────────────────────────────
-// GET — one organization
+// GET — one org
+//   ?email=jamshid804a@gmail.com
 // ─────────────────────────────────────────────
 export async function GET(req, { params }) {
   try {
-    if (!(await isOwner())) {
+    const { searchParams } = new URL(req.url)
+    const email = searchParams.get("email")
+    if (!isOwnerEmail(email)) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
@@ -52,16 +48,14 @@ export async function GET(req, { params }) {
 }
 
 // ─────────────────────────────────────────────
-// PATCH — update organization
-//   Body examples:
-//     { schoolSection: { active: false } }
-//     { academySection: { active: true, price: 2500, priceNote: "New year" } }
-//     { schoolName: "New Name" }
-//     { package: "both" }
+// PATCH — update org (suspend/activate/price/etc)
+//   Body: { email (owner), ...fields }
 // ─────────────────────────────────────────────
 export async function PATCH(req, { params }) {
   try {
-    if (!(await isOwner())) {
+    const body = await req.json()
+    const ownerEmail = body.email
+    if (!isOwnerEmail(ownerEmail)) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
@@ -69,10 +63,8 @@ export async function PATCH(req, { params }) {
     const _id = await resolveId(db, params.id)
     if (!_id) return NextResponse.json({ error: "Not found" }, { status: 404 })
 
-    const body = await req.json()
     const patch = { updatedAt: new Date() }
 
-    // Direct fields
     if (body.schoolName !== undefined) patch.schoolName = String(body.schoolName).trim()
     if (body.ownerName !== undefined) patch.ownerName = String(body.ownerName).trim()
     if (body.note !== undefined) patch.note = String(body.note).trim()
@@ -81,7 +73,6 @@ export async function PATCH(req, { params }) {
       if (["school", "academy", "both"].includes(p)) patch.package = p
     }
 
-    // Nested: schoolSection
     if (body.schoolSection && typeof body.schoolSection === "object") {
       const s = body.schoolSection
       if (s.active !== undefined) patch["schoolSection.active"] = Boolean(s.active)
@@ -90,13 +81,11 @@ export async function PATCH(req, { params }) {
       if (s.price !== undefined) patch["schoolSection.price"] = Number(s.price) || 0
       if (s.priceNote !== undefined) patch["schoolSection.priceNote"] = String(s.priceNote)
 
-      // Legacy mirror
       if (s.active !== undefined) patch.active = Boolean(s.active)
       if (s.expiresAt !== undefined)
         patch.expiresAt = s.expiresAt ? new Date(s.expiresAt) : null
     }
 
-    // Nested: academySection
     if (body.academySection && typeof body.academySection === "object") {
       const a = body.academySection
       if (a.active !== undefined) patch["academySection.active"] = Boolean(a.active)
@@ -106,7 +95,6 @@ export async function PATCH(req, { params }) {
       if (a.priceNote !== undefined) patch["academySection.priceNote"] = String(a.priceNote)
     }
 
-    // Convenience: when reactivating a section, give it 30 days
     if (patch["schoolSection.active"] === true && patch["schoolSection.expiresAt"] === undefined) {
       patch["schoolSection.expiresAt"] = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
       patch.expiresAt = patch["schoolSection.expiresAt"]
@@ -131,11 +119,14 @@ export async function PATCH(req, { params }) {
 }
 
 // ─────────────────────────────────────────────
-// DELETE — remove organization and its data
+// DELETE — remove org + its data
+//   ?email=jamshid804a@gmail.com
 // ─────────────────────────────────────────────
 export async function DELETE(req, { params }) {
   try {
-    if (!(await isOwner())) {
+    const { searchParams } = new URL(req.url)
+    const email = searchParams.get("email")
+    if (!isOwnerEmail(email)) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
@@ -153,6 +144,7 @@ export async function DELETE(req, { params }) {
       const collections = [
         "students", "attendance", "tests", "exams",
         "fees", "notifications", "teachers", "teacher_attendance",
+        "academy_courses",
       ]
       for (const name of collections) {
         try {

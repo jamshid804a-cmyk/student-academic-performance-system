@@ -1,32 +1,27 @@
 import { NextResponse } from "next/server"
 import { getDb } from "@/utils"
-import { getKindeServerSession } from "@kinde-oss/kinde-auth-nextjs/server"
 
 const OWNER_EMAIL = "jamshid804a@gmail.com"
 
-async function isOwner() {
-  try {
-    const { getUser } = getKindeServerSession()
-    const user = await getUser()
-    if (!user?.email) return false
-    return String(user.email).toLowerCase().trim() === OWNER_EMAIL.toLowerCase()
-  } catch {
-    return false
-  }
+function isOwnerEmail(email) {
+  if (!email) return false
+  return String(email).toLowerCase().trim() === OWNER_EMAIL.toLowerCase()
 }
 
 // ─────────────────────────────────────────────
 // GET — list all organizations
-//   ?package=school | academy | both   (optional filter)
+//   ?email=jamshid804a@gmail.com   (required — owner only)
+//   ?package=school|academy|both   (optional)
 // ─────────────────────────────────────────────
 export async function GET(req) {
   try {
-    if (!(await isOwner())) {
+    const { searchParams } = new URL(req.url)
+    const email = searchParams.get("email")
+    const pkg = searchParams.get("package")
+
+    if (!isOwnerEmail(email)) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
-
-    const { searchParams } = new URL(req.url)
-    const pkg = searchParams.get("package")
 
     const db = await getDb()
     const filter = {}
@@ -43,8 +38,8 @@ export async function GET(req) {
     const withCounts = await Promise.all(
       schools.map(async (s) => {
         const [students, teachers, notifications] = await Promise.all([
-          db.collection("students").countDocuments({ schoolId: s.schoolId }),
-          db.collection("teachers").countDocuments({ schoolId: s.schoolId }),
+          db.collection("students").countDocuments({ schoolId: s.schoolId, program: { $ne: "academy" } }),
+          db.collection("teachers").countDocuments({ schoolId: s.schoolId, program: { $ne: "academy" } }),
           db.collection("notifications").countDocuments({ schoolId: s.schoolId }),
         ])
         return {
@@ -55,7 +50,6 @@ export async function GET(req) {
           ownerName: s.ownerName || "",
           note: s.note || "",
           package: s.package || "school",
-          // New shape: each section has active + expiresAt + price + note
           schoolSection: s.schoolSection || {
             active: s.active !== false,
             expiresAt: s.expiresAt,
@@ -68,7 +62,6 @@ export async function GET(req) {
             price: 0,
             priceNote: "",
           },
-          // Legacy fields kept for compatibility
           active: s.active !== false,
           createdAt: s.createdAt,
           expiresAt: s.expiresAt,
@@ -85,20 +78,24 @@ export async function GET(req) {
 }
 
 // ─────────────────────────────────────────────
-// POST — create a new organization
-//   Body: { schoolName, email, ownerName, note, package }
-//     package: "school" | "academy" | "both"
+// POST — create org
+//   Body: { email (owner), schoolName, email(newOrg), ownerName, note, package }
 // ─────────────────────────────────────────────
 export async function POST(req) {
   try {
-    if (!(await isOwner())) {
+    const data = await req.json()
+    const ownerEmail = data.ownerEmail
+    const schoolName = data.schoolName
+    const newOrgEmail = data.email
+    const ownerName = data.ownerName
+    const note = data.note
+    const pkg = data.package
+
+    if (!isOwnerEmail(ownerEmail)) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const data = await req.json()
-    const { schoolName, email, ownerName, note, package: pkg } = data
-
-    if (!schoolName || !email) {
+    if (!schoolName || !newOrgEmail) {
       return NextResponse.json(
         { error: "schoolName and email are required" },
         { status: 400 }
@@ -108,7 +105,7 @@ export async function POST(req) {
     const validPackages = ["school", "academy", "both"]
     const chosenPackage = validPackages.includes(pkg) ? pkg : "school"
 
-    const normalizedEmail = String(email).toLowerCase().trim()
+    const normalizedEmail = String(newOrgEmail).toLowerCase().trim()
 
     const db = await getDb()
     const collection = db.collection("schools")
@@ -121,7 +118,6 @@ export async function POST(req) {
       )
     }
 
-    // Generate a unique schoolId from the name
     const base = String(schoolName)
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, "_")
@@ -136,7 +132,7 @@ export async function POST(req) {
     }
 
     const now = new Date()
-    const exp = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000) // 30 days
+    const exp = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000)
 
     const schoolActive = chosenPackage === "school" || chosenPackage === "both"
     const academyActive = chosenPackage === "academy" || chosenPackage === "both"
@@ -148,7 +144,6 @@ export async function POST(req) {
       ownerName: ownerName ? String(ownerName).trim() : "",
       note: note ? String(note).trim() : "",
       package: chosenPackage,
-
       schoolSection: {
         active: schoolActive,
         expiresAt: schoolActive ? exp : null,
@@ -158,14 +153,11 @@ export async function POST(req) {
       academySection: {
         active: academyActive,
         expiresAt: academyActive ? exp : null,
-        price: 0,          // you set it later per academy
+        price: 0,
         priceNote: "",
       },
-
-      // Legacy fields — mirror school section
       active: schoolActive,
       expiresAt: schoolActive ? exp : null,
-
       createdAt: now,
       updatedAt: now,
     }

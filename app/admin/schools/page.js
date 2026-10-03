@@ -8,6 +8,8 @@ import {
 } from "lucide-react"
 import AdminNav from "../_component/AdminNav"
 
+const OWNER_EMAIL = "jamshid804a@gmail.com"
+
 function formatDate(d) {
   if (!d) return "—"
   try {
@@ -50,7 +52,10 @@ export default function AdminSchoolsPage() {
   const load = async () => {
     setLoading(true)
     try {
-      const res = await fetch("/api/admin/schools", { cache: "no-store" })
+      const res = await fetch(
+        `/api/admin/schools?email=${encodeURIComponent(OWNER_EMAIL)}`,
+        { cache: "no-store" }
+      )
       const data = await res.json()
       if (data.success) {
         setSchools(data.schools || [])
@@ -77,7 +82,10 @@ export default function AdminSchoolsPage() {
       const res = await fetch(`/api/admin/schools/${school._id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ [section]: { active: !current } }),
+        body: JSON.stringify({
+          email: OWNER_EMAIL,
+          [section]: { active: !current },
+        }),
       })
       const data = await res.json()
       if (data.success) {
@@ -108,7 +116,10 @@ export default function AdminSchoolsPage() {
       const res = await fetch(`/api/admin/schools/${school._id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ academySection: { price } }),
+        body: JSON.stringify({
+          email: OWNER_EMAIL,
+          academySection: { price },
+        }),
       })
       const data = await res.json()
       if (data.success) {
@@ -134,7 +145,10 @@ export default function AdminSchoolsPage() {
     if (!confirm(`Delete "${school.schoolName}" and ALL its data?`)) return
     setBusyId(school._id)
     try {
-      const res = await fetch(`/api/admin/schools/${school._id}`, { method: "DELETE" })
+      const res = await fetch(
+        `/api/admin/schools/${school._id}?email=${encodeURIComponent(OWNER_EMAIL)}`,
+        { method: "DELETE" }
+      )
       const data = await res.json()
       if (data.success) {
         setSchools((prev) => prev.filter((s) => s._id !== school._id))
@@ -156,7 +170,7 @@ export default function AdminSchoolsPage() {
       const res = await fetch("/api/admin/schools", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
+        body: JSON.stringify({ ...form, ownerEmail: OWNER_EMAIL }),
       })
       const data = await res.json()
       if (data.success) {
