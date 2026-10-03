@@ -10,15 +10,6 @@ import AdminNav from "../_component/AdminNav"
 
 const OWNER_EMAIL = "jamshid804a@gmail.com"
 
-function formatDate(d) {
-  if (!d) return "—"
-  try {
-    return new Date(d).toLocaleDateString("en-GB", {
-      day: "2-digit", month: "short", year: "numeric",
-    })
-  } catch { return "—" }
-}
-
 const PACKAGE_STYLE = {
   school:  { label: "SCHOOL",  color: "#1d4ed8", bg: "#dbeafe" },
   academy: { label: "ACADEMY", color: "#7c3aed", bg: "#ede9fe" },
@@ -275,6 +266,23 @@ export default function AdminSchoolsPage() {
               const showAcademy = pkg === "academy" || pkg === "both"
               const schoolActive = s.schoolSection?.active === true
               const academyActive = s.academySection?.active === true
+              const isBoth = pkg === "both"
+
+              // Which counts to show at top
+              let topStudents = s.counts?.students ?? 0
+              let topTeachers = s.counts?.teachers ?? 0
+              let topAlerts = s.counts?.notifications ?? 0
+
+              if (pkg === "school") {
+                topStudents = s.sectionCounts?.school?.students ?? 0
+                topTeachers = s.sectionCounts?.school?.teachers ?? 0
+                topAlerts = s.sectionCounts?.school?.notifications ?? 0
+              } else if (pkg === "academy") {
+                topStudents = s.sectionCounts?.academy?.students ?? 0
+                topTeachers = s.sectionCounts?.academy?.teachers ?? 0
+                topAlerts = s.sectionCounts?.academy?.notifications ?? 0
+              }
+              // pkg === "both" → use totals (School + Academy)
 
               return (
                 <div key={s._id}
@@ -322,19 +330,34 @@ export default function AdminSchoolsPage() {
                           <div className="flex items-center gap-1 text-slate-500 text-[10px] uppercase font-bold">
                             <GraduationCap size={11} /> Students
                           </div>
-                          <p className="text-lg font-bold text-slate-800">{s.counts?.students ?? 0}</p>
+                          <p className="text-lg font-bold text-slate-800">{topStudents}</p>
+                          {isBoth && (
+                            <p className="text-[9px] text-slate-400 uppercase">
+                              School + Academy
+                            </p>
+                          )}
                         </div>
                         <div className="text-center px-3">
                           <div className="flex items-center gap-1 text-slate-500 text-[10px] uppercase font-bold">
                             <Users size={11} /> Teachers
                           </div>
-                          <p className="text-lg font-bold text-slate-800">{s.counts?.teachers ?? 0}</p>
+                          <p className="text-lg font-bold text-slate-800">{topTeachers}</p>
+                          {isBoth && (
+                            <p className="text-[9px] text-slate-400 uppercase">
+                              School + Academy
+                            </p>
+                          )}
                         </div>
                         <div className="text-center px-3">
                           <div className="flex items-center gap-1 text-slate-500 text-[10px] uppercase font-bold">
                             <Bell size={11} /> Alerts
                           </div>
-                          <p className="text-lg font-bold text-slate-800">{s.counts?.notifications ?? 0}</p>
+                          <p className="text-lg font-bold text-slate-800">{topAlerts}</p>
+                          {isBoth && (
+                            <p className="text-[9px] text-slate-400 uppercase">
+                              All
+                            </p>
+                          )}
                         </div>
                       </div>
 
@@ -353,6 +376,7 @@ export default function AdminSchoolsPage() {
                           expiresAt={s.schoolSection?.expiresAt || s.expiresAt}
                           busy={busyId === s._id + "schoolSection"}
                           onToggle={() => toggleSection(s, "schoolSection")}
+                          counts={isBoth ? s.sectionCounts?.school : null}
                         />
                       )}
                       {showAcademy && (
@@ -371,6 +395,7 @@ export default function AdminSchoolsPage() {
                           }
                           onSavePrice={() => saveAcademyPrice(s)}
                           priceBusy={busyId === s._id + "price"}
+                          counts={isBoth ? s.sectionCounts?.academy : null}
                         />
                       )}
                       {!showSchool && !showAcademy && (
@@ -447,9 +472,6 @@ export default function AdminSchoolsPage() {
                     onChange={(e) => setForm({ ...form, email: e.target.value })}
                     placeholder="school@gmail.com"
                     className="w-full px-3 py-2.5 rounded-lg border border-slate-300 outline-none focus:border-indigo-500 text-sm" />
-                  <p className="text-[11px] text-slate-400 mt-1">
-                    Add this Gmail to Kinde Users so they can log in.
-                  </p>
                 </div>
 
                 <div>
@@ -500,6 +522,7 @@ export default function AdminSchoolsPage() {
 function SectionRow({
   icon: Icon, label, active, expiresAt, price, busy, onToggle,
   editablePrice, priceValue, onPriceChange, onSavePrice, priceBusy,
+  counts,
 }) {
   const original = Number(price) || 0
   const current = Number(priceValue) || 0
@@ -540,6 +563,27 @@ function SectionRow({
           {active ? "Suspend" : "Activate"}
         </button>
       </div>
+
+      {/* Section-specific counts (for Both-orgs) */}
+      {counts && (
+        <div className="mt-3 pt-3 border-t border-slate-200/70 flex items-center gap-4 flex-wrap">
+          <div className="flex items-center gap-1.5 text-xs">
+            <GraduationCap size={12} className="text-slate-400" />
+            <span className="font-bold text-slate-700">{counts.students ?? 0}</span>
+            <span className="text-slate-500">students</span>
+          </div>
+          <div className="flex items-center gap-1.5 text-xs">
+            <Users size={12} className="text-slate-400" />
+            <span className="font-bold text-slate-700">{counts.teachers ?? 0}</span>
+            <span className="text-slate-500">teachers</span>
+          </div>
+          <div className="flex items-center gap-1.5 text-xs">
+            <Bell size={12} className="text-slate-400" />
+            <span className="font-bold text-slate-700">{counts.notifications ?? 0}</span>
+            <span className="text-slate-500">alerts</span>
+          </div>
+        </div>
+      )}
 
       {editablePrice && (
         <div className="mt-3 pt-3 border-t border-slate-200/70 flex items-center gap-2">

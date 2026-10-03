@@ -9,8 +9,8 @@ function isOwnerEmail(email) {
 }
 
 // ─────────────────────────────────────────────
-// GET — list all organizations
-//   ?email=jamshid804a@gmail.com   (required — owner only)
+// GET — list all organizations with detailed counts
+//   ?email=jamshid804a@gmail.com   (owner only)
 //   ?package=school|academy|both   (optional)
 // ─────────────────────────────────────────────
 export async function GET(req) {
@@ -37,11 +37,47 @@ export async function GET(req) {
 
     const withCounts = await Promise.all(
       schools.map(async (s) => {
-        const [students, teachers, notifications] = await Promise.all([
-          db.collection("students").countDocuments({ schoolId: s.schoolId, program: { $ne: "academy" } }),
-          db.collection("teachers").countDocuments({ schoolId: s.schoolId, program: { $ne: "academy" } }),
+        const baseStudents = { schoolId: s.schoolId }
+        const baseTeachers = { schoolId: s.schoolId }
+
+        // School-only counts (program NOT academy OR missing)
+        const schoolStudentFilter = {
+          ...baseStudents,
+          $or: [{ program: "school" }, { program: { $exists: false } }, { program: null }],
+        }
+        const schoolTeacherFilter = {
+          ...baseTeachers,
+          $or: [{ program: "school" }, { program: { $exists: false } }, { program: null }],
+        }
+
+        // Academy-only counts
+        const academyStudentFilter = { ...baseStudents, program: "academy" }
+        const academyTeacherFilter = { ...baseTeachers, program: "academy" }
+
+        const [
+          schoolStudents,
+          schoolTeachers,
+          schoolAlerts,
+          academyStudents,
+          academyTeachers,
+          academyAlerts,
+          totalAlerts,
+        ] = await Promise.all([
+          db.collection("students").countDocuments(schoolStudentFilter),
+          db.collection("teachers").countDocuments(schoolTeacherFilter),
+          db.collection("notifications").countDocuments({
+            schoolId: s.schoolId,
+            program: { $ne: "academy" },
+          }),
+          db.collection("students").countDocuments(academyStudentFilter),
+          db.collection("teachers").countDocuments(academyTeacherFilter),
+          db.collection("notifications").countDocuments({
+            schoolId: s.schoolId,
+            program: "academy",
+          }),
           db.collection("notifications").countDocuments({ schoolId: s.schoolId }),
         ])
+
         return {
           _id: s._id.toString(),
           schoolId: s.schoolId,
@@ -50,6 +86,7 @@ export async function GET(req) {
           ownerName: s.ownerName || "",
           note: s.note || "",
           package: s.package || "school",
+
           schoolSection: s.schoolSection || {
             active: s.active !== false,
             expiresAt: s.expiresAt,
@@ -62,10 +99,32 @@ export async function GET(req) {
             price: 0,
             priceNote: "",
           },
+
+          // Legacy
           active: s.active !== false,
           createdAt: s.createdAt,
           expiresAt: s.expiresAt,
-          counts: { students, teachers, notifications },
+
+          // Top-level totals (School + Academy combined)
+          counts: {
+            students: schoolStudents + academyStudents,
+            teachers: schoolTeachers + academyTeachers,
+            notifications: totalAlerts,
+          },
+
+          // Per-section counts
+          sectionCounts: {
+            school: {
+              students: schoolStudents,
+              teachers: schoolTeachers,
+              notifications: schoolAlerts,
+            },
+            academy: {
+              students: academyStudents,
+              teachers: academyTeachers,
+              notifications: academyAlerts,
+            },
+          },
         }
       })
     )
@@ -78,8 +137,7 @@ export async function GET(req) {
 }
 
 // ─────────────────────────────────────────────
-// POST — create org
-//   Body: { email (owner), schoolName, email(newOrg), ownerName, note, package }
+// POST — create org (unchanged from before)
 // ─────────────────────────────────────────────
 export async function POST(req) {
   try {
