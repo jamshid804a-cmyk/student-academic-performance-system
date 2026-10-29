@@ -15,7 +15,7 @@ export async function POST(req) {
 
     const db = await getDb()
 
-    // 1) Find teacher by public token (also accept "token" field)
+    // 1) Find teacher by public token (or legacy "token" field)
     let teacher = await db.collection("teachers").findOne({ publicToken: token })
     if (!teacher) teacher = await db.collection("teachers").findOne({ token })
     if (!teacher) {
@@ -27,29 +27,20 @@ export async function POST(req) {
 
     const teacherProgram = teacher.program === "academy" ? "academy" : "school"
 
-    // 2) Find student in BOTH collections, tolerate number/string ID and schoolId
+    // 2) Find student — tolerant of number/string ID, schoolId, and collection name
     const idNum = Number(studentId)
     const idStr = String(studentId)
-    const idOr = isNaN(idNum)
-      ? [{ id: idStr }]
-      : [{ id: idNum }, { id: idStr }]
-    const sidOr = isNaN(idNum) ? [{ studentId: idStr }] : [{ studentId: idNum }, { studentId: idStr }]
+    const idConds = isNaN(idNum)
+      ? [{ id: idStr }, { studentId: idStr }]
+      : [{ id: idNum }, { id: idStr }, { studentId: idNum }, { studentId: idStr }]
 
-    const idConds = []
-    for (const c of idOr) idConds.push(c)
-    for (const c of sidOr) idConds.push(c)
-
-    // Try: teacher's schoolId + studentId, then just studentId (fallback)
     const schoolOr = teacher.schoolId
-      ? [
-          { schoolId: String(teacher.schoolId) },
-          { schoolId: Number(teacher.schoolId) },
-        ]
+      ? [{ schoolId: String(teacher.schoolId) }, { schoolId: Number(teacher.schoolId) }]
       : []
 
     let student = null
 
-    // try "students" collection
+    // Try "students" collection first
     if (schoolOr.length) {
       student = await db.collection("students").findOne({
         $and: [{ $or: schoolOr }, { $or: idConds }],
@@ -58,8 +49,7 @@ export async function POST(req) {
     if (!student) {
       student = await db.collection("students").findOne({ $or: idConds })
     }
-
-    // try "academy_students" collection (academy students may live here)
+    // Try "academy_students" if not found (some setups store academy students separately)
     if (!student) {
       if (schoolOr.length) {
         student = await db.collection("academy_students").findOne({
@@ -75,7 +65,7 @@ export async function POST(req) {
       return NextResponse.json({ error: "Student not found" }, { status: 404 })
     }
 
-    // 3) Ownership check that passes for BOTH programs
+    // 3) Ownership check — LOOSER for academy
     const sSchool = String(student.schoolId ?? "")
     const tSchool = String(teacher.schoolId ?? "")
     const sOrg = String(student.orgEmail ?? student.email ?? "").toLowerCase()
@@ -83,35 +73,65 @@ export async function POST(req) {
     const sProgram = student.program === "academy" ? "academy" : "school"
     const tProgram = teacherProgram
 
-    // program must match; plus at least one of school/org must match OR program+class match
-    if (sProgram !== tProgram) {
-      return NextResponse.json({ error: "Not your student" }, { status: 403 })
-    }
-
     const schoolMatch = sSchool && tSchool && sSchool === tSchool
     const orgMatch = sOrg && tOrg && sOrg === tOrg
+
+    // Class match — student's grade (or subject for academy) + section matches teacher's classes
     const classMatch =
       Array.isArray(teacher.classes) &&
       teacher.classes.some((c) => {
         if (!c) return false
-        const g = c.grade || c.course
-        if (String(g || "").toLowerCase() !== String(student.grade || "").toLowerCase() &&
-            String(g || "").toLowerCase() !== String(student.subject || "").toLowerCase()) return false
-        if (c.section && String(c.section).toLowerCase() !== String(student.section || "").toLowerCase()) return false
+        const g = String((c.grade || c.course || "")).toLowerCase()
+        const sGrade = String(student.grade || "").toLowerCase()
+        const sSubject = String(student.subject || "").toLowerCase()
+        if (g && g !== sGrade && g !== sSubject) return false
+        if (c.section) {
+          const cSec = String(c.section).toLowerCase()
+          const sSec = String(student.section || "").toLowerCase()
+          if (cSec !== sSec) return false
+        }
         return true
       })
 
-    if (!schoolMatch && !orgMatch && !classMatch) {
+    const programOk = sProgram === tProgram
+
+    // ✅ Academy: just needs program + class match (schoolId may differ)
+    const academyOk = tProgram === "academy" && classMatch
+    // ✅ School: needs program + (schoolId OR class match)
+    const schoolOk = tProgram === "school" && (schoolMatch || classMatch)
+
+    console.log("DEBUG notify ownership:", {
+      teacherId: teacher.teacherId,
+      tProgram,
+      tSchool,
+      tOrg,
+      studentId: student.id ?? student._id,
+      sProgram,
+      sSchool,
+      sOrg,
+      sGrade: student.grade,
+      sSubject: student.subject,
+      sSection: student.section,
+      teacherClasses: teacher.classes,
+      schoolMatch,
+      orgMatch,
+      classMatch,
+      programOk,
+      academyOk,
+      schoolOk,
+    })
+
+    if (!programOk || (!academyOk && !schoolOk)) {
       return NextResponse.json({ error: "Not your student" }, { status: 403 })
     }
 
-    // 4) Normalize type
+    // 4) Normalize notification type
     const finalType =
       type === "academic" ? "test" :
       type === "exam" ? "examination" :
       type || "attendance"
 
-    // 5) Save notification (tagged with schoolId + program + orgEmail if present)
+    // 5) Save notification
     const doc = {
       schoolId: teacher.schoolId,
       studentId: String(student.id ?? student._id ?? studentId),
@@ -131,15 +151,14 @@ export async function POST(req) {
 
     const result = await db.collection("notifications").insertOne(doc)
 
-    // 6) Push (best effort). Look up the parent the same way the parent app logs in.
+    // 6) Push to parent (best-effort)
     try {
-      // Try by phone (contact), orgEmail, or email — whichever the parent record has
       const candidates = []
-      if (student.contact) candidates.push({ phone: String(student.contact) })
       if (student.contact) {
-        const normalized = String(student.contact).replace(/[^\d+]/g, "")
-        candidates.push({ phone: normalized })
+        candidates.push({ phone: String(student.contact) })
+        candidates.push({ phone: String(student.contact).replace(/[^\d+]/g, "") })
       }
+      if (sOrg) candidates.push({ email: sOrg })
       if (teacherProgram === "academy") {
         const orgEmail = String(teacher.orgEmail ?? teacher.email ?? "").toLowerCase()
         if (orgEmail) {
