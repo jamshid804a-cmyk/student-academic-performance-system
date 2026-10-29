@@ -101,7 +101,13 @@ export default function TeacherAttendancePage() {
   return (
     <>
       <Toaster position="top-center" richColors />
-      <AttendanceModule teacherMode={true} allowedClasses={allowedClasses} teacherName={teacher.name} />
+      <AttendanceModule
+        teacherMode={true}
+        allowedClasses={allowedClasses}
+        teacherName={teacher.name}
+        token={token}                                      {/* ✅ ADDED */}
+        storageKey={`attendance_${token || "admin"}`}      {/* ✅ ADDED */}
+      />
     </>
   )
 }
