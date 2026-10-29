@@ -10,6 +10,28 @@ import GlobalApi from "@/app/_services/GlobalApi"
 const SideNav = dynamic(() => import('./_component/SideNav'), { ssr: false })
 const Header = dynamic(() => import('./_component/Header'), { ssr: false })
 
+// ─── Simple session cache for org sections ───
+const SECTIONS_CACHE_KEY = "org_sections_cache_v1"
+const CACHE_TTL = 5 * 60 * 1000 // 5 min
+
+function readSectionsCache() {
+  try {
+    const raw = sessionStorage.getItem(SECTIONS_CACHE_KEY)
+    if (!raw) return null
+    const { data, ts } = JSON.parse(raw)
+    if (Date.now() - ts > CACHE_TTL) return null
+    return data
+  } catch {
+    return null
+  }
+}
+
+function writeSectionsCache(data) {
+  try {
+    sessionStorage.setItem(SECTIONS_CACHE_KEY, JSON.stringify({ data, ts: Date.now() }))
+  } catch {}
+}
+
 function DashboardLayout({ children }) {
   return (
     <ProgramProvider initialProgram="school">
@@ -26,12 +48,23 @@ function GuardAndShell({ children }) {
   const [checked, setChecked] = useState(false)
   const [sections, setSections] = useState(null)
 
+  // ✅ Fetch sections ONCE (cache-first, no re-fetch on path change)
   useEffect(() => {
+    const cached = readSectionsCache()
+    if (cached) {
+      setSections(cached)
+      setChecked(true)
+      return
+    }
+
     let cancelled = false
     GlobalApi.GetOrgSections()
       .then((resp) => {
         if (cancelled) return
-        if (resp?.data?.success) setSections(resp.data)
+        if (resp?.data?.success) {
+          setSections(resp.data)
+          writeSectionsCache(resp.data)
+        }
       })
       .catch(() => {})
       .finally(() => {
@@ -40,31 +73,27 @@ function GuardAndShell({ children }) {
     return () => {
       cancelled = true
     }
-  }, [path])
+  }, []) // ✅ no dependency on path — runs once
 
   useEffect(() => {
     if (!checked || !sections || !programHydrated) return
-
     if (sections.isOwner) return
 
     const pkg = sections.package || 'school'
     const sActive = sections.schoolSection?.active === true
     const aActive = sections.academySection?.active === true
 
-    // ─── Nothing active anywhere ───
     if (!sActive && !aActive) {
       router.replace('/no-access')
       return
     }
 
-    // ─── Correct the current program if it's not allowed ───
     let corrected = program
     if (pkg === 'school') {
       corrected = 'school'
     } else if (pkg === 'academy') {
       corrected = 'academy'
     } else {
-      // both
       if (program === 'academy' && !aActive && sActive) corrected = 'school'
       else if (program === 'school' && !sActive && aActive) corrected = 'academy'
     }
@@ -73,7 +102,6 @@ function GuardAndShell({ children }) {
       return
     }
 
-    // ─── If current section is inactive → switch or block ───
     if (corrected === 'academy' && !aActive) {
       if (sActive) setProgram('school')
       else router.replace('/no-access')
@@ -84,7 +112,7 @@ function GuardAndShell({ children }) {
       else router.replace('/no-access')
       return
     }
-  }, [checked, sections, program, programHydrated, path, router, setProgram])
+  }, [checked, sections, program, programHydrated, router, setProgram])
 
   return (
     <div>
