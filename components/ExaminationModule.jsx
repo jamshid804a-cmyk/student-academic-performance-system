@@ -37,6 +37,7 @@ export default function ExaminationModule({
   allowedClasses = [],
   teacherName = "",
   storagePrefix = "examination",
+  token = "",                       // ✅ NEW
 }) {
   const STORAGE_KEY = `${storagePrefix}_filters_v1`
   const EXTRA_KEY = `${storagePrefix}_extra_subjects_v1`
@@ -72,12 +73,8 @@ export default function ExaminationModule({
       if (saved.month) setMonth(saved.month)
       if (saved.examType) setExamType(saved.examType)
     } catch {}
-    try {
-      setExtraSubjects(JSON.parse(localStorage.getItem(EXTRA_KEY) || "{}"))
-    } catch {}
-    try {
-      setHiddenSubjects(JSON.parse(localStorage.getItem(HIDDEN_KEY) || "{}"))
-    } catch {}
+    try { setExtraSubjects(JSON.parse(localStorage.getItem(EXTRA_KEY) || "{}")) } catch {}
+    try { setHiddenSubjects(JSON.parse(localStorage.getItem(HIDDEN_KEY) || "{}")) } catch {}
     setHydrated(true)
   }, [STORAGE_KEY, EXTRA_KEY, HIDDEN_KEY])
 
@@ -106,6 +103,24 @@ export default function ExaminationModule({
     localStorage.setItem(HIDDEN_KEY, JSON.stringify(hiddenSubjects))
   }, [hiddenSubjects, hydrated, HIDDEN_KEY])
 
+  // ✅ teacher-mode helpers
+  const fetchStudents = async (params) =>
+    teacherMode ? GlobalApi.GetTeacherPublicStudents(token) : GlobalApi.GetAllStudents(params)
+  const fetchSubjects = async () =>
+    teacherMode ? GlobalApi.GetTeacherPublicSubjects(token) : GlobalApi.GetAllSubjects()
+  const fetchExams = async (params) =>
+    teacherMode ? GlobalApi.GetTeacherPublicExams(token, params) : GlobalApi.GetExams(params)
+  const saveExam = async (payload) =>
+    teacherMode ? GlobalApi.SaveTeacherPublicExam(token, payload) : GlobalApi.SaveExam(payload)
+  const sendNotification = async (payload) =>
+    teacherMode
+      ? GlobalApi.SaveTeacherPublicNotification(token, payload)
+      : fetch("/api/notifications", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        })
+
   const fetchAll = async () => {
     if (!grade || !month || !examType) {
       setStudents([]); setSubjects([]); setExams({}); return
@@ -118,9 +133,9 @@ export default function ExaminationModule({
       if (session) params.session = session
 
       const [studentResp, subjectResp, examResp] = await Promise.all([
-        GlobalApi.GetAllStudents(params),
-        GlobalApi.GetAllSubjects(),
-        GlobalApi.GetExams({ grade, section, session, month: monthKey, examType }),
+        fetchStudents(params),
+        fetchSubjects(),
+        fetchExams({ grade, section, session, month: monthKey, examType }),
       ])
 
       const marks = {}
@@ -138,16 +153,16 @@ export default function ExaminationModule({
 
   useEffect(() => {
     if (!hydrated) return
+    if (teacherMode && !token) return
     const t = setTimeout(fetchAll, 250)
     return () => clearTimeout(t)
     // eslint-disable-next-line
-  }, [grade, section, session, month, examType, hydrated])
+  }, [grade, section, session, month, examType, hydrated, token])
 
   const monthKey = month ? monthNameToKey(month) : ""
 
   const subjectsByStudent = useMemo(() => {
     const map = {}
-
     subjects.forEach((s) => {
       const sid = String(s.studentId)
       if (isExcluded(s.name)) return
@@ -155,7 +170,6 @@ export default function ExaminationModule({
       if (!map[sid]) map[sid] = []
       if (!map[sid].some((x) => x.name === s.name)) map[sid].push({ name: s.name })
     })
-
     Object.entries(extraSubjects).forEach(([sid, names]) => {
       names.forEach((name) => {
         if (isExcluded(name)) return
@@ -163,7 +177,6 @@ export default function ExaminationModule({
         if (!map[sid].some((x) => x.name === name)) map[sid].push({ name })
       })
     })
-
     return map
   }, [subjects, extraSubjects, hiddenSubjects])
 
@@ -178,16 +191,13 @@ export default function ExaminationModule({
   const handleAddSubjectSingle = (studentId) => {
     const name = newSubjectName.trim()
     if (!name) return
-
     const sid = String(studentId)
     const alreadyExists = (subjectsByStudent[sid] || []).some(
       (s) => s.name.toLowerCase() === name.toLowerCase()
     )
     if (alreadyExists) { toast.error("Subject already exists for this student"); return }
-
     setExtraSubjects((prev) => ({ ...prev, [sid]: [...(prev[sid] || []), name] }))
     setHiddenSubjects((prev) => ({ ...prev, [sid]: (prev[sid] || []).filter((n) => n !== name) }))
-
     setNewSubjectName("")
     setSubjectModal(null)
     toast.success(`"${name}" added for this student`)
@@ -197,19 +207,14 @@ export default function ExaminationModule({
     const name = newSubjectName.trim()
     if (!name) return
     if (students.length === 0) { toast.error("No students loaded"); return }
-
     const targets = students.filter((st) => {
       const sid = String(st.id)
       return !(subjectsByStudent[sid] || []).some((s) => s.name.toLowerCase() === name.toLowerCase())
     })
-
     if (targets.length === 0) {
       toast.info("Every student already has this subject")
-      setSubjectModal(null)
-      setNewSubjectName("")
-      return
+      setSubjectModal(null); setNewSubjectName(""); return
     }
-
     setBulkSaving(true)
     try {
       setExtraSubjects((prev) => {
@@ -220,7 +225,6 @@ export default function ExaminationModule({
         })
         return copy
       })
-
       setHiddenSubjects((prev) => {
         const copy = { ...prev }
         targets.forEach((st) => {
@@ -229,22 +233,14 @@ export default function ExaminationModule({
         })
         return copy
       })
-
       toast.success(`"${name}" added to ${targets.length} student${targets.length === 1 ? "" : "s"}`)
-    } catch (err) {
-      console.error(err)
-      toast.error("Failed to add subject to all students")
-    }
-
-    setBulkSaving(false)
-    setNewSubjectName("")
-    setSubjectModal(null)
+    } catch (err) { console.error(err); toast.error("Failed to add subject to all students") }
+    setBulkSaving(false); setNewSubjectName(""); setSubjectModal(null)
   }
 
   const handleRemoveSubject = (studentId, subjectName) => {
     if (!confirm(`Remove subject "${subjectName}" from Examination for this student?`)) return
     const sid = String(studentId)
-
     setExtraSubjects((prev) => ({ ...prev, [sid]: (prev[sid] || []).filter((n) => n !== subjectName) }))
     setHiddenSubjects((prev) => {
       const list = prev[sid] || []
@@ -258,35 +254,33 @@ export default function ExaminationModule({
       const sid = String(st.id)
       return (subjectsByStudent[sid] || []).some((s) => s.name === subjectName)
     })
-
     if (affected.length === 0) return
-
     const ok = confirm(
       `Remove "${subjectName}" from ALL ${affected.length} student(s)? ` +
       `This also deletes any marks already entered for this subject. This cannot be undone.`
     )
     if (!ok) return
-
     setDeletingSubject(subjectName)
     try {
-      await Promise.all(
-        affected.map((st) =>
-          fetch(
-            `/api/exams/by-subject?studentId=${encodeURIComponent(st.id)}` +
-            `&subject=${encodeURIComponent(subjectName)}` +
-            `&month=${encodeURIComponent(monthKey)}` +
-            `&examType=${encodeURIComponent(examType)}`,
-            { method: "DELETE" }
-          ).catch((e) => console.error("Failed to clear exam marks:", e))
+      // delete-by-subject only exists on admin route; skip in teacher mode
+      if (!teacherMode) {
+        await Promise.all(
+          affected.map((st) =>
+            fetch(
+              `/api/exams/by-subject?studentId=${encodeURIComponent(st.id)}` +
+              `&subject=${encodeURIComponent(subjectName)}` +
+              `&month=${encodeURIComponent(monthKey)}` +
+              `&examType=${encodeURIComponent(examType)}`,
+              { method: "DELETE" }
+            ).catch((e) => console.error("Failed to clear exam marks:", e))
+          )
         )
-      )
-
+      }
       setExams((prev) => {
         const copy = { ...prev }
         affected.forEach((st) => { delete copy[`${st.id}__${subjectName}`] })
         return copy
       })
-
       setExtraSubjects((prev) => {
         const copy = { ...prev }
         affected.forEach((st) => {
@@ -295,7 +289,6 @@ export default function ExaminationModule({
         })
         return copy
       })
-
       setHiddenSubjects((prev) => {
         const copy = { ...prev }
         affected.forEach((st) => {
@@ -305,12 +298,8 @@ export default function ExaminationModule({
         })
         return copy
       })
-
       toast.success(`"${subjectName}" removed from ${affected.length} student(s)`)
-    } catch (err) {
-      console.error(err)
-      toast.error("Failed to remove subject from all students")
-    }
+    } catch (err) { console.error(err); toast.error("Failed to remove subject from all students") }
     setDeletingSubject(null)
   }
 
@@ -324,8 +313,8 @@ export default function ExaminationModule({
       const current = exams[key] || {}
       const obtained = field === "obtained" ? value : current.obtained
       const total = field === "total" ? value : current.total
-      await GlobalApi.SaveExam({ studentId, grade, section, session, month: monthKey, examType, subject: subjectName, obtained, total })
-      const examResp = await GlobalApi.GetExams({ grade, section, session, month: monthKey, examType })
+      await saveExam({ studentId, grade, section, session, month: monthKey, examType, subject: subjectName, obtained, total })
+      const examResp = await fetchExams({ grade, section, session, month: monthKey, examType })
       const marks = {}
       ;(examResp.data || []).forEach((e) => {
         marks[`${e.studentId}__${e.subject}`] = { obtained: e.obtained, total: e.total, percentage: e.percentage }
@@ -340,7 +329,6 @@ export default function ExaminationModule({
       const studentMarks = {}
       let sumObtained = 0, sumTotal = 0, hasLow = false
       const lowSubjects = []
-
       mySubjects.forEach((sub) => {
         const record = exams[`${s.id}__${sub.name}`]
         if (record && (record.obtained !== undefined || record.total !== undefined)) {
@@ -352,7 +340,6 @@ export default function ExaminationModule({
           if (tot > 0 && pct < 50) { hasLow = true; lowSubjects.push({ subject: sub.name, obtained: obt, total: tot, percentage: pct }) }
         } else { studentMarks[sub.name] = null }
       })
-
       const overallPct = sumTotal > 0 ? Math.round((sumObtained / sumTotal) * 100) : 0
       const hasAny = mySubjects.length > 0
       return {
@@ -375,17 +362,13 @@ export default function ExaminationModule({
     const lines = row.lowSubjects.map((s) => `${s.subject}: ${s.obtained}/${s.total} (${s.percentage}%)`).join(", ")
     const message = `Dear Parent, your child ${row.student.name} scored below 50% in: ${lines} for the ${examType} exam in ${month}.`
     try {
-      await fetch("/api/notifications", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          studentId: row.student.id,
-          message,
-          blockNumber: 0,
-          weekStart: 0,
-          weekEnd: 0,
-          type: "examination",
-        }),
+      await sendNotification({
+        studentId: row.student.id,
+        message,
+        blockNumber: 0,
+        weekStart: 0,
+        weekEnd: 0,
+        type: "examination",
       })
       toast.success(`Notification sent for ${row.student.name}`)
     } catch (err) { console.error(err); toast.error("Failed to send") }
@@ -393,26 +376,19 @@ export default function ExaminationModule({
 
   const filterClass = "px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 text-sm outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-100 dark:focus:ring-purple-900/40 transition-all"
 
-  const closeModal = () => {
-    setSubjectModal(null)
-    setNewSubjectName("")
-  }
-
+  const closeModal = () => { setSubjectModal(null); setNewSubjectName("") }
   const handleModalSubmit = () => {
     if (!subjectModal) return
     if (subjectModal.mode === "bulk") handleAddSubjectBulk()
     else handleAddSubjectSingle(subjectModal.studentId)
   }
-
   const modalStudentName = subjectModal?.mode === "single"
     ? students.find((s) => s.id === subjectModal.studentId)?.name
     : null
-
   const classValue = `${grade}__${section}`
 
   return (
     <div className={teacherMode ? "" : "p-7 animate-page-in"}>
-      {/* Header (admin only) */}
       {!teacherMode && (
         <div className="flex items-center gap-3 mb-6">
           <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-purple-500 to-pink-600 text-white flex items-center justify-center shadow-md hover:scale-110 transition-transform duration-300">
@@ -425,24 +401,15 @@ export default function ExaminationModule({
         </div>
       )}
 
-      {/* Filters */}
       <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg border border-slate-100 dark:border-slate-700 p-5 mb-5">
         <div className="flex items-center gap-2 mb-3">
           <div className="w-1.5 h-5 rounded-full bg-gradient-to-b from-purple-500 to-pink-500" />
           <h3 className="text-sm font-bold text-slate-700 dark:text-slate-200 uppercase tracking-wide">Filters</h3>
         </div>
-
         {teacherMode ? (
           <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-            <select
-              className={filterClass}
-              value={classValue}
-              onChange={(e) => {
-                const [g, s] = e.target.value.split("__")
-                setGrade(g)
-                setSection(s || "")
-              }}
-            >
+            <select className={filterClass} value={classValue}
+              onChange={(e) => { const [g, s] = e.target.value.split("__"); setGrade(g); setSection(s || "") }}>
               <option value="">Select Class</option>
               {allowedClasses.map((c, i) => (
                 <option key={i} value={`${c.grade}__${c.section || ""}`}>
@@ -506,17 +473,12 @@ export default function ExaminationModule({
               onClick={() => { setSubjectModal({ mode: "bulk" }); setNewSubjectName("") }}
               className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white text-sm font-bold shadow-md transition-all hover:scale-[1.03]"
             >
-              <UserPlus size={18} />
-              Add Subject to All Students
+              <UserPlus size={18} /> Add Subject to All Students
             </button>
-
             <div className="flex items-center gap-2 border border-slate-200 dark:border-slate-600 rounded-xl px-4 py-2.5 shadow-sm bg-white dark:bg-slate-800 focus-within:border-purple-400 focus-within:ring-2 focus-within:ring-purple-100 transition-all">
               <Search size={16} className="text-slate-400" />
-              <input
-                type="text"
-                placeholder="Search student..."
-                value={searchInput}
-                onChange={(e) => setSearchInput(e.target.value)}
+              <input type="text" placeholder="Search student..."
+                value={searchInput} onChange={(e) => setSearchInput(e.target.value)}
                 className="outline-none text-sm w-48 bg-transparent text-slate-800 dark:text-slate-100 placeholder:text-slate-400"
               />
             </div>
@@ -529,33 +491,22 @@ export default function ExaminationModule({
                 <thead>
                   <tr className="bg-slate-50 dark:bg-slate-900/60 border-b border-slate-200 dark:border-slate-700">
                     {["Roll No","Name","Session","Month","Examination"].map((h) => (
-                      <th key={h} className="px-4 py-3.5 font-bold text-slate-600 dark:text-slate-300 uppercase text-[11px] tracking-wider text-left">
-                        {h}
-                      </th>
+                      <th key={h} className="px-4 py-3.5 font-bold text-slate-600 dark:text-slate-300 uppercase text-[11px] tracking-wider text-left">{h}</th>
                     ))}
-
                     {subjectColumns.map((name) => (
                       <th key={name} className="px-4 py-3.5 font-bold text-slate-600 dark:text-slate-300 uppercase text-[11px] tracking-wider text-left">
                         <div className="flex items-center gap-1.5">
                           <span>{name}</span>
-                          <button
-                            onClick={() => handleRemoveSubjectAll(name)}
-                            disabled={deletingSubject === name}
+                          <button onClick={() => handleRemoveSubjectAll(name)} disabled={deletingSubject === name}
                             title={`Remove "${name}" from all students`}
-                            className="w-5 h-5 rounded text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 flex items-center justify-center transition disabled:opacity-50 normal-case"
-                          >
-                            {deletingSubject === name
-                              ? <LoaderIcon size={11} className="animate-spin" />
-                              : <Trash2 size={11} />}
+                            className="w-5 h-5 rounded text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 flex items-center justify-center transition disabled:opacity-50 normal-case">
+                            {deletingSubject === name ? <LoaderIcon size={11} className="animate-spin" /> : <Trash2 size={11} />}
                           </button>
                         </div>
                       </th>
                     ))}
-
                     {["Total Marks","Obtained","Overall %","Status","Action"].map((h) => (
-                      <th key={h} className="px-4 py-3.5 font-bold text-slate-600 dark:text-slate-300 uppercase text-[11px] tracking-wider text-center">
-                        {h}
-                      </th>
+                      <th key={h} className="px-4 py-3.5 font-bold text-slate-600 dark:text-slate-300 uppercase text-[11px] tracking-wider text-center">{h}</th>
                     ))}
                   </tr>
                 </thead>
@@ -579,26 +530,20 @@ export default function ExaminationModule({
                           return (
                             <td key={name} className="px-2 py-2.5 text-center">
                               <div className="flex items-center justify-center gap-1.5">
-                                <input
-                                  type="number" min="0"
-                                  value={cell?.obtained ?? ""}
+                                <input type="number" min="0" value={cell?.obtained ?? ""}
                                   onChange={(e) => handleMarksChange(row.student.id, name, "obtained", e.target.value)}
                                   placeholder="Obt"
                                   className={`w-16 px-2 py-2 rounded-lg border text-center text-sm font-bold outline-none transition ${cell && pct < 50 ? "border-red-400 bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-300 dark:border-red-700" : "border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:border-purple-500 focus:ring-2 focus:ring-purple-100"}`}
                                 />
                                 <span className="text-slate-400 text-sm font-bold">/</span>
-                                <input
-                                  type="number" min="0"
-                                  value={cell?.total ?? ""}
+                                <input type="number" min="0" value={cell?.total ?? ""}
                                   onChange={(e) => handleMarksChange(row.student.id, name, "total", e.target.value)}
                                   placeholder="Tot"
                                   className="w-16 px-2 py-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-center text-sm font-bold text-slate-800 dark:text-slate-100 outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-100 transition"
                                 />
-                                <button
-                                  onClick={() => handleRemoveSubject(row.student.id, name)}
+                                <button onClick={() => handleRemoveSubject(row.student.id, name)}
                                   title="Remove subject from this student"
-                                  className="w-6 h-6 rounded-md text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 flex items-center justify-center transition"
-                                >
+                                  className="w-6 h-6 rounded-md text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 flex items-center justify-center transition">
                                   <X size={13} />
                                 </button>
                               </div>
@@ -613,27 +558,20 @@ export default function ExaminationModule({
                             {row.overallPct}%
                           </span>
                         </td>
-
                         <td className="px-4 py-3 text-center">
                           <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide ${row.risk === "Risk" ? "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300" : row.risk === "Active" ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300" : "bg-slate-100 text-slate-500 dark:bg-slate-700 dark:text-slate-400"}`}>
                             {row.risk}
                           </span>
                         </td>
-
                         <td className="px-4 py-3">
                           <div className="flex items-center justify-center gap-2">
-                            <button
-                              onClick={() => handleSend(row)}
-                              disabled={row.lowSubjects.length === 0}
-                              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold bg-purple-600 hover:bg-purple-700 disabled:bg-slate-200 dark:disabled:bg-slate-700 disabled:text-slate-400 text-white transition-all hover:scale-105 disabled:scale-100"
-                            >
+                            <button onClick={() => handleSend(row)} disabled={row.lowSubjects.length === 0}
+                              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold bg-purple-600 hover:bg-purple-700 disabled:bg-slate-200 dark:disabled:bg-slate-700 disabled:text-slate-400 text-white transition-all hover:scale-105 disabled:scale-100">
                               <Send size={12} /> Send
                             </button>
-                            <button
-                              onClick={() => { setSubjectModal({ mode: "single", studentId: row.student.id }); setNewSubjectName("") }}
+                            <button onClick={() => { setSubjectModal({ mode: "single", studentId: row.student.id }); setNewSubjectName("") }}
                               title="Add subject for this student"
-                              className="w-9 h-9 rounded-lg bg-emerald-50 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 flex items-center justify-center transition hover:scale-110 shadow-sm"
-                            >
+                              className="w-9 h-9 rounded-lg bg-emerald-50 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 flex items-center justify-center transition hover:scale-110 shadow-sm">
                               <Plus size={18} strokeWidth={2.5} />
                             </button>
                           </div>
@@ -648,7 +586,6 @@ export default function ExaminationModule({
         </>
       )}
 
-      {/* Subject modal */}
       {subjectModal && (
         <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
           <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl max-w-md w-full overflow-hidden">
@@ -669,7 +606,6 @@ export default function ExaminationModule({
                 </div>
               </div>
             </div>
-
             <div className="p-6 space-y-4">
               {subjectModal.mode === "bulk" && (
                 <div className="bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 rounded-xl p-3">
@@ -678,15 +614,11 @@ export default function ExaminationModule({
                   </p>
                 </div>
               )}
-
               <div>
                 <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1.5">
                   Subject Name <span className="text-red-500">*</span>
                 </label>
-                <input
-                  autoFocus
-                  value={newSubjectName}
-                  onChange={(e) => setNewSubjectName(e.target.value)}
+                <input autoFocus value={newSubjectName} onChange={(e) => setNewSubjectName(e.target.value)}
                   onKeyDown={(e) => {
                     if (e.key === "Enter") handleModalSubmit()
                     if (e.key === "Escape") closeModal()
@@ -697,31 +629,14 @@ export default function ExaminationModule({
                 />
               </div>
             </div>
-
             <div className="flex justify-end gap-3 px-6 py-4 border-t border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/40">
-              <button
-                onClick={closeModal}
-                disabled={bulkSaving}
-                className="px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 text-sm font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 transition disabled:opacity-50"
-              >
+              <button onClick={closeModal} disabled={bulkSaving}
+                className="px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 text-sm font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 transition disabled:opacity-50">
                 Cancel
               </button>
-              <button
-                onClick={handleModalSubmit}
-                disabled={bulkSaving || !newSubjectName.trim()}
-                className={`px-5 py-2.5 rounded-xl text-white text-sm font-semibold transition flex items-center gap-2 disabled:opacity-50 ${subjectModal.mode === "bulk" ? "bg-purple-600 hover:bg-purple-700" : "bg-emerald-600 hover:bg-emerald-700"}`}
-              >
-                {bulkSaving ? (
-                  <>
-                    <LoaderIcon size={16} className="animate-spin" />
-                    Adding...
-                  </>
-                ) : (
-                  <>
-                    {subjectModal.mode === "bulk" ? <UserPlus size={16} /> : <BookPlus size={16} />}
-                    {subjectModal.mode === "bulk" ? "Add to All" : "Add Subject"}
-                  </>
-                )}
+              <button onClick={handleModalSubmit} disabled={bulkSaving || !newSubjectName.trim()}
+                className={`px-5 py-2.5 rounded-xl text-white text-sm font-semibold transition flex items-center gap-2 disabled:opacity-50 ${subjectModal.mode === "bulk" ? "bg-purple-600 hover:bg-purple-700" : "bg-emerald-600 hover:bg-emerald-700"}`}>
+                {bulkSaving ? (<><LoaderIcon size={16} className="animate-spin" />Adding...</>) : (<>{subjectModal.mode === "bulk" ? <UserPlus size={16} /> : <BookPlus size={16} />}{subjectModal.mode === "bulk" ? "Add to All" : "Add Subject"}</>)}
               </button>
             </div>
           </div>

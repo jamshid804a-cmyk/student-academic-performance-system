@@ -26,9 +26,10 @@ const MONTHS = [
 
 export default function AttendanceModule({
   teacherMode = false,
-  allowedClasses = [],   // [{ grade, section }] — used only when teacherMode
+  allowedClasses = [],
   teacherName = "",
   storageKey = "attendance_filters_v1",
+  token = "",                     // ✅ NEW
 }) {
   const [selectedGrade, setSelectedGrade] = useState("")
   const [selectedSection, setSelectedSection] = useState("")
@@ -41,7 +42,6 @@ export default function AttendanceModule({
   const [hydrated, setHydrated] = useState(false)
   const debounceRef = useRef(null)
 
-  // Load saved filters
   useEffect(() => {
     try {
       const saved = JSON.parse(localStorage.getItem(storageKey) || "{}")
@@ -53,7 +53,6 @@ export default function AttendanceModule({
     setHydrated(true)
   }, [storageKey])
 
-  // Save filters
   useEffect(() => {
     if (!hydrated) return
     try {
@@ -69,7 +68,6 @@ export default function AttendanceModule({
     } catch {}
   }, [selectedGrade, selectedSection, selectedSession, selectedMonth, hydrated, storageKey])
 
-  // Auto-pick first class + current month for teacher
   useEffect(() => {
     if (!teacherMode || !hydrated) return
     if (allowedClasses.length > 0 && !selectedGrade) {
@@ -91,7 +89,9 @@ export default function AttendanceModule({
       setLoading(true)
       try {
         const monthKey = monthNameToKey(month)
-        const resp = await GlobalApi.GetAttendanceList(grade, monthKey, section, session)
+        const resp = teacherMode
+          ? await GlobalApi.GetTeacherPublicAttendance(token, { grade, month: monthKey, section, session })
+          : await GlobalApi.GetAttendanceList(grade, monthKey, section, session)
         setAttendanceList(resp.data || [])
       } catch (err) {
         console.error("Failed to fetch attendance:", err)
@@ -99,11 +99,12 @@ export default function AttendanceModule({
       }
       setLoading(false)
     },
-    []
+    [teacherMode, token]
   )
 
   useEffect(() => {
     if (!hydrated) return
+    if (teacherMode && !token) return
     if (debounceRef.current) clearTimeout(debounceRef.current)
     debounceRef.current = setTimeout(() => {
       fetchAttendance(selectedGrade, selectedSection, selectedSession, selectedMonth)
@@ -111,7 +112,7 @@ export default function AttendanceModule({
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current)
     }
-  }, [selectedGrade, selectedSection, selectedSession, selectedMonth, hydrated, fetchAttendance])
+  }, [selectedGrade, selectedSection, selectedSession, selectedMonth, hydrated, fetchAttendance, teacherMode, token])
 
   const onSearch = () => {
     fetchAttendance(selectedGrade, selectedSection, selectedSession, selectedMonth)
@@ -181,7 +182,6 @@ export default function AttendanceModule({
     w.document.close()
   }
 
-  // ─── TEACHER MODE: single class dropdown ───
   const TeacherClassSelector = () => {
     const classValue = `${selectedGrade}__${selectedSection}`
     return (
@@ -213,7 +213,6 @@ export default function AttendanceModule({
 
   return (
     <div className={teacherMode ? "" : "p-7"}>
-      {/* Header */}
       {!teacherMode && (
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-2xl font-bold">Attendance</h2>
@@ -228,7 +227,6 @@ export default function AttendanceModule({
         </div>
       )}
 
-      {/* Filters */}
       <div className="flex flex-wrap gap-4 my-5 p-4 border rounded-xl shadow-sm bg-white">
         {teacherMode ? (
           <>
@@ -272,7 +270,6 @@ export default function AttendanceModule({
         )}
       </div>
 
-      {/* Loading */}
       {loading && (
         <div className="flex items-center justify-center py-10">
           <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-500"></div>
@@ -280,7 +277,6 @@ export default function AttendanceModule({
         </div>
       )}
 
-      {/* Data */}
       {!loading && attendanceList !== null && (
         <>
           <RiskBox
@@ -290,7 +286,6 @@ export default function AttendanceModule({
             show={showRiskBox}
             onHide={() => setShowRiskBox(false)}
           />
-
           <AttendanceGrid
             attendanceList={attendanceList}
             selectedMonth={selectedMonth}
@@ -299,11 +294,12 @@ export default function AttendanceModule({
             selectedSession={selectedSession}
             onAttendanceChange={onAttendanceChange}
             onWeekComplete={onWeekComplete}
+            teacherMode={teacherMode}
+            token={token}
           />
         </>
       )}
 
-      {/* Empty state — no filters yet */}
       {!loading && attendanceList === null && !teacherMode && (
         <div className="flex items-center justify-center py-10 text-gray-400 text-lg">
           Please select filters and click Search.
