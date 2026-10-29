@@ -22,7 +22,6 @@ const getDaysInMonth = (monthName, year = new Date().getFullYear()) => {
   return new Date(year, m, 0).getDate()
 }
 
-// ─── Daily P / A / L % summary cell (pinned top row) ─────
 const DaySummaryCell = ({ value }) => {
   if (!value || value.marked === 0) {
     return (
@@ -34,28 +33,16 @@ const DaySummaryCell = ({ value }) => {
       </div>
     )
   }
-
   const { p, a, l, marked } = value
   const pPct = Math.round((p / marked) * 100)
   const aPct = Math.round((a / marked) * 100)
   const lPct = Math.round((l / marked) * 100)
-
   const tooltip = `Present: ${p} (${pPct}%) · Absent: ${a} (${aPct}%) · Leave: ${l} (${lPct}%) · Marked: ${marked}`
-
   return (
-    <div
-      className="flex flex-col items-center justify-center h-full leading-tight gap-[1px] py-1"
-      title={tooltip}
-    >
-      <span className="text-[9px] font-bold text-emerald-700 dark:text-emerald-300">
-        {pPct}%
-      </span>
-      <span className="text-[9px] font-bold text-red-600 dark:text-red-300">
-        {aPct}%
-      </span>
-      <span className="text-[9px] font-bold text-amber-600 dark:text-amber-300">
-        {lPct}%
-      </span>
+    <div className="flex flex-col items-center justify-center h-full leading-tight gap-[1px] py-1" title={tooltip}>
+      <span className="text-[9px] font-bold text-emerald-700 dark:text-emerald-300">{pPct}%</span>
+      <span className="text-[9px] font-bold text-red-600 dark:text-red-300">{aPct}%</span>
+      <span className="text-[9px] font-bold text-amber-600 dark:text-amber-300">{lPct}%</span>
     </div>
   )
 }
@@ -65,6 +52,8 @@ export default function AttendanceGrid({
   selectedMonth,
   onWeekComplete,
   onAttendanceChange,
+  teacherMode = false,
+  token = "",
 }) {
   const [rowData, setRowData] = useState([])
   const onChangeRef = useRef(null)
@@ -79,6 +68,16 @@ export default function AttendanceGrid({
     [selectedMonth]
   )
 
+  const saveAttendance = useCallback(
+    async (payload) => {
+      if (teacherMode) {
+        return GlobalApi.SaveTeacherPublicAttendance(token, payload)
+      }
+      return GlobalApi.SaveAttendance(payload)
+    },
+    [teacherMode, token]
+  )
+
   const handleCellChange = useCallback(
     async (studentId, day, status) => {
       setRowData((prev) =>
@@ -86,15 +85,13 @@ export default function AttendanceGrid({
           r.studentId === studentId ? { ...r, [`d${day}`]: status } : r
         )
       )
-
       try {
-        await GlobalApi.SaveAttendance({
+        await saveAttendance({
           studentId,
           day,
           date: monthKey,
           status,
         })
-
         if (onWeekComplete) {
           const lastDayOfWeek = Math.min(Math.ceil(day / 7) * 7, daysInMonth)
           const firstDayOfWeek = Math.floor((day - 1) / 7) * 7 + 1
@@ -102,21 +99,18 @@ export default function AttendanceGrid({
             onWeekComplete({ weekStart: firstDayOfWeek, weekEnd: lastDayOfWeek })
           }
         }
-
         if (onAttendanceChange) onAttendanceChange()
       } catch (err) {
         console.error("Save attendance error:", err)
       }
     },
-    [monthKey, daysInMonth, onWeekComplete, onAttendanceChange]
+    [monthKey, daysInMonth, onWeekComplete, onAttendanceChange, saveAttendance]
   )
 
   useEffect(() => {
     onChangeRef.current = handleCellChange
   }, [handleCellChange])
 
-  // ─── Cell renderer: normal editable cell for data rows,
-  //     P/A/L percentage summary for the pinned top row ──
   const CellRenderer = useCallback((params) => {
     if (params.node.rowPinned) {
       return <DaySummaryCell value={params.value} />
@@ -138,43 +132,26 @@ export default function AttendanceGrid({
         headerName: "Roll No",
         width: 90,
         pinned: "left",
-        cellStyle: {
-          display: "flex",
-          alignItems: "center",
-          fontWeight: "600",
-          color: "#6366f1",
-        },
+        cellStyle: { display: "flex", alignItems: "center", fontWeight: "600", color: "#6366f1" },
       },
       {
         field: "name",
         headerName: "Student Name",
         width: 200,
         pinned: "left",
-        cellStyle: {
-          display: "flex",
-          alignItems: "center",
-          fontWeight: "600",
-        },
+        cellStyle: { display: "flex", alignItems: "center", fontWeight: "600" },
       },
     ]
-
     const days = Array.from({ length: daysInMonth }, (_, i) => {
       const day = i + 1
       return {
         field: `d${day}`,
         headerName: String(day),
-        width: 52,
-        minWidth: 52,
-        maxWidth: 52,
+        width: 52, minWidth: 52, maxWidth: 52,
         cellRenderer: CellRenderer,
         sortable: false,
         resizable: false,
-        cellStyle: {
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          padding: 0,
-        },
+        cellStyle: { display: "flex", alignItems: "center", justifyContent: "center", padding: 0 },
       }
     })
     return [...base, ...days]
@@ -183,11 +160,7 @@ export default function AttendanceGrid({
   useEffect(() => {
     if (!attendanceList) return
     const rows = attendanceList.map((s) => {
-      const row = {
-        studentId: s.studentId,
-        rollNo: s.rollNo,
-        name: s.name,
-      }
+      const row = { studentId: s.studentId, rollNo: s.rollNo, name: s.name }
       for (let d = 1; d <= daysInMonth; d++) {
         row[`d${d}`] = s.attendance?.[String(d)] || null
       }
@@ -196,16 +169,9 @@ export default function AttendanceGrid({
     setRowData(rows)
   }, [attendanceList, daysInMonth])
 
-  // ─── Pinned top row: daily P / A / L percentage summary ─
   const summaryRow = useMemo(() => {
     if (rowData.length === 0) return []
-
-    const row = {
-      studentId: "__summary__",
-      rollNo: "",
-      name: "Daily %",
-    }
-
+    const row = { studentId: "__summary__", rollNo: "", name: "Daily %" }
     for (let d = 1; d <= daysInMonth; d++) {
       let p = 0, a = 0, l = 0
       rowData.forEach((r) => {
@@ -217,13 +183,10 @@ export default function AttendanceGrid({
       const marked = p + a + l
       row[`d${d}`] = { p, a, l, marked }
     }
-
     return [row]
   }, [rowData, daysInMonth])
 
-  const monthLabel = selectedMonth
-    ? `${selectedMonth} ${new Date().getFullYear()}`
-    : ""
+  const monthLabel = selectedMonth ? `${selectedMonth} ${new Date().getFullYear()}` : ""
 
   if (rowData.length === 0) {
     return (
@@ -233,12 +196,8 @@ export default function AttendanceGrid({
             <Calendar size={22} />
           </div>
           <div>
-            <h2 className="text-xl font-bold text-slate-800 dark:text-slate-100">
-              Attendance Sheet
-            </h2>
-            <p className="text-xs text-slate-500 dark:text-slate-400">
-              No students found for these filters
-            </p>
+            <h2 className="text-xl font-bold text-slate-800 dark:text-slate-100">Attendance Sheet</h2>
+            <p className="text-xs text-slate-500 dark:text-slate-400">No students found for these filters</p>
           </div>
         </div>
         <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg border border-slate-100 dark:border-slate-700 p-12 text-center text-slate-400 dark:text-slate-500">
@@ -252,24 +211,19 @@ export default function AttendanceGrid({
 
   return (
     <div className="animate-page-in">
-
-      {/* Header card */}
       <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
         <div className="flex items-center gap-3">
           <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 text-white flex items-center justify-center shadow-md hover:scale-110 transition-transform duration-300">
             <Calendar size={22} />
           </div>
           <div>
-            <h2 className="text-xl font-bold text-slate-800 dark:text-slate-100">
-              Attendance Sheet
-            </h2>
+            <h2 className="text-xl font-bold text-slate-800 dark:text-slate-100">Attendance Sheet</h2>
             <p className="text-xs text-slate-500 dark:text-slate-400">
               {monthLabel} · {rowData.length} {rowData.length === 1 ? "student" : "students"}
             </p>
           </div>
         </div>
 
-        {/* Legend */}
         <div className="flex items-center gap-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-xl px-4 py-2.5 shadow-sm">
           <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Legend</span>
           <div className="flex items-center gap-1.5">
@@ -287,16 +241,9 @@ export default function AttendanceGrid({
         </div>
       </div>
 
-      {/* Table card */}
       <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg border border-slate-100 dark:border-slate-700 overflow-hidden">
-
-        {/* Top accent bar */}
         <div className="h-1 bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-500" />
-
-        <div
-          className="ag-theme-quartz"
-          style={{ height: 560, width: "100%" }}
-        >
+        <div className="ag-theme-quartz" style={{ height: 560, width: "100%" }}>
           <AgGridReact
             rowData={rowData}
             columnDefs={colDefs}
@@ -310,7 +257,6 @@ export default function AttendanceGrid({
       </div>
 
       <style jsx global>{`
-        /* ─── AG Grid polish for attendance ─────────── */
         .ag-theme-quartz {
           --ag-font-family: var(--font-inter), system-ui, sans-serif;
           --ag-font-size: 14px;
@@ -322,45 +268,19 @@ export default function AttendanceGrid({
           --ag-row-hover-color: #ecfdf5;
           --ag-borders: none;
         }
-
-        .ag-theme-quartz .ag-header {
-          border-bottom: 1px solid #e2e8f0 !important;
-        }
-
+        .ag-theme-quartz .ag-header { border-bottom: 1px solid #e2e8f0 !important; }
         .ag-theme-quartz .ag-header-cell-text {
-          color: #64748b;
-          font-weight: 700;
-          text-transform: uppercase;
-          font-size: 11px;
-          letter-spacing: 0.05em;
+          color: #64748b; font-weight: 700; text-transform: uppercase;
+          font-size: 11px; letter-spacing: 0.05em;
         }
-
-        .ag-theme-quartz .ag-row {
-          border-bottom: 1px solid #f1f5f9 !important;
-          transition: background-color 0.15s ease;
-        }
-
-        .ag-theme-quartz .ag-row:hover {
-          background-color: #ecfdf5 !important;
-        }
-
-        .ag-theme-quartz .ag-cell {
-          color: #334155;
-        }
-
-        /* Pinned summary row styling */
-        .ag-theme-quartz .ag-floating-top {
-          background: #f8fafc;
-          border-bottom: 2px solid #e2e8f0 !important;
-        }
-
-        /* Pinned columns get a subtle divider */
+        .ag-theme-quartz .ag-row { border-bottom: 1px solid #f1f5f9 !important; transition: background-color 0.15s ease; }
+        .ag-theme-quartz .ag-row:hover { background-color: #ecfdf5 !important; }
+        .ag-theme-quartz .ag-cell { color: #334155; }
+        .ag-theme-quartz .ag-floating-top { background: #f8fafc; border-bottom: 2px solid #e2e8f0 !important; }
         .ag-theme-quartz .ag-pinned-left-cols-container {
           border-right: 2px solid #e2e8f0;
           box-shadow: 4px 0 8px -4px rgba(0, 0, 0, 0.06);
         }
-
-        /* ─── Dark mode ─────────────────── */
         .dark .ag-theme-quartz {
           --ag-border-color: #334155;
           --ag-header-background-color: #0f172a;
@@ -370,32 +290,12 @@ export default function AttendanceGrid({
           --ag-row-hover-color: #134e4a;
           --ag-foreground-color: #f1f5f9;
         }
-
-        .dark .ag-theme-quartz .ag-floating-top {
-          background: #0f172a;
-          border-bottom: 2px solid #334155 !important;
-        }
-
-        .dark .ag-theme-quartz .ag-header {
-          border-bottom: 1px solid #334155 !important;
-        }
-
-        .dark .ag-theme-quartz .ag-header-cell-text {
-          color: #94a3b8 !important;
-        }
-
-        .dark .ag-theme-quartz .ag-row {
-          border-bottom: 1px solid #334155 !important;
-        }
-
-        .dark .ag-theme-quartz .ag-row:hover {
-          background-color: #134e4a !important;
-        }
-
-        .dark .ag-theme-quartz .ag-cell {
-          color: #e2e8f0 !important;
-        }
-
+        .dark .ag-theme-quartz .ag-floating-top { background: #0f172a; border-bottom: 2px solid #334155 !important; }
+        .dark .ag-theme-quartz .ag-header { border-bottom: 1px solid #334155 !important; }
+        .dark .ag-theme-quartz .ag-header-cell-text { color: #94a3b8 !important; }
+        .dark .ag-theme-quartz .ag-row { border-bottom: 1px solid #334155 !important; }
+        .dark .ag-theme-quartz .ag-row:hover { background-color: #134e4a !important; }
+        .dark .ag-theme-quartz .ag-cell { color: #e2e8f0 !important; }
         .dark .ag-theme-quartz .ag-pinned-left-cols-container {
           border-right: 2px solid #334155;
           box-shadow: 4px 0 8px -4px rgba(0, 0, 0, 0.4);
