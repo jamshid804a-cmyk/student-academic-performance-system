@@ -37,7 +37,7 @@ export default function TestingModule({
   allowedClasses = [],
   teacherName = "",
   storagePrefix = "testing",
-  token = "",                    // ✅ NEW
+  token = "",
 }) {
   const STORAGE_KEY = `${storagePrefix}_filters_v1`
   const EXTRA_KEY = `${storagePrefix}_extra_subjects_v1`
@@ -103,41 +103,22 @@ export default function TestingModule({
     localStorage.setItem(HIDDEN_KEY, JSON.stringify(hiddenSubjects))
   }, [hiddenSubjects, hydrated, HIDDEN_KEY])
 
-  // ✅ TEACHER MODE uses token routes; ADMIN MODE unchanged
-  const fetchStudents = async (params) => {
-    if (teacherMode) {
-      return GlobalApi.GetTeacherPublicStudents(token)
-    }
-    return GlobalApi.GetAllStudents(params)
-  }
-  const fetchSubjects = async () => {
-    if (teacherMode) {
-      return GlobalApi.GetTeacherPublicSubjects(token)
-    }
-    return GlobalApi.GetAllSubjects()
-  }
-  const fetchTests = async (params) => {
-    if (teacherMode) {
-      return GlobalApi.GetTeacherPublicTests(token, params)
-    }
-    return GlobalApi.GetTests(params)
-  }
-  const saveTest = async (payload) => {
-    if (teacherMode) {
-      return GlobalApi.SaveTeacherPublicTest(token, payload)
-    }
-    return GlobalApi.SaveTest(payload)
-  }
-  const sendNotification = async (payload) => {
-    if (teacherMode) {
-      return GlobalApi.SaveTeacherPublicNotification(token, payload)
-    }
-    return fetch("/api/notifications", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    })
-  }
+  const fetchStudents = async (params) =>
+    teacherMode ? GlobalApi.GetTeacherPublicStudents(token) : GlobalApi.GetAllStudents(params)
+  const fetchSubjects = async () =>
+    teacherMode ? GlobalApi.GetTeacherPublicSubjects(token) : GlobalApi.GetAllSubjects()
+  const fetchTests = async (params) =>
+    teacherMode ? GlobalApi.GetTeacherPublicTests(token, params) : GlobalApi.GetTests(params)
+  const saveTest = async (payload) =>
+    teacherMode ? GlobalApi.SaveTeacherPublicTest(token, payload) : GlobalApi.SaveTest(payload)
+  const sendNotification = async (payload) =>
+    teacherMode
+      ? GlobalApi.SaveTeacherPublicNotification(token, payload)
+      : fetch("/api/notifications", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        })
 
   const fetchAll = async () => {
     if (!grade || !month || !testType) {
@@ -149,7 +130,7 @@ export default function TestingModule({
       const params = { grade }
       if (section) params.section = section
       if (session) params.session = session
-      if (teacherMode) params.month = monthKey, params.testType = testType
+      if (teacherMode) { params.month = monthKey; params.testType = testType }
 
       const [studentResp, subjectResp, testResp] = await Promise.all([
         fetchStudents(params),
@@ -211,7 +192,7 @@ export default function TestingModule({
   }, [students, subjectsByStudent])
 
   const clearOldMarks = async (studentId, name) => {
-    if (teacherMode) return   // public route has no delete; skip
+    if (teacherMode) return
     try {
       await fetch(
         `/api/tests/by-subject?studentId=${encodeURIComponent(studentId)}` +
@@ -231,7 +212,6 @@ export default function TestingModule({
       (s) => s.name.toLowerCase() === name.toLowerCase()
     )
     if (alreadyExists) { toast.error("Subject already exists for this student"); return }
-
     await clearOldMarks(studentId, name)
     setTests((prev) => {
       const copy = { ...prev }
@@ -249,7 +229,6 @@ export default function TestingModule({
     const name = newSubjectName.trim()
     if (!name) return
     if (students.length === 0) { toast.error("No students loaded"); return }
-
     const targets = students.filter((st) => {
       const sid = String(st.id)
       return !(subjectsByStudent[sid] || []).some((s) => s.name.toLowerCase() === name.toLowerCase())
@@ -443,17 +422,16 @@ export default function TestingModule({
 
   return (
     <div className={teacherMode ? "" : "p-7 animate-page-in"}>
-      {!teacherMode && (
-        <div className="flex items-center gap-3 mb-6">
-          <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-blue-500 to-cyan-600 text-white flex items-center justify-center shadow-md hover:scale-110 transition-transform duration-300">
-            <FlaskConical size={24} />
-          </div>
-          <div>
-            <h2 className="text-2xl font-bold text-slate-800 dark:text-slate-100">Testing</h2>
-            <p className="text-sm text-slate-500 dark:text-slate-400">Monthly, Weekly, and Daily test marks</p>
-          </div>
+      {/* ✅ Header always shown */}
+      <div className="flex items-center gap-3 mb-6">
+        <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-blue-500 to-cyan-600 text-white flex items-center justify-center shadow-md hover:scale-110 transition-transform duration-300">
+          <FlaskConical size={24} />
         </div>
-      )}
+        <div>
+          <h2 className="text-2xl font-bold text-slate-800 dark:text-slate-100">Testing</h2>
+          <p className="text-sm text-slate-500 dark:text-slate-400">Monthly, Weekly, and Daily test marks</p>
+        </div>
+      </div>
 
       <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg border border-slate-100 dark:border-slate-700 p-5 mb-5">
         <div className="flex items-center gap-2 mb-3">

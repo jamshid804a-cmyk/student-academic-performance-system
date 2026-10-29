@@ -29,7 +29,7 @@ export default function AttendanceModule({
   allowedClasses = [],
   teacherName = "",
   storageKey = "attendance_filters_v1",
-  token = "",                     // ✅ NEW
+  token = "",
 }) {
   const [selectedGrade, setSelectedGrade] = useState("")
   const [selectedSection, setSelectedSection] = useState("")
@@ -213,19 +213,18 @@ export default function AttendanceModule({
 
   return (
     <div className={teacherMode ? "" : "p-7"}>
-      {!teacherMode && (
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-2xl font-bold">Attendance</h2>
-          {attendanceList && attendanceList.length > 0 && (
-            <button
-              onClick={handlePrint}
-              className="flex gap-2 items-center px-4 py-2 rounded-lg border border-slate-300 text-sm font-semibold hover:bg-slate-100"
-            >
-              <Printer size={16} /> Print
-            </button>
-          )}
-        </div>
-      )}
+      {/* ✅ Header always shown (same as website) */}
+      <div className="flex items-center justify-between mb-3">
+        <h2 className="text-2xl font-bold">Attendance</h2>
+        {attendanceList && attendanceList.length > 0 && (
+          <button
+            onClick={handlePrint}
+            className="flex gap-2 items-center px-4 py-2 rounded-lg border border-slate-300 text-sm font-semibold hover:bg-slate-100"
+          >
+            <Printer size={16} /> Print
+          </button>
+        )}
+      </div>
 
       <div className="flex flex-wrap gap-4 my-5 p-4 border rounded-xl shadow-sm bg-white">
         {teacherMode ? (
@@ -285,6 +284,8 @@ export default function AttendanceModule({
             weekRange={weekRange}
             show={showRiskBox}
             onHide={() => setShowRiskBox(false)}
+            teacherMode={teacherMode}
+            token={token}
           />
           <AttendanceGrid
             attendanceList={attendanceList}

@@ -37,7 +37,7 @@ export default function ExaminationModule({
   allowedClasses = [],
   teacherName = "",
   storagePrefix = "examination",
-  token = "",                       // ✅ NEW
+  token = "",
 }) {
   const STORAGE_KEY = `${storagePrefix}_filters_v1`
   const EXTRA_KEY = `${storagePrefix}_extra_subjects_v1`
@@ -103,7 +103,6 @@ export default function ExaminationModule({
     localStorage.setItem(HIDDEN_KEY, JSON.stringify(hiddenSubjects))
   }, [hiddenSubjects, hydrated, HIDDEN_KEY])
 
-  // ✅ teacher-mode helpers
   const fetchStudents = async (params) =>
     teacherMode ? GlobalApi.GetTeacherPublicStudents(token) : GlobalApi.GetAllStudents(params)
   const fetchSubjects = async () =>
@@ -262,7 +261,6 @@ export default function ExaminationModule({
     if (!ok) return
     setDeletingSubject(subjectName)
     try {
-      // delete-by-subject only exists on admin route; skip in teacher mode
       if (!teacherMode) {
         await Promise.all(
           affected.map((st) =>
@@ -389,17 +387,16 @@ export default function ExaminationModule({
 
   return (
     <div className={teacherMode ? "" : "p-7 animate-page-in"}>
-      {!teacherMode && (
-        <div className="flex items-center gap-3 mb-6">
-          <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-purple-500 to-pink-600 text-white flex items-center justify-center shadow-md hover:scale-110 transition-transform duration-300">
-            <FileText size={24} />
-          </div>
-          <div>
-            <h2 className="text-2xl font-bold text-slate-800 dark:text-slate-100">Examination</h2>
-            <p className="text-sm text-slate-500 dark:text-slate-400">Mid Term and Final Term records</p>
-          </div>
+      {/* ✅ Header always shown */}
+      <div className="flex items-center gap-3 mb-6">
+        <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-purple-500 to-pink-600 text-white flex items-center justify-center shadow-md hover:scale-110 transition-transform duration-300">
+          <FileText size={24} />
         </div>
-      )}
+        <div>
+          <h2 className="text-2xl font-bold text-slate-800 dark:text-slate-100">Examination</h2>
+          <p className="text-sm text-slate-500 dark:text-slate-400">Mid Term and Final Term records</p>
+        </div>
+      </div>
 
       <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg border border-slate-100 dark:border-slate-700 p-5 mb-5">
         <div className="flex items-center gap-2 mb-3">
@@ -606,6 +603,7 @@ export default function ExaminationModule({
                 </div>
               </div>
             </div>
+
             <div className="p-6 space-y-4">
               {subjectModal.mode === "bulk" && (
                 <div className="bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 rounded-xl p-3">
@@ -629,6 +627,7 @@ export default function ExaminationModule({
                 />
               </div>
             </div>
+
             <div className="flex justify-end gap-3 px-6 py-4 border-t border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/40">
               <button onClick={closeModal} disabled={bulkSaving}
                 className="px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 text-sm font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 transition disabled:opacity-50">
