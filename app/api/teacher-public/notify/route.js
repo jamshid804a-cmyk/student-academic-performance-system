@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server"
 import { getDb } from "@/utils"
 
+// POST — public notification via teacher token
+// Body: { token, studentId, message, type }
 export async function POST(req) {
   try {
     const body = await req.json()
@@ -15,7 +17,7 @@ export async function POST(req) {
 
     const db = await getDb()
 
-    // 1) Find teacher by public token (or legacy "token" field)
+    // 1) Find teacher by publicToken or token
     let teacher = await db.collection("teachers").findOne({ publicToken: token })
     if (!teacher) teacher = await db.collection("teachers").findOne({ token })
     if (!teacher) {
@@ -27,7 +29,7 @@ export async function POST(req) {
 
     const teacherProgram = teacher.program === "academy" ? "academy" : "school"
 
-    // 2) Find student — tolerant of number/string ID, schoolId, and collection name
+    // 2) Find student (tolerant of number/string ID and collection name)
     const idNum = Number(studentId)
     const idStr = String(studentId)
     const idConds = isNaN(idNum)
@@ -40,7 +42,6 @@ export async function POST(req) {
 
     let student = null
 
-    // Try "students" collection first
     if (schoolOr.length) {
       student = await db.collection("students").findOne({
         $and: [{ $or: schoolOr }, { $or: idConds }],
@@ -49,7 +50,6 @@ export async function POST(req) {
     if (!student) {
       student = await db.collection("students").findOne({ $or: idConds })
     }
-    // Try "academy_students" if not found (some setups store academy students separately)
     if (!student) {
       if (schoolOr.length) {
         student = await db.collection("academy_students").findOne({
@@ -65,26 +65,30 @@ export async function POST(req) {
       return NextResponse.json({ error: "Student not found" }, { status: 404 })
     }
 
-    // 3) Ownership check — LOOSER for academy
+    // 3) Ownership check
     const sSchool = String(student.schoolId ?? "")
     const tSchool = String(teacher.schoolId ?? "")
-    const sOrg = String(student.orgEmail ?? student.email ?? "").toLowerCase()
-    const tOrg = String(teacher.orgEmail ?? teacher.email ?? "").toLowerCase()
     const sProgram = student.program === "academy" ? "academy" : "school"
     const tProgram = teacherProgram
 
-    const schoolMatch = sSchool && tSchool && sSchool === tSchool
-    const orgMatch = sOrg && tOrg && sOrg === tOrg
+    const schoolMatch = !!(sSchool && tSchool && sSchool === tSchool)
 
-    // Class match — student's grade (or subject for academy) + section matches teacher's classes
     const classMatch =
       Array.isArray(teacher.classes) &&
       teacher.classes.some((c) => {
         if (!c) return false
-        const g = String((c.grade || c.course || "")).toLowerCase()
+        const courseOrGrade = String(c.course || c.grade || "").toLowerCase()
         const sGrade = String(student.grade || "").toLowerCase()
         const sSubject = String(student.subject || "").toLowerCase()
-        if (g && g !== sGrade && g !== sSubject) return false
+        const sCourse = String(student.course || "").toLowerCase()
+        if (
+          courseOrGrade &&
+          courseOrGrade !== sGrade &&
+          courseOrGrade !== sSubject &&
+          courseOrGrade !== sCourse
+        ) {
+          return false
+        }
         if (c.section) {
           const cSec = String(c.section).toLowerCase()
           const sSec = String(student.section || "").toLowerCase()
@@ -93,39 +97,31 @@ export async function POST(req) {
         return true
       })
 
-    const programOk = sProgram === tProgram
-
-    // ✅ Academy: just needs program + class match (schoolId may differ)
-    const academyOk = tProgram === "academy" && classMatch
-    // ✅ School: needs program + (schoolId OR class match)
-    const schoolOk = tProgram === "school" && (schoolMatch || classMatch)
+    // Allow if same school OR class matches. (Token ownership already proves
+    // the teacher is legitimate; we don't block on program field mismatch.)
+    const ownsStudent = schoolMatch || classMatch
 
     console.log("DEBUG notify ownership:", {
       teacherId: teacher.teacherId,
       tProgram,
       tSchool,
-      tOrg,
       studentId: student.id ?? student._id,
       sProgram,
       sSchool,
-      sOrg,
       sGrade: student.grade,
       sSubject: student.subject,
       sSection: student.section,
       teacherClasses: teacher.classes,
       schoolMatch,
-      orgMatch,
       classMatch,
-      programOk,
-      academyOk,
-      schoolOk,
+      ownsStudent,
     })
 
-    if (!programOk || (!academyOk && !schoolOk)) {
+    if (!ownsStudent) {
       return NextResponse.json({ error: "Not your student" }, { status: 403 })
     }
 
-    // 4) Normalize notification type
+    // 4) Normalize type
     const finalType =
       type === "academic" ? "test" :
       type === "exam" ? "examination" :
@@ -158,7 +154,7 @@ export async function POST(req) {
         candidates.push({ phone: String(student.contact) })
         candidates.push({ phone: String(student.contact).replace(/[^\d+]/g, "") })
       }
-      if (sOrg) candidates.push({ email: sOrg })
+      if (student.email) candidates.push({ email: String(student.email).toLowerCase() })
       if (teacherProgram === "academy") {
         const orgEmail = String(teacher.orgEmail ?? teacher.email ?? "").toLowerCase()
         if (orgEmail) {
