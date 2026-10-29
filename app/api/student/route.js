@@ -4,7 +4,8 @@ import { getCurrentSchool } from "@/utils/getCurrentSchool"
 
 // ─────────────────────────────────────────────
 // GET — Fetch students for the LOGGED-IN user's school
-//   Supports: ?grade=&section=&session=
+//   ?program=school|academy   (default: school)
+//   ?grade=&section=&session=
 // ─────────────────────────────────────────────
 export async function GET(req) {
   try {
@@ -18,14 +19,15 @@ export async function GET(req) {
 
     const { schoolId } = schoolResult.school
     const { searchParams } = new URL(req.url)
+    const program = searchParams.get("program") || "school"
     const grade = searchParams.get("grade")
     const section = searchParams.get("section")
     const session = searchParams.get("session")
 
     const db = await getDb()
 
-    // ✅ schoolId is ALWAYS in the filter — this is the key security
-    const filter = { schoolId }
+    // ✅ schoolId + program is ALWAYS in the filter
+    const filter = { schoolId, program }
     if (grade) filter.grade = grade
     if (section) filter.section = section
     if (session) filter.session = session
@@ -75,7 +77,7 @@ export async function POST(req) {
     const db = await getDb()
     const collection = db.collection("students")
 
-    // Auto-generate the next numeric id (1, 2, 3...) per school
+    // Unique numeric id per SCHOOL (not per program)
     const last = await collection
       .find({ schoolId })
       .sort({ id: -1 })
@@ -86,7 +88,8 @@ export async function POST(req) {
     const doc = {
       ...data,
       id: data.id ?? nextId,
-      schoolId,                        // ✅ tag with school
+      schoolId,
+      program: "school",           // ✅ school form always creates school students
       createdAt: new Date(),
       updatedAt: new Date(),
     }

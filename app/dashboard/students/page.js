@@ -10,7 +10,7 @@ function Students() {
 
     const GetAllStudents = async () => {
         try {
-            const resp = await GlobalApi.GetAllStudents()
+            const resp = await GlobalApi.GetAllStudents({ program: 'school' })
             console.log("RAW DATA:", resp.data)
 
             const students = Array.isArray(resp.data) ? resp.data : []
