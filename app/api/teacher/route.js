@@ -4,12 +4,12 @@ import { getCurrentSchool } from "@/utils/getCurrentSchool"
 import crypto from "crypto"
 
 // ─────────────────────────────────────────────
-// Generate next Teacher ID like TCH-001 (per school)
+// Generate next Teacher ID like TCH-001 (per school, per program)
 // ─────────────────────────────────────────────
-async function generateTeacherId(db, schoolId) {
+async function generateTeacherId(db, schoolId, program) {
   const last = await db
     .collection("teachers")
-    .find({ schoolId, teacherId: { $regex: "^TCH-" } })
+    .find({ schoolId, program, teacherId: { $regex: "^TCH-" } })
     .sort({ teacherId: -1 })
     .limit(1)
     .toArray()
@@ -21,7 +21,9 @@ async function generateTeacherId(db, schoolId) {
 }
 
 // ─────────────────────────────────────────────
-// GET — list teachers (only your school's)
+// GET — list teachers (school only by default)
+//   ?program=school|academy  (default: school)
+//   ?subject=&status=
 // ─────────────────────────────────────────────
 export async function GET(req) {
   try {
@@ -32,12 +34,14 @@ export async function GET(req) {
     const { schoolId } = schoolResult.school
 
     const { searchParams } = new URL(req.url)
+    const program = searchParams.get("program") || "school"
     const subject = searchParams.get("subject")
     const status = searchParams.get("status")
 
     const db = await getDb()
 
-    const filter = { schoolId }
+    // ✅ schoolId + program is ALWAYS in the filter
+    const filter = { schoolId, program }
     if (subject) filter.subject = subject
     if (status) filter.status = status
 
@@ -57,7 +61,7 @@ export async function GET(req) {
 }
 
 // ─────────────────────────────────────────────
-// POST — create a new teacher (tagged with schoolId)
+// POST — create a new school teacher
 // ─────────────────────────────────────────────
 export async function POST(req) {
   try {
@@ -83,8 +87,12 @@ export async function POST(req) {
     const db = await getDb()
     const collection = db.collection("teachers")
 
-    // Duplicate check within the same school only
-    const existing = await collection.findOne({ schoolId, email })
+    // Duplicate check within same school + program
+    const existing = await collection.findOne({
+      schoolId,
+      program: "school",
+      email: String(email).trim().toLowerCase(),
+    })
     if (existing) {
       return NextResponse.json(
         { error: "A teacher with this email already exists in your school" },
@@ -92,11 +100,12 @@ export async function POST(req) {
       )
     }
 
-    const teacherId = await generateTeacherId(db, schoolId)
+    const teacherId = await generateTeacherId(db, schoolId, "school")
     const publicToken = crypto.randomBytes(16).toString("hex")
 
     const doc = {
-      schoolId,                          // ✅ tag with school
+      schoolId,
+      program: "school",                 // ✅ tag program
       teacherId,
       name: String(name).trim(),
       email: String(email).trim().toLowerCase(),
