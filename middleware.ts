@@ -19,6 +19,7 @@ const PUBLIC_PATHS = [
   "/default-avatar.png",
   "/teacher",
   "/admin",
+  "/api/teacher", // ✅ public teacher token routes (no login)
 ]
 
 function isPublicPath(pathname: string) {

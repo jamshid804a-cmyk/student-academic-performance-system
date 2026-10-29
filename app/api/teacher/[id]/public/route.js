@@ -6,17 +6,18 @@ import { ObjectId } from "mongodb"
 // GET — PUBLIC teacher info (via public link)
 // Called like: /api/teacher/<publicToken>/public
 // No login required — the token itself is the key.
-// Works for ANY user who opens the link.
 // Program-aware: works for both school and academy teachers.
 // ─────────────────────────────────────────────
 export async function GET(req, { params }) {
   try {
-    const { id } = params
-    const db = await getDb()
+    // ✅ FIX 1: params must be awaited (Next.js 15+, safe on older versions too)
+    const { id } = await params
 
     if (!id) {
       return NextResponse.json({ error: "Missing link token" }, { status: 400 })
     }
+
+    const db = await getDb()
 
     // ─── Find teacher by any of the possible token fields ───
     let teacher = await db.collection("teachers").findOne({ publicToken: id })
@@ -73,54 +74,22 @@ export async function GET(req, { params }) {
         }
       : null
 
-    // ─── Build the student filter ───
-    let studentFilter
-
-    if (orClauses.length > 0) {
-      const matchClass = { $or: orClauses }
-      studentFilter = idCond
-        ? { $and: [idCond, matchClass] }
-        : matchClass
-    } else if (idCond) {
-      studentFilter = idCond
-    } else {
-      studentFilter = {}
-    }
-
     const sortObj =
       program === "academy"
         ? { subject: 1, section: 1, rollNo: 1 }
         : { grade: 1, section: 1, rollNo: 1 }
 
-    let students = await db
-      .collection("students")
-      .find(studentFilter)
-      .sort(sortObj)
-      .toArray()
+    // ✅ FIX 2: No fallbacks. If nothing matches, return an empty list.
+    // A teacher with no assigned classes sees no students (never everyone).
+    let students = []
 
-    // ─── Fallback 1: relax to schoolId-only ───
-    if (students.length === 0 && idCond) {
+    if (orClauses.length > 0) {
+      const matchClass = { $or: orClauses }
+      const studentFilter = idCond ? { $and: [idCond, matchClass] } : matchClass
+
       students = await db
         .collection("students")
-        .find(idCond)
-        .sort(sortObj)
-        .toArray()
-    }
-
-    // ─── Fallback 2: relax to grade/section only (ignore schoolId type) ───
-    if (students.length === 0 && orClauses.length > 0) {
-      students = await db
-        .collection("students")
-        .find({ $or: orClauses })
-        .sort(sortObj)
-        .toArray()
-    }
-
-    // ─── Fallback 3: last resort — all students (so the page never shows empty) ───
-    if (students.length === 0) {
-      students = await db
-        .collection("students")
-        .find({})
+        .find(studentFilter)
         .sort(sortObj)
         .toArray()
     }
@@ -147,6 +116,7 @@ export async function GET(req, { params }) {
     })
   } catch (err) {
     console.error("❌ GET /api/teacher/[id]/public:", err.message)
-    return NextResponse.json({ error: err.message }, { status: 500 })
+    // Don't leak internal error details to the public
+    return NextResponse.json({ error: "Something went wrong" }, { status: 500 })
   }
 }
