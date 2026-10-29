@@ -3,9 +3,10 @@ import { getDb } from "@/utils"
 
 export async function GET(req, { params }) {
   try {
-    const { token } = params
+    const { id } = params
     const db = await getDb()
-    const teacher = await db.collection("teachers").findOne({ publicToken: token })
+
+    const teacher = await db.collection("teachers").findOne({ publicToken: id })
     if (!teacher) return NextResponse.json({ error: "Invalid link" }, { status: 404 })
 
     const schoolId = teacher.schoolId

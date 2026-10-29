@@ -3,10 +3,10 @@ import { getDb } from "@/utils"
 
 export async function GET(req, { params }) {
   try {
-    const { token } = params
+    const { id } = params
     const db = await getDb()
 
-    const teacher = await db.collection("teachers").findOne({ publicToken: token })
+    const teacher = await db.collection("teachers").findOne({ publicToken: id })
     if (!teacher) return NextResponse.json({ error: "Invalid link" }, { status: 404 })
     if (teacher.status && teacher.status.toLowerCase() !== "active") {
       return NextResponse.json({ error: "Teacher is inactive" }, { status: 403 })
@@ -45,7 +45,6 @@ export async function GET(req, { params }) {
       .find(studentFilter)
       .sort({ rollNo: 1, id: 1 })
       .toArray()
-
     if (students.length === 0) return NextResponse.json([])
 
     const studentIds = students.map((s) => String(s.id))
@@ -61,17 +60,17 @@ export async function GET(req, { params }) {
       byStudent[sid][String(r.day)] = r.status || (r.present ? "P" : "A")
     })
 
-    const response = students.map((s) => ({
-      studentId: s.id,
-      rollNo: s.rollNo,
-      name: s.name,
-      grade: s.grade,
-      section: s.section,
-      session: s.session,
-      attendance: byStudent[String(s.id)] || {},
-    }))
-
-    return NextResponse.json(response)
+    return NextResponse.json(
+      students.map((s) => ({
+        studentId: s.id,
+        rollNo: s.rollNo,
+        name: s.name,
+        grade: s.grade,
+        section: s.section,
+        session: s.session,
+        attendance: byStudent[String(s.id)] || {},
+      }))
+    )
   } catch (err) {
     console.error("attendance route:", err.message)
     return NextResponse.json({ error: err.message }, { status: 500 })
@@ -80,10 +79,10 @@ export async function GET(req, { params }) {
 
 export async function POST(req, { params }) {
   try {
-    const { token } = params
+    const { id } = params
     const db = await getDb()
 
-    const teacher = await db.collection("teachers").findOne({ publicToken: token })
+    const teacher = await db.collection("teachers").findOne({ publicToken: id })
     if (!teacher) return NextResponse.json({ error: "Invalid link" }, { status: 404 })
 
     const schoolId = teacher.schoolId
@@ -97,16 +96,10 @@ export async function POST(req, { params }) {
       )
     }
 
-    const finalStatus =
-      status || (present === true ? "P" : present === false ? "A" : "P")
+    const finalStatus = status || (present === true ? "P" : present === false ? "A" : "P")
 
     await db.collection("attendance").updateOne(
-      {
-        schoolId,
-        studentId: String(studentId),
-        day: Number(day),
-        date: String(date),
-      },
+      { schoolId, studentId: String(studentId), day: Number(day), date: String(date) },
       {
         $set: {
           schoolId,
