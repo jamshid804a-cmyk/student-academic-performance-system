@@ -90,27 +90,40 @@ const DeleteTeacher = (id) => axios.delete(`/api/teacher/${id}`);
 const RegenerateTeacherToken = (id) => axios.patch(`/api/teacher/${id}`);
 const GetPublicTeacher = (token) => axios.get(`/api/teacher/${token}/public`);
 
-// ✅ NEW — Teacher public link: students / attendance / tests / exams
+// ✅ Teacher public link (no login) — students / attendance / tests / exams / subjects / notifications
 const GetTeacherPublicStudents = (token) =>
     axios.get(`/api/teacher/${token}/students`);
+
 const GetTeacherPublicAttendance = (token, params = {}) => {
     const qs = new URLSearchParams(params).toString();
     return axios.get(`/api/teacher/${token}/attendance` + (qs ? `?${qs}` : ''));
 };
 const SaveTeacherPublicAttendance = (token, data) =>
     axios.post(`/api/teacher/${token}/attendance`, data);
+
 const GetTeacherPublicTests = (token, params = {}) => {
     const qs = new URLSearchParams(params).toString();
     return axios.get(`/api/teacher/${token}/tests` + (qs ? `?${qs}` : ''));
 };
 const SaveTeacherPublicTest = (token, data) =>
     axios.post(`/api/teacher/${token}/tests`, data);
+
 const GetTeacherPublicExams = (token, params = {}) => {
     const qs = new URLSearchParams(params).toString();
     return axios.get(`/api/teacher/${token}/exams` + (qs ? `?${qs}` : ''));
 };
 const SaveTeacherPublicExam = (token, data) =>
     axios.post(`/api/teacher/${token}/exams`, data);
+
+// ✅ Subjects (needed by TestingModule in teacher mode)
+const GetTeacherPublicSubjects = (token, studentId) => {
+    const qs = studentId ? `?studentId=${studentId}` : "";
+    return axios.get(`/api/teacher/${token}/subjects${qs}`);
+};
+
+// ✅ Notifications (needed by TestingModule "Send" in teacher mode)
+const SaveTeacherPublicNotification = (token, data) =>
+    axios.post(`/api/teacher/${token}/notifications`, data);
 
 // Teacher Attendance (teacher's own attendance)
 const GetTeacherAttendance = (month, teacherId) => {
@@ -236,7 +249,7 @@ export default {
     RegenerateTeacherToken,
     GetPublicTeacher,
 
-    // ✅ Teacher public link (new)
+    // ✅ Teacher public link (no login)
     GetTeacherPublicStudents,
     GetTeacherPublicAttendance,
     SaveTeacherPublicAttendance,
@@ -244,6 +257,8 @@ export default {
     SaveTeacherPublicTest,
     GetTeacherPublicExams,
     SaveTeacherPublicExam,
+    GetTeacherPublicSubjects,          // ✅ NEW
+    SaveTeacherPublicNotification,     // ✅ NEW
 
     GetTeacherAttendance,
     SaveTeacherAttendance,
