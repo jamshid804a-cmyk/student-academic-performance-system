@@ -105,8 +105,8 @@ export default function TeacherAttendancePage() {
         teacherMode={true}
         allowedClasses={allowedClasses}
         teacherName={teacher.name}
-        token={token}                                      {/* ✅ ADDED */}
-        storageKey={`attendance_${token || "admin"}`}      {/* ✅ ADDED */}
+        token={token}
+        storageKey={`attendance_${token || "admin"}`}
       />
     </>
   )
