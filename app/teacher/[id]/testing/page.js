@@ -97,7 +97,13 @@ export default function TeacherTestingPage() {
   return (
     <>
       <Toaster position="top-center" richColors />
-      <TestingModule teacherMode={true} allowedClasses={allowedClasses} teacherName={teacher.name} />
+      <TestingModule
+        teacherMode={true}
+        allowedClasses={allowedClasses}
+        teacherName={teacher.name}
+        token={token}
+        storagePrefix={`testing_${token || "admin"}`}
+      />
     </>
   )
 }
