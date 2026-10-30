@@ -10,7 +10,7 @@ import { ObjectId } from "mongodb"
 // ─────────────────────────────────────────────
 export async function GET(req, { params }) {
   try {
-    // ✅ FIX 1: params must be awaited (Next.js 15+, safe on older versions too)
+    // ✅ params must be awaited (Next.js 15+, safe on older versions too)
     const { id } = await params
 
     if (!id) {
@@ -34,7 +34,9 @@ export async function GET(req, { params }) {
       return NextResponse.json({ error: "Invalid link" }, { status: 404 })
     }
 
-    if (teacher.status && teacher.status.toLowerCase() !== "active") {
+    // ✅ FIX: status may not be a string (number/boolean/object) — String() never throws.
+    const statusStr = String(teacher.status ?? "").toLowerCase()
+    if (statusStr && statusStr !== "active") {
       return NextResponse.json({ error: "Teacher is inactive" }, { status: 403 })
     }
 
@@ -79,7 +81,7 @@ export async function GET(req, { params }) {
         ? { subject: 1, section: 1, rollNo: 1 }
         : { grade: 1, section: 1, rollNo: 1 }
 
-    // ✅ FIX 2: No fallbacks. If nothing matches, return an empty list.
+    // ✅ No fallbacks. If nothing matches, return an empty list.
     // A teacher with no assigned classes sees no students (never everyone).
     let students = []
 
@@ -115,8 +117,15 @@ export async function GET(req, { params }) {
       students: formattedStudents,
     })
   } catch (err) {
-    console.error("❌ GET /api/teacher/[id]/public:", err.message)
-    // Don't leak internal error details to the public
-    return NextResponse.json({ error: "Something went wrong" }, { status: 500 })
+    // ✅ Log the FULL error (stack trace), not just message
+    console.error("❌ GET /api/teacher/[id]/public:", err)
+    // ⚠️ Remove `detail` before production if you don't want to expose internals
+    return NextResponse.json(
+      {
+        error: "Something went wrong",
+        detail: err?.message || String(err),
+      },
+      { status: 500 }
+    )
   }
 }
