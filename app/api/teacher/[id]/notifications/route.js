@@ -1,30 +1,33 @@
 import { NextResponse } from "next/server"
 import { getDb } from "@/utils"
 import { ObjectId } from "mongodb"
-import admin from "firebase-admin"
+// ✅ Correct modular import for firebase-admin
+import { getApps, initializeApp, cert } from "firebase-admin/app"
+import { getMessaging } from "firebase-admin/messaging"
 
-// ✅ Initialize Firebase Admin safely (prevents crash on hot-reload)
-if (!admin.apps.length) {
-  try {
-    admin.initializeApp({
-      credential: admin.credential.cert({
-        projectId: process.env.FIREBASE_PROJECT_ID,
-        clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-        // Replace literal \n with actual newlines for Vercel
-        privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, "\n"),
-      }),
-    })
-  } catch (error) {
-    console.error("Firebase Admin Initialization Error:", error)
+// ✅ Initialize lazily to avoid build-time crashes
+function initFirebase() {
+  if (getApps().length === 0) {
+    try {
+      initializeApp({
+        credential: cert({
+          projectId: process.env.FIREBASE_PROJECT_ID,
+          clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+          // Handle the \n characters in the private key
+          privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, "\n"),
+        }),
+      })
+    } catch (error) {
+      console.error("Firebase Admin Initialization Error:", error)
+    }
   }
 }
 
 export async function POST(req, { params }) {
   try {
-    const { id } = await params // ✅ Next.js 15 fix
+    const { id } = await params
     const db = await getDb()
 
-    // ✅ Match by either publicToken or token
     const teacher = await db.collection("teachers").findOne({
       $or: [{ publicToken: id }, { token: id }],
     })
@@ -51,12 +54,14 @@ export async function POST(req, { params }) {
       const student = await db.collection("students").findOne({ 
         _id: new ObjectId(studentId) 
       })
-      // Look for the token in common field names
       fcmToken = student?.fcmToken || student?.deviceToken || student?.pushToken
     }
 
     // 3. Send Push Notification via Firebase
     if (fcmToken) {
+      // Initialize Firebase only when we actually need to send
+      initFirebase()
+      
       try {
         const payload = {
           token: fcmToken,
@@ -67,17 +72,15 @@ export async function POST(req, { params }) {
           data: {
             studentId: String(studentId),
             type: String(type || "general"),
-            click_action: "FLUTTER_NOTIFICATION_CLICK", // Necessary for some mobile apps
           },
         }
 
-        await admin.messaging().send(payload)
+        // Use getMessaging() from the modular import
+        await getMessaging().send(payload)
         console.log(`✅ Push sent to ${studentId}`)
       } catch (fcmError) {
-        // If the token is invalid or expired, Firebase throws an error
         console.error("❌ Firebase Send Error:", fcmError.message)
         
-        // Optional: If token is invalid, you should remove it from the DB
         if (fcmError.code === "messaging/invalid-registration-token" || fcmError.code === "messaging/registration-token-not-registered") {
           await db.collection("students").updateOne(
             { _id: new ObjectId(studentId) },
