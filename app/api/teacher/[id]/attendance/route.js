@@ -93,6 +93,8 @@ export async function GET(req, { params }) {
         section: s.section,
         session: s.session,
         attendance: byStudent[s._id.toString()] || {},
+        // ✅ CRITICAL FIX: Send the FCM token to the frontend
+        fcmToken: s.fcmToken || s.deviceToken || s.pushToken 
       }))
     )
   } catch (err) {

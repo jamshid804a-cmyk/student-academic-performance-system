@@ -139,7 +139,7 @@ export default function RiskBox({
 
     const riskList = attendanceList
       .map((s) => {
-        // ✅ FIX: Safely grab the true ID regardless of what the API named it
+        // ✅ Safely grab the true ID regardless of what the API named it
         const trueId = s.studentId || s._id || s.id;
         if (!trueId) return null;
 
@@ -154,7 +154,7 @@ export default function RiskBox({
         }
         const percentage = Math.round((presentDays / totalDays) * 100);
         return {
-          studentId: trueId, // 👈 Use the safe ID here
+          studentId: trueId, 
           name: s.name,
           grade: s.grade,
           presentDays,
@@ -163,6 +163,7 @@ export default function RiskBox({
           weekStart,
           weekEnd,
           percentage,
+          fcmToken: s.fcmToken // ✅ FIX: Save the token from the API
         };
       })
       .filter(Boolean)
@@ -185,7 +186,8 @@ export default function RiskBox({
     setSending(true);
     try {
       const payload = {
-        studentId: student.studentId, // This is now guaranteed to be the correct ID
+        studentId: student.studentId, 
+        fcmToken: student.fcmToken, // ✅ FIX: Send the token to the backend
         message: buildMessage(student),
         blockNumber,
         weekStart: weekRange.weekStart,
@@ -241,7 +243,8 @@ export default function RiskBox({
     for (const student of pending) {
       try {
         const payload = {
-          studentId: student.studentId, // This is now guaranteed to be the correct ID
+          studentId: student.studentId, 
+          fcmToken: student.fcmToken, // ✅ FIX: Send the token to the backend
           message: buildMessage(student),
           blockNumber,
           weekStart: weekRange.weekStart,

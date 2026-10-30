@@ -1,11 +1,8 @@
 import { NextResponse } from "next/server"
 import { getDb } from "@/utils"
-import { ObjectId } from "mongodb"
-// ✅ Correct modular imports for firebase-admin
 import { getApps, initializeApp, cert } from "firebase-admin/app"
 import { getMessaging } from "firebase-admin/messaging"
 
-// ✅ Initialize Firebase lazily so it doesn't crash the Vercel build
 function initFirebase() {
   if (getApps().length === 0) {
     try {
@@ -13,7 +10,6 @@ function initFirebase() {
         credential: cert({
           projectId: process.env.FIREBASE_PROJECT_ID,
           clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-          // Replace \n with actual newlines for Vercel
           privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, "\n"),
         }),
       })
@@ -37,43 +33,29 @@ export async function POST(req, { params }) {
     }
 
     const data = await req.json()
-    const { studentId, message, type } = data
+    // ✅ Grab the token sent directly from RiskBox
+    const { studentId, message, type, fcmToken } = data 
+    
+    console.log(`🔍 RECEIVED NOTIFICATION | Type: ${type} | Student ID: ${studentId} | Has Token: ${!!fcmToken}`)
+
     const schoolId = teacher.orgCode || teacher.schoolId
 
     // 1. Save the notification to the database
     await db.collection("notifications").insertOne({
-      ...data,
+      studentId,
+      message,
+      type,
+      blockNumber: data.blockNumber,
+      weekStart: data.weekStart,
+      weekEnd: data.weekEnd,
       schoolId,
       createdAt: new Date(),
       readStatus: false,
     })
 
-    // 2. Safely find the student to get their FCM (Push) token
-    let fcmToken = null
-    let actualStudentId = studentId
-
-    if (studentId) {
-      let query = {}
-      
-      // Check if the ID is a valid MongoDB ObjectId
-      if (ObjectId.isValid(studentId)) {
-        query = { _id: new ObjectId(studentId) }
-      } else {
-        // Fallback: if Attendance sends a custom ID, check common ID fields
-        query = { $or: [{ id: String(studentId) }, { studentId: String(studentId) }] }
-      }
-
-      const student = await db.collection("students").findOne(query)
-      
-      if (student) {
-        fcmToken = student?.fcmToken || student?.deviceToken || student?.pushToken
-        actualStudentId = student._id.toString() 
-      }
-    }
-
-    // 3. Send Push Notification via Firebase
+    // 2. Send Push Notification via Firebase
     if (fcmToken) {
-      initFirebase() // Initialize Firebase only when we actually need to send
+      initFirebase()
       
       try {
         const payload = {
@@ -83,27 +65,19 @@ export async function POST(req, { params }) {
             body: message || "You have a new update.",
           },
           data: {
-            studentId: String(actualStudentId),
+            studentId: String(studentId),
             type: String(type || "general"),
             click_action: "FLUTTER_NOTIFICATION_CLICK",
           },
         }
 
         await getMessaging().send(payload)
-        console.log(`✅ Push sent to ${actualStudentId}`)
+        console.log(`✅ PUSH SENT SUCCESSFULLY TO: ${studentId}`)
       } catch (fcmError) {
-        console.error("❌ Firebase Send Error:", fcmError.message)
-        
-        // Clean up invalid tokens automatically
-        if (fcmError.code === "messaging/invalid-registration-token" || fcmError.code === "messaging/registration-token-not-registered") {
-          await db.collection("students").updateOne(
-            { _id: new ObjectId(actualStudentId) },
-            { $unset: { fcmToken: "", deviceToken: "", pushToken: "" } }
-          )
-        }
+        console.error("❌ FIREBASE SEND ERROR:", fcmError.message)
       }
     } else {
-      console.log(`⚠️ No FCM token found for student ${studentId}. Push skipped.`)
+      console.log(`⚠️ PUSH SKIPPED: No FCM token found in payload for student ${studentId}`)
     }
 
     return NextResponse.json({ success: true })
