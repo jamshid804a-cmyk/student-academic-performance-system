@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useEffect, useCallback, useRef } from "react"
+import React, { useState, useEffect, useCallback, useRef, useMemo } from "react"
 import { Printer, Calendar, Users } from "lucide-react"
 import GradeSelection from "@/app/dashboard/attendance/_components/GradeSelection"
 import SectionSelection from "@/app/dashboard/attendance/_components/SectionSelection"
@@ -42,6 +42,18 @@ export default function AttendanceModule({
   const [hydrated, setHydrated] = useState(false)
   const debounceRef = useRef(null)
 
+  // ✅ Accept both { grade, section } objects and bare strings ("1st", "BSCS"…)
+  const normalizedClasses = useMemo(() => {
+    if (!Array.isArray(allowedClasses)) return []
+    return allowedClasses
+      .map((c) =>
+        typeof c === "string"
+          ? { grade: c, section: "" }
+          : { grade: c?.grade || c?.course || "", section: c?.section || "" }
+      )
+      .filter((c) => c.grade)
+  }, [allowedClasses])
+
   useEffect(() => {
     try {
       const saved = JSON.parse(localStorage.getItem(storageKey) || "{}")
@@ -70,15 +82,15 @@ export default function AttendanceModule({
 
   useEffect(() => {
     if (!teacherMode || !hydrated) return
-    if (allowedClasses.length > 0 && !selectedGrade) {
-      setSelectedGrade(allowedClasses[0].grade || "")
-      setSelectedSection(allowedClasses[0].section || "")
+    if (normalizedClasses.length > 0 && !selectedGrade) {
+      setSelectedGrade(normalizedClasses[0].grade || "")
+      setSelectedSection(normalizedClasses[0].section || "")
     }
     if (!selectedMonth) {
       setSelectedMonth(MONTHS[new Date().getMonth()])
     }
     // eslint-disable-next-line
-  }, [teacherMode, hydrated, allowedClasses])
+  }, [teacherMode, hydrated, normalizedClasses])
 
   const fetchAttendance = useCallback(
     async (grade, section, session, month) => {
@@ -197,7 +209,7 @@ export default function AttendanceModule({
           className="border rounded-lg px-3 py-2 bg-white text-sm outline-none focus:border-blue-500 min-w-[160px]"
         >
           <option value="">Select Class</option>
-          {allowedClasses.map((c, i) => {
+          {normalizedClasses.map((c, i) => {
             const v = `${c.grade}__${c.section || ""}`
             return (
               <option key={i} value={v}>
@@ -213,7 +225,6 @@ export default function AttendanceModule({
 
   return (
     <div className={teacherMode ? "" : "p-7"}>
-      {/* ✅ Header always shown (same as website) */}
       <div className="flex items-center justify-between mb-3">
         <h2 className="text-2xl font-bold">Attendance</h2>
         {attendanceList && attendanceList.length > 0 && (

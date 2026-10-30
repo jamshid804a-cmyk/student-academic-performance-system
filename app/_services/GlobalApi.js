@@ -93,8 +93,15 @@ const RegenerateTeacherToken = (id) => axios.patch(`/api/teacher/${id}`);
 const GetPublicTeacher = (token) => axios.get(`/api/teacher/${token}/public`);
 
 // ✅ Teacher public link (no login) — students / attendance / tests / exams / subjects / notifications
-const GetTeacherPublicStudents = (token) =>
-    axios.get(`/api/teacher/${token}/students`);
+// ✅ Accepts grade/section/session so the server can filter to the teacher's own class.
+const GetTeacherPublicStudents = (token, params = {}) => {
+    const qs = new URLSearchParams();
+    if (params.grade) qs.append('grade', params.grade);
+    if (params.section) qs.append('section', params.section);
+    if (params.session) qs.append('session', params.session);
+    const q = qs.toString();
+    return axios.get(`/api/teacher/${token}/students` + (q ? `?${q}` : ''));
+};
 
 const GetTeacherPublicAttendance = (token, params = {}) => {
     const qs = new URLSearchParams(params).toString();

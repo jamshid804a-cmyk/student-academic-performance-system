@@ -64,6 +64,17 @@ export default function ExaminationModule({
   const [bulkSaving, setBulkSaving] = useState(false)
   const [deletingSubject, setDeletingSubject] = useState(null)
 
+  const normalizedClasses = useMemo(() => {
+    if (!Array.isArray(allowedClasses)) return []
+    return allowedClasses
+      .map((c) =>
+        typeof c === "string"
+          ? { grade: c, section: "" }
+          : { grade: c?.grade || c?.course || "", section: c?.section || "" }
+      )
+      .filter((c) => c.grade)
+  }, [allowedClasses])
+
   useEffect(() => {
     try {
       const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}")
@@ -80,13 +91,13 @@ export default function ExaminationModule({
 
   useEffect(() => {
     if (!teacherMode || !hydrated) return
-    if (allowedClasses.length > 0 && !grade) {
-      setGrade(allowedClasses[0].grade || "")
-      setSection(allowedClasses[0].section || "")
+    if (normalizedClasses.length > 0 && !grade) {
+      setGrade(normalizedClasses[0].grade || "")
+      setSection(normalizedClasses[0].section || "")
     }
     if (!month) setMonth(MONTHS[new Date().getMonth()])
     // eslint-disable-next-line
-  }, [teacherMode, hydrated, allowedClasses])
+  }, [teacherMode, hydrated, normalizedClasses])
 
   useEffect(() => {
     if (!hydrated) return
@@ -104,7 +115,7 @@ export default function ExaminationModule({
   }, [hiddenSubjects, hydrated, HIDDEN_KEY])
 
   const fetchStudents = async (params) =>
-    teacherMode ? GlobalApi.GetTeacherPublicStudents(token) : GlobalApi.GetAllStudents(params)
+    teacherMode ? GlobalApi.GetTeacherPublicStudents(token, params) : GlobalApi.GetAllStudents(params)
   const fetchSubjects = async () =>
     teacherMode ? GlobalApi.GetTeacherPublicSubjects(token) : GlobalApi.GetAllSubjects()
   const fetchExams = async (params) =>
@@ -130,6 +141,7 @@ export default function ExaminationModule({
       const params = { grade }
       if (section) params.section = section
       if (session) params.session = session
+      if (teacherMode) { params.month = monthKey; params.examType = examType }
 
       const [studentResp, subjectResp, examResp] = await Promise.all([
         fetchStudents(params),
@@ -387,7 +399,6 @@ export default function ExaminationModule({
 
   return (
     <div className={teacherMode ? "" : "p-7 animate-page-in"}>
-      {/* ✅ Header always shown */}
       <div className="flex items-center gap-3 mb-6">
         <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-purple-500 to-pink-600 text-white flex items-center justify-center shadow-md hover:scale-110 transition-transform duration-300">
           <FileText size={24} />
@@ -408,7 +419,7 @@ export default function ExaminationModule({
             <select className={filterClass} value={classValue}
               onChange={(e) => { const [g, s] = e.target.value.split("__"); setGrade(g); setSection(s || "") }}>
               <option value="">Select Class</option>
-              {allowedClasses.map((c, i) => (
+              {normalizedClasses.map((c, i) => (
                 <option key={i} value={`${c.grade}__${c.section || ""}`}>
                   {c.grade}{c.section ? ` - ${c.section}` : ""}
                 </option>
@@ -582,7 +593,7 @@ export default function ExaminationModule({
           </div>
         </>
       )}
-
+      
       {subjectModal && (
         <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
           <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl max-w-md w-full overflow-hidden">

@@ -7,8 +7,9 @@ function isAllowedClass(teacher, grade, section) {
   const classes = Array.isArray(teacher.classes) ? teacher.classes : []
   return classes.some((c) => {
     if (!c) return false
-    const g = c.grade || c.course
+    const g = typeof c === "string" ? c : (c.grade || c.course)
     if (norm(g) !== norm(grade)) return false
+    if (typeof c === "string") return true
     if (!c.section) return true
     return norm(c.section) === norm(section)
   })
@@ -27,7 +28,9 @@ export async function GET(req, { params }) {
 
     const teacher = await findTeacher(db, id)
     if (!teacher) return NextResponse.json({ error: "Invalid link" }, { status: 404 })
-    if (teacher.status && teacher.status.toLowerCase() !== "active") {
+
+    const statusStr = String(teacher.status ?? "").toLowerCase()
+    if (statusStr && statusStr !== "active") {
       return NextResponse.json({ error: "Teacher is inactive" }, { status: 403 })
     }
 
@@ -41,17 +44,14 @@ export async function GET(req, { params }) {
       ? { $or: [{ schoolId: String(schoolId) }, { schoolId: Number(schoolId) }] }
       : {}
 
-    // If grade+section provided, enforce the teacher's class restriction
     if (grade && !isAllowedClass(teacher, grade, section)) {
       return NextResponse.json([])
     }
 
-    // Build the base filter
     const baseFilter = { ...schoolCond }
     if (grade) baseFilter.grade = grade
     if (section) baseFilter.section = section
 
-    // 1st try: with session
     let students = []
     if (session) {
       students = await db
@@ -61,7 +61,6 @@ export async function GET(req, { params }) {
         .toArray()
     }
 
-    // 2nd try: drop session
     if (students.length === 0) {
       students = await db
         .collection("students")
@@ -70,7 +69,6 @@ export async function GET(req, { params }) {
         .toArray()
     }
 
-    // 3rd try: drop schoolId too (in case schoolId types/values differ)
     if (students.length === 0) {
       const classOnly = {}
       if (grade) classOnly.grade = grade
@@ -84,15 +82,15 @@ export async function GET(req, { params }) {
       }
     }
 
-    // 4th try (last resort): if the teacher has classes, use them
     if (students.length === 0) {
       const classes = Array.isArray(teacher.classes) ? teacher.classes : []
       const orClauses = classes
-        .filter((c) => c && (c.grade || c.course))
-        .map((c) => ({
-          grade: c.grade || c.course,
-          ...(c.section ? { section: c.section } : {}),
-        }))
+        .filter((c) => c && (typeof c === "string" || c.grade || c.course))
+        .map((c) =>
+          typeof c === "string"
+            ? { grade: c }
+            : { grade: c.grade || c.course, ...(c.section ? { section: c.section } : {}) }
+        )
       if (orClauses.length > 0) {
         students = await db
           .collection("students")
@@ -109,7 +107,7 @@ export async function GET(req, { params }) {
       }))
     )
   } catch (err) {
-    console.error("students route:", err.message)
+    console.error("students route:", err)
     return NextResponse.json({ error: "Something went wrong" }, { status: 500 })
   }
 }
