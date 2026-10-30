@@ -2,30 +2,17 @@ import { NextResponse } from "next/server"
 import { getDb } from "@/utils"
 import { ObjectId } from "mongodb"
 
-// ─────────────────────────────────────────────
-// GET — PUBLIC teacher info (via public link)
-// Called like: /api/teacher/<publicToken>/public
-// No login required — the token itself is the key.
-// Program-aware: works for both school and academy teachers.
-// ─────────────────────────────────────────────
 export async function GET(req, { params }) {
   try {
-    // ✅ params must be awaited (Next.js 15+, safe on older versions too)
     const { id } = await params
-
     if (!id) {
       return NextResponse.json({ error: "Missing link token" }, { status: 400 })
     }
 
     const db = await getDb()
 
-    // ─── Find teacher by any of the possible token fields ───
     let teacher = await db.collection("teachers").findOne({ publicToken: id })
-
-    if (!teacher) {
-      teacher = await db.collection("teachers").findOne({ token: id })
-    }
-
+    if (!teacher) teacher = await db.collection("teachers").findOne({ token: id })
     if (!teacher && ObjectId.isValid(id)) {
       teacher = await db.collection("teachers").findOne({ _id: new ObjectId(id) })
     }
@@ -34,7 +21,6 @@ export async function GET(req, { params }) {
       return NextResponse.json({ error: "Invalid link" }, { status: 404 })
     }
 
-    // ✅ FIX: status may not be a string (number/boolean/object) — String() never throws.
     const statusStr = String(teacher.status ?? "").toLowerCase()
     if (statusStr && statusStr !== "active") {
       return NextResponse.json({ error: "Teacher is inactive" }, { status: 403 })
@@ -44,13 +30,40 @@ export async function GET(req, { params }) {
     const program = teacher.program === "academy" ? "academy" : "school"
     const classes = Array.isArray(teacher.classes) ? teacher.classes : []
 
-    // ─── Build OR clauses from the teacher's assigned classes ───
+    const orgKey =
+      typeof teacher.orgCode === "string" && teacher.orgCode.trim()
+        ? teacher.orgCode.trim()
+        : null
+
+    const schoolCond = orgKey
+      ? { $or: [{ schoolId: orgKey }, { orgCode: orgKey }] }
+      : schoolId
+      ? {
+          $or: [
+            { schoolId: String(schoolId) },
+            { schoolId: Number(schoolId) },
+            { orgCode: String(schoolId) },
+          ],
+        }
+      : null
+
+    const programCond =
+      program === "academy"
+        ? { program: "academy" }
+        : {
+            $and: [
+              { grade: { $exists: true, $nin: [null, ""] } },
+              { $or: [{ program: "school" }, { program: { $exists: false } }, { program: null }] },
+            ],
+          }
+
     let orClauses = []
 
     if (program === "academy") {
       orClauses = classes
-        .filter((c) => c && (c.course || c.grade))
+        .filter((c) => c && (typeof c === "string" || c.course || c.grade))
         .map((c) => {
+          if (typeof c === "string") return { subject: c }
           const courseName = c.course || c.grade
           const clause = { subject: courseName }
           if (c.section) clause.section = c.section
@@ -59,35 +72,25 @@ export async function GET(req, { params }) {
         })
     } else {
       orClauses = classes
-        .filter((c) => c && c.grade)
-        .map((c) => ({
-          grade: c.grade,
-          ...(c.section ? { section: c.section } : {}),
-        }))
+        .filter((c) => c && (typeof c === "string" || c.grade))
+        .map((c) => {
+          if (typeof c === "string") return { grade: c }
+          return { grade: c.grade, ...(c.section ? { section: c.section } : {}) }
+        })
     }
-
-    // ─── Tolerant schoolId condition (string OR number) ───
-    const idCond = schoolId
-      ? {
-          $or: [
-            { schoolId: String(schoolId) },
-            { schoolId: Number(schoolId) },
-          ],
-        }
-      : null
 
     const sortObj =
       program === "academy"
         ? { subject: 1, section: 1, rollNo: 1 }
         : { grade: 1, section: 1, rollNo: 1 }
 
-    // ✅ No fallbacks. If nothing matches, return an empty list.
-    // A teacher with no assigned classes sees no students (never everyone).
     let students = []
 
     if (orClauses.length > 0) {
       const matchClass = { $or: orClauses }
-      const studentFilter = idCond ? { $and: [idCond, matchClass] } : matchClass
+      const parts = [matchClass, programCond]
+      if (schoolCond) parts.push(schoolCond)
+      const studentFilter = { $and: parts }
 
       students = await db
         .collection("students")
@@ -112,19 +115,15 @@ export async function GET(req, { params }) {
         phone: teacher.phone || "",
         status: teacher.status || "Active",
         schoolId,
+        orgCode: teacher.orgCode || "",
         program,
       },
       students: formattedStudents,
     })
   } catch (err) {
-    // ✅ Log the FULL error (stack trace), not just message
     console.error("❌ GET /api/teacher/[id]/public:", err)
-    // ⚠️ Remove `detail` before production if you don't want to expose internals
     return NextResponse.json(
-      {
-        error: "Something went wrong",
-        detail: err?.message || String(err),
-      },
+      { error: "Something went wrong", detail: err?.message || String(err) },
       { status: 500 }
     )
   }

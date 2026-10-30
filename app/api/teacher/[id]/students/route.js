@@ -34,25 +34,35 @@ export async function GET(req, { params }) {
       return NextResponse.json({ error: "Teacher is inactive" }, { status: 403 })
     }
 
-    const schoolId = teacher.schoolId
     const teacherProgram = teacher.program === "academy" ? "academy" : "school"
 
-    const { searchParams } = new URL(req.url)
-    const grade = searchParams.get("grade")
-    const section = searchParams.get("section")
-    const session = searchParams.get("session")
+    // ✅ The teacher's school identity is orgCode (string). Students store it in schoolId (string).
+    //    We match teacher.orgCode → student.schoolId. Fall back to teacher.schoolId → student.schoolId
+    //    for legacy records.
+    const orgKey =
+      typeof teacher.orgCode === "string" && teacher.orgCode.trim()
+        ? teacher.orgCode.trim()
+        : null
 
-    const schoolCond = schoolId
-      ? { $or: [{ schoolId: String(schoolId) }, { schoolId: Number(schoolId) }] }
+    const schoolCond = orgKey
+      ? {
+          $or: [
+            { schoolId: orgKey },
+            { orgCode: orgKey },
+          ],
+        }
+      : teacher.schoolId
+      ? {
+          $or: [
+            { schoolId: String(teacher.schoolId) },
+            { schoolId: Number(teacher.schoolId) },
+            { orgCode: String(teacher.schoolId) },
+          ],
+        }
       : {}
 
-    if (grade && !isAllowedClass(teacher, grade, section)) {
-      return NextResponse.json([])
-    }
-
-    // ✅ SEPARATE SCHOOL vs ACADEMY STUDENTS
-    // Academy teacher → only students with program: "academy"
-    // School teacher  → only students NOT tagged academy, and must have a grade
+    // ✅ Program filter: academy teacher → only program "academy";
+    //    school teacher → only program "school" (or missing program — legacy records with a grade).
     const programCond =
       teacherProgram === "academy"
         ? { program: "academy" }
@@ -68,6 +78,15 @@ export async function GET(req, { params }) {
               },
             ],
           }
+
+    const { searchParams } = new URL(req.url)
+    const grade = searchParams.get("grade")
+    const section = searchParams.get("section")
+    const session = searchParams.get("session")
+
+    if (grade && !isAllowedClass(teacher, grade, section)) {
+      return NextResponse.json([])
+    }
 
     const baseFilter = { ...schoolCond, ...programCond }
     if (grade) baseFilter.grade = grade
