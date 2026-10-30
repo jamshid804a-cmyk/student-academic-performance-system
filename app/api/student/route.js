@@ -24,16 +24,21 @@ export async function GET(req) {
 
     const db = await getDb()
 
-    // ✅ schoolId + program is ALWAYS in the filter
-    const filter = { schoolId, program }
+    // ✅ FIX 1: If a student has no program, treat them as "school" so they don't disappear
+    const programFilter = program === "school" 
+      ? { $or: [{ program: "school" }, { program: { $exists: false } }, { program: null }] }
+      : { program }
+
+    const filter = { schoolId, ...programFilter }
     if (grade) filter.grade = grade
     if (section) filter.section = section
     if (session) filter.session = session
 
+    // ✅ FIX 2: Sort strictly by Admission Number (ascending)
     const students = await db
       .collection("students")
       .find(filter)
-      .sort({ id: 1 })
+      .sort({ admissionNo: 1, id: 1 }) 
       .toArray()
 
     const formatted = students.map((s) => ({
@@ -75,7 +80,7 @@ export async function POST(req) {
     const db = await getDb()
     const collection = db.collection("students")
 
-    // 1. Auto-generate the next numeric id per school
+    // Auto-generate ID
     const lastStudent = await collection
       .find({ schoolId })
       .sort({ id: -1 })
@@ -83,7 +88,7 @@ export async function POST(req) {
       .toArray()
     const nextId = lastStudent.length > 0 ? Number(lastStudent[0].id) + 1 : 1
 
-    // 2. Auto-generate the next Admission Number in ascending order
+    // ✅ Auto-generate Admission Number (ascending)
     const lastAdmission = await collection
       .find({ schoolId, admissionNo: { $type: "number" } })
       .sort({ admissionNo: -1 })
@@ -94,9 +99,9 @@ export async function POST(req) {
     const doc = {
       ...data,
       id: data.id ?? nextId,
-      admissionNo: nextAdmissionNo,      // ✅ Auto-generated ascending admission number
+      admissionNo: nextAdmissionNo,      // Forces ascending admission number
       schoolId,
-      program: "school",                 // ✅ Always school from this API
+      program: "school",                 
       createdAt: new Date(),
       updatedAt: new Date(),
     }

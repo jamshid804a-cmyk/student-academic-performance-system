@@ -10,6 +10,7 @@ const GetAllStudents = (filters = {}) => {
     if (filters.grade) params.append('grade', filters.grade);
     if (filters.section) params.append('section', filters.section);
     if (filters.session) params.append('session', filters.session);
+    if (filters.program) params.append('program', filters.program);
     const qs = params.toString();
     return axios.get('/api/student' + (qs ? `?${qs}` : ''));
 };
@@ -80,6 +81,7 @@ const GetAllTeachers = (filters = {}) => {
     const params = new URLSearchParams();
     if (filters.subject) params.append('subject', filters.subject);
     if (filters.status) params.append('status', filters.status);
+    if (filters.program) params.append('program', filters.program);
     const qs = params.toString();
     return axios.get('/api/teacher' + (qs ? `?${qs}` : ''));
 };
@@ -257,8 +259,8 @@ export default {
     SaveTeacherPublicTest,
     GetTeacherPublicExams,
     SaveTeacherPublicExam,
-    GetTeacherPublicSubjects,          // ✅ NEW
-    SaveTeacherPublicNotification,     // ✅ NEW
+    GetTeacherPublicSubjects,
+    SaveTeacherPublicNotification,
 
     GetTeacherAttendance,
     SaveTeacherAttendance,
