@@ -160,7 +160,10 @@ export default function AttendanceGrid({
   useEffect(() => {
     if (!attendanceList) return
     const rows = attendanceList.map((s) => {
-      const row = { studentId: s.studentId, rollNo: s.rollNo, name: s.name }
+      // ✅ FIX: Safely fall back to _id or id if studentId is missing
+      const trueId = s.studentId || s._id || s.id
+      
+      const row = { studentId: trueId, rollNo: s.rollNo, name: s.name }
       for (let d = 1; d <= daysInMonth; d++) {
         row[`d${d}`] = s.attendance?.[String(d)] || null
       }
