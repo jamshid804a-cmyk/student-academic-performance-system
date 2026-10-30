@@ -26,9 +26,7 @@ import EditStudentDialog from './EditStudentDialog'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 
-const pagination = true
-const paginationPageSize = 10
-const paginationPageSizeSelector = [10, 20, 25, 100]
+const paginationPageSizeSelector = [10, 20, 25, 100, 200, 500]
 
 const GRADES = [
     "Nursery",
@@ -89,6 +87,23 @@ function sameGrade(a, b) {
 
 function sameText(a, b) {
     return String(a || "").trim().toLowerCase() === String(b || "").trim().toLowerCase()
+}
+
+// ✅ Sort students by admission number (ascending, numeric).
+// Students without a valid admission number go to the end.
+// Ties are broken by roll number, then by id.
+function sortByAdmissionNo(list) {
+    const toNum = (v) => {
+        const n = parseInt(String(v ?? "").replace(/[^\d]/g, ""), 10)
+        return Number.isNaN(n) ? Number.MAX_SAFE_INTEGER : n
+    }
+    return [...list].sort((a, b) => {
+        const diff = toNum(a.admissionNo) - toNum(b.admissionNo)
+        if (diff !== 0) return diff
+        const rollDiff = toNum(a.rollNo) - toNum(b.rollNo)
+        if (rollDiff !== 0) return rollDiff
+        return toNum(a.id) - toNum(b.id)
+    })
 }
 
 const FILTER_CLASS =
@@ -181,19 +196,18 @@ function StudentListTable({ StudentList, refreshData, students }) {
     // ─────────────────────────────────────────────
     // ✅ SEARCH + FILTER
     //
-    // SEARCH MODE:
+    // SEARCH MODE (search box not empty):
     //   → Ignores grade/section/session dropdowns
-    //   → Searches ALL sessions/grades/sections
+    //   → Numeric search = EXACT match on admissionNo / rollNo / id
+    //   → Text search    = CONTAINS match on name, fatherName, etc.
     //
-    //   If search term is a NUMBER (e.g. "3", "5"):
-    //     → EXACT match on admissionNo, rollNo, id
-    //       (so "3" finds only admissionNo=3, not "13", "30", etc.)
+    // NORMAL MODE (search box empty):
+    //   → Session filter only      → WHOLE SCHOOL of that session
+    //   → Grade / Section selected → that class only
+    //   → Nothing selected         → whole school of the newest session
     //
-    //   If search term is TEXT (e.g. "khan"):
-    //     → CONTAINS match on name, fatherName, address, etc.
-    //
-    // NORMAL MODE (empty search):
-    //   → Apply grade/section/session filters (default = newest session)
+    // In ALL modes the result is sorted by admission number
+    // (ascending, smallest first).
     // ─────────────────────────────────────────────
     const filteredData = useMemo(() => {
         const q = String(searchInput || "").trim().toLowerCase()
@@ -202,21 +216,14 @@ function StudentListTable({ StudentList, refreshData, students }) {
         if (q.length > 0) {
             const isNumeric = /^\d+$/.test(q)
 
-            return rowData.filter((student) => {
-                // ── NUMERIC SEARCH: exact match on admissionNo / rollNo / id ──
+            const result = rowData.filter((student) => {
                 if (isNumeric) {
                     const admissionNo = String(student.admissionNo ?? "").trim()
                     const rollNo = String(student.rollNo ?? "").trim()
                     const id = String(student.id ?? "").trim()
-
-                    return (
-                        admissionNo === q ||
-                        rollNo === q ||
-                        id === q
-                    )
+                    return admissionNo === q || rollNo === q || id === q
                 }
 
-                // ── TEXT SEARCH: contains match on text fields ──
                 const textFields = [
                     student.name,
                     student.fatherName,
@@ -235,18 +242,29 @@ function StudentListTable({ StudentList, refreshData, students }) {
                     return String(v).toLowerCase().includes(q)
                 })
             })
+
+            return sortByAdmissionNo(result)
         }
 
         // ─── NORMAL FILTER MODE ───
         const effectiveSession = sessionFilter || newestSession
 
-        return rowData.filter((s) => {
+        const result = rowData.filter((s) => {
+            // Grade and section are only applied if the user actually selected them.
+            // If only the session is selected, every student of that session shows.
             if (gradeFilter && !sameGrade(s.grade, gradeFilter)) return false
             if (sectionFilter && !sameText(s.section, sectionFilter)) return false
             if (effectiveSession && !sameText(s.session, effectiveSession)) return false
             return true
         })
+
+        return sortByAdmissionNo(result)
     }, [rowData, gradeFilter, sectionFilter, sessionFilter, newestSession, searchInput])
+
+    // When no grade/section/search is chosen, we are showing the whole school,
+    // so use a bigger page size to display more students at once.
+    const isWholeSchoolView = !searchInput.trim() && !gradeFilter && !sectionFilter
+    const gridPageSize = isWholeSchoolView ? 100 : 10
 
     const sessionOptions = useMemo(() => {
         const set = new Set()
@@ -321,8 +339,10 @@ function StudentListTable({ StudentList, refreshData, students }) {
         }
 
         const sourceSession = sessionFilter || newestSession
-        const studentsToPromote = rowData.filter(
-            (s) => !sourceSession || sameText(s.session, sourceSession)
+        const studentsToPromote = sortByAdmissionNo(
+            rowData.filter(
+                (s) => !sourceSession || sameText(s.session, sourceSession)
+            )
         )
 
         if (studentsToPromote.length === 0) {
@@ -756,6 +776,9 @@ function StudentListTable({ StudentList, refreshData, students }) {
         cellStyle: { display: 'flex', alignItems: 'center' },
     }), [])
 
+    // NOTE: the grid has NO default sort now. The data is already sorted by
+    // admission number (ascending) in `filteredData`, so the grid just shows
+    // that order. Users can still click a column header to re-sort.
     const colDefs = useMemo(() => [
         {
             field: "image",
@@ -780,7 +803,6 @@ function StudentListTable({ StudentList, refreshData, students }) {
             headerName: "Admission No",
             filter: true,
             width: 140,
-            sort: 'asc',
             comparator: (a, b) => (Number(a) || 0) - (Number(b) || 0),
         },
         {
@@ -956,12 +978,13 @@ function StudentListTable({ StudentList, refreshData, students }) {
 
                 <div className="ag-theme-quartz" style={{ height: 580, width: '100%' }}>
                     <AgGridReact
+                        key={isWholeSchoolView ? "whole-school" : "class-view"}
                         getRowId={(params) => String(params.data?.id ?? params.data?._id)}
                         rowData={filteredData}
                         columnDefs={colDefs}
                         defaultColDef={defaultColDef}
-                        pagination={pagination}
-                        paginationPageSize={paginationPageSize}
+                        pagination={true}
+                        paginationPageSize={gridPageSize}
                         paginationPageSizeSelector={paginationPageSizeSelector}
                         rowHeight={58}
                         headerHeight={52}
