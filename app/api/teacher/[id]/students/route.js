@@ -36,9 +36,7 @@ export async function GET(req, { params }) {
 
     const teacherProgram = teacher.program === "academy" ? "academy" : "school"
 
-    // ✅ The teacher's school identity is orgCode (string). Students store it in schoolId (string).
-    //    We match teacher.orgCode → student.schoolId. Fall back to teacher.schoolId → student.schoolId
-    //    for legacy records.
+    // 1. Match School/Org
     const orgKey =
       typeof teacher.orgCode === "string" && teacher.orgCode.trim()
         ? teacher.orgCode.trim()
@@ -61,8 +59,7 @@ export async function GET(req, { params }) {
         }
       : {}
 
-    // ✅ Program filter: academy teacher → only program "academy";
-    //    school teacher → only program "school" (or missing program — legacy records with a grade).
+    // 2. Match Program (School vs Academy)
     const programCond =
       teacherProgram === "academy"
         ? { program: "academy" }
@@ -88,56 +85,19 @@ export async function GET(req, { params }) {
       return NextResponse.json([])
     }
 
+    // 3. Build Strict Filter
     const baseFilter = { ...schoolCond, ...programCond }
     if (grade) baseFilter.grade = grade
     if (section) baseFilter.section = section
+    if (session) baseFilter.session = session
 
-    let students = []
-
-    if (session) {
-      students = await db
-        .collection("students")
-        .find({ ...baseFilter, session })
-        .sort({ rollNo: 1 })
-        .toArray()
-    }
-
-    if (students.length === 0) {
-      students = await db
-        .collection("students")
-        .find(baseFilter)
-        .sort({ rollNo: 1 })
-        .toArray()
-    }
-
-    if (students.length === 0) {
-      const classOnly = { ...programCond }
-      if (grade) classOnly.grade = grade
-      if (section) classOnly.section = section
-      students = await db
-        .collection("students")
-        .find(classOnly)
-        .sort({ rollNo: 1 })
-        .toArray()
-    }
-
-    if (students.length === 0) {
-      const classes = Array.isArray(teacher.classes) ? teacher.classes : []
-      const orClauses = classes
-        .filter((c) => c && (typeof c === "string" || c.grade || c.course))
-        .map((c) =>
-          typeof c === "string"
-            ? { grade: c }
-            : { grade: c.grade || c.course, ...(c.section ? { section: c.section } : {}) }
-        )
-      if (orClauses.length > 0) {
-        students = await db
-          .collection("students")
-          .find({ $and: [{ $or: orClauses }, programCond] })
-          .sort({ rollNo: 1 })
-          .toArray()
-      }
-    }
+    // ✅ Execute ONLY the strict filter. 
+    // No more fallbacks! If 4th A has no students, it returns [].
+    const students = await db
+      .collection("students")
+      .find(baseFilter)
+      .sort({ rollNo: 1 })
+      .toArray()
 
     return NextResponse.json(
       students.map((s) => ({
