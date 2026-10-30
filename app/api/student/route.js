@@ -4,8 +4,6 @@ import { getCurrentSchool } from "@/utils/getCurrentSchool"
 
 // ─────────────────────────────────────────────
 // GET — Fetch students for the LOGGED-IN user's school
-//   ?program=school|academy   (default: school)
-//   ?grade=&section=&session=
 // ─────────────────────────────────────────────
 export async function GET(req) {
   try {
@@ -77,19 +75,28 @@ export async function POST(req) {
     const db = await getDb()
     const collection = db.collection("students")
 
-    // Unique numeric id per SCHOOL (not per program)
-    const last = await collection
+    // 1. Auto-generate the next numeric id per school
+    const lastStudent = await collection
       .find({ schoolId })
       .sort({ id: -1 })
       .limit(1)
       .toArray()
-    const nextId = last.length > 0 ? Number(last[0].id) + 1 : 1
+    const nextId = lastStudent.length > 0 ? Number(lastStudent[0].id) + 1 : 1
+
+    // 2. Auto-generate the next Admission Number in ascending order
+    const lastAdmission = await collection
+      .find({ schoolId, admissionNo: { $type: "number" } })
+      .sort({ admissionNo: -1 })
+      .limit(1)
+      .toArray()
+    const nextAdmissionNo = lastAdmission.length > 0 ? Number(lastAdmission[0].admissionNo) + 1 : 1
 
     const doc = {
       ...data,
       id: data.id ?? nextId,
+      admissionNo: nextAdmissionNo,      // ✅ Auto-generated ascending admission number
       schoolId,
-      program: "school",           // ✅ school form always creates school students
+      program: "school",                 // ✅ Always school from this API
       createdAt: new Date(),
       updatedAt: new Date(),
     }
@@ -100,6 +107,7 @@ export async function POST(req) {
       success: true,
       id: result.insertedId.toString(),
       studentId: doc.id,
+      admissionNo: doc.admissionNo
     })
   } catch (err) {
     console.error("❌ POST /api/student:", err.message)
