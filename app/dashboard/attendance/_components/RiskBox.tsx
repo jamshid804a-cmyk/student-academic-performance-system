@@ -139,7 +139,10 @@ export default function RiskBox({
 
     const riskList = attendanceList
       .map((s) => {
-        if (!s || s.studentId === undefined || s.studentId === null) return null;
+        // ✅ FIX: Safely grab the true ID regardless of what the API named it
+        const trueId = s.studentId || s._id || s.id;
+        if (!trueId) return null;
+
         const map = s.attendance || {};
         let presentDays = 0;
         const presentDaysList = [];
@@ -151,7 +154,7 @@ export default function RiskBox({
         }
         const percentage = Math.round((presentDays / totalDays) * 100);
         return {
-          studentId: s.studentId,
+          studentId: trueId, // 👈 Use the safe ID here
           name: s.name,
           grade: s.grade,
           presentDays,
@@ -182,7 +185,7 @@ export default function RiskBox({
     setSending(true);
     try {
       const payload = {
-        studentId: student.studentId,
+        studentId: student.studentId, // This is now guaranteed to be the correct ID
         message: buildMessage(student),
         blockNumber,
         weekStart: weekRange.weekStart,
@@ -238,7 +241,7 @@ export default function RiskBox({
     for (const student of pending) {
       try {
         const payload = {
-          studentId: student.studentId,
+          studentId: student.studentId, // This is now guaranteed to be the correct ID
           message: buildMessage(student),
           blockNumber,
           weekStart: weekRange.weekStart,
