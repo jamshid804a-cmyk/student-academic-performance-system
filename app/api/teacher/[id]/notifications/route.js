@@ -30,11 +30,16 @@ export async function POST(req, { params }) {
     })
     
     if (!teacher) {
+      console.log("🚨 ERROR: Teacher link is invalid.")
       return NextResponse.json({ error: "Invalid link" }, { status: 404 })
     }
 
     const data = await req.json()
     const { studentId, message, type } = data
+    
+    console.log(`🚨 STEP 1: Received request from frontend.`)
+    console.log(`🚨 Type: ${type} | Student ID: ${studentId}`)
+
     const schoolId = teacher.orgCode || teacher.schoolId
 
     // 1. Save the notification to the database
@@ -44,23 +49,33 @@ export async function POST(req, { params }) {
       createdAt: new Date(),
       readStatus: false,
     })
+    console.log(`🚨 STEP 2: Notification saved to database.`)
 
     // 2. FORCE DB LOOKUP FOR TOKEN
-    // We ignore the frontend payload and find the token directly
     let fcmToken = null
     if (studentId && ObjectId.isValid(studentId)) {
+      console.log(`🚨 STEP 3: Searching for student in MongoDB...`)
       const student = await db.collection("students").findOne({ 
         _id: new ObjectId(studentId) 
       })
+      
       if (student) {
         fcmToken = student.fcmToken || student.deviceToken || student.pushToken
+        console.log(`🚨 STEP 4: Student found. FCM Token exists? ${fcmToken ? "YES" : "NO"}`)
+      } else {
+        console.log(`🚨 STEP 4 ERROR: Student NOT found in MongoDB with ID: ${studentId}`)
       }
+    } else {
+      console.log(`🚨 STEP 3 ERROR: Invalid or missing studentId.`)
     }
 
     // 3. Send Push Notification
     if (fcmToken) {
+      console.log(`🚨 STEP 5: Initializing Firebase...`)
       initFirebase()
+      
       try {
+        console.log(`🚨 STEP 6: Sending notification via Firebase...`)
         const payload = {
           token: fcmToken,
           notification: {
@@ -70,21 +85,20 @@ export async function POST(req, { params }) {
           data: {
             studentId: String(studentId),
             type: String(type || "general"),
-            click_action: "FLUTTER_NOTIFICATION_CLICK",
           },
         }
         await getMessaging().send(payload)
-        console.log(`✅ PUSH SENT SUCCESSFULLY TO: ${studentId}`)
+        console.log(`✅ SUCCESS: Push sent to ${studentId}`)
       } catch (fcmError) {
-        console.error("❌ FIREBASE SEND ERROR:", fcmError.message)
+        console.error("🚨 FIREBASE ERROR:", fcmError.message)
       }
     } else {
-      console.log(`⚠️ SKIPPED: Student ${studentId} has NO fcmToken saved in the database.`)
+      console.log(`⚠️ SKIPPED: No token found to send.`)
     }
 
     return NextResponse.json({ success: true })
   } catch (err) {
-    console.error("Notifications Route Error:", err)
+    console.error("🚨 SERVER CRASH:", err)
     return NextResponse.json({ error: err.message }, { status: 500 })
   }
 }
