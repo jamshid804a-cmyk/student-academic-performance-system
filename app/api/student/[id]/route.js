@@ -45,6 +45,49 @@ export async function GET(req, { params }) {
 }
 
 // ─────────────────────────────────────────────
+// PATCH — Public route for Mobile App to save Push Token
+// ─────────────────────────────────────────────
+export async function PATCH(req, { params }) {
+  try {
+    const { id } = await params
+    const db = await getDb()
+    const body = await req.json()
+
+    if (!body.fcmToken) {
+      return NextResponse.json({ error: "Missing fcmToken" }, { status: 400 })
+    }
+
+    let _id
+    try {
+      _id = new ObjectId(id)
+    } catch {
+      return NextResponse.json({ error: "Invalid ID format" }, { status: 400 })
+    }
+
+    // ✅ Save the token to the student's document
+    const result = await db.collection("students").updateOne(
+      { _id },
+      { 
+        $set: { 
+          fcmToken: body.fcmToken,
+          deviceToken: body.fcmToken, 
+          updatedAt: new Date()
+        } 
+      }
+    )
+
+    if (result.matchedCount === 0) {
+      return NextResponse.json({ error: "Student not found" }, { status: 404 })
+    }
+
+    return NextResponse.json({ success: true })
+  } catch (err) {
+    console.error("❌ PATCH /api/student/[id]:", err.message)
+    return NextResponse.json({ error: err.message }, { status: 500 })
+  }
+}
+
+// ─────────────────────────────────────────────
 // PUT — update a student (only your school's)
 // ─────────────────────────────────────────────
 export async function PUT(req, { params }) {
