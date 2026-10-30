@@ -35,6 +35,8 @@ export async function GET(req, { params }) {
     }
 
     const schoolId = teacher.schoolId
+    const teacherProgram = teacher.program === "academy" ? "academy" : "school"
+
     const { searchParams } = new URL(req.url)
     const grade = searchParams.get("grade")
     const section = searchParams.get("section")
@@ -48,11 +50,31 @@ export async function GET(req, { params }) {
       return NextResponse.json([])
     }
 
-    const baseFilter = { ...schoolCond }
+    // ✅ SEPARATE SCHOOL vs ACADEMY STUDENTS
+    // Academy teacher → only students with program: "academy"
+    // School teacher  → only students NOT tagged academy, and must have a grade
+    const programCond =
+      teacherProgram === "academy"
+        ? { program: "academy" }
+        : {
+            $and: [
+              { grade: { $exists: true, $nin: [null, ""] } },
+              {
+                $or: [
+                  { program: "school" },
+                  { program: { $exists: false } },
+                  { program: null },
+                ],
+              },
+            ],
+          }
+
+    const baseFilter = { ...schoolCond, ...programCond }
     if (grade) baseFilter.grade = grade
     if (section) baseFilter.section = section
 
     let students = []
+
     if (session) {
       students = await db
         .collection("students")
@@ -70,16 +92,14 @@ export async function GET(req, { params }) {
     }
 
     if (students.length === 0) {
-      const classOnly = {}
+      const classOnly = { ...programCond }
       if (grade) classOnly.grade = grade
       if (section) classOnly.section = section
-      if (Object.keys(classOnly).length > 0) {
-        students = await db
-          .collection("students")
-          .find(classOnly)
-          .sort({ rollNo: 1 })
-          .toArray()
-      }
+      students = await db
+        .collection("students")
+        .find(classOnly)
+        .sort({ rollNo: 1 })
+        .toArray()
     }
 
     if (students.length === 0) {
@@ -94,7 +114,7 @@ export async function GET(req, { params }) {
       if (orClauses.length > 0) {
         students = await db
           .collection("students")
-          .find({ $or: orClauses })
+          .find({ $and: [{ $or: orClauses }, programCond] })
           .sort({ rollNo: 1 })
           .toArray()
       }
