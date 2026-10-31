@@ -1,5 +1,21 @@
 import { NextResponse } from "next/server"
+import { ObjectId } from "mongodb"
 import { getDb } from "@/utils"
+
+// Build a student lookup that works with the long _id or the short numeric id
+function studentIdConds(idStr) {
+  const conds = [{ id: idStr }]
+  if (!isNaN(Number(idStr))) conds.push({ id: Number(idStr) })
+  if (ObjectId.isValid(idStr)) conds.push({ _id: new ObjectId(idStr) })
+  return conds
+}
+
+// Turn school ids into both string and number forms so matching never fails
+function schoolVariants(values) {
+  return [...new Set(values.map((v) => String(v ?? "")).filter(Boolean))].flatMap((x) =>
+    isNaN(Number(x)) ? [x] : [x, Number(x)]
+  )
+}
 
 export async function GET(req, { params }) {
   try {
@@ -9,9 +25,9 @@ export async function GET(req, { params }) {
     const teacher = await db.collection("teachers").findOne({
       $or: [{ publicToken: id }, { token: id }]
     })
-    
+
     if (!teacher) return NextResponse.json({ error: "Invalid link" }, { status: 404 })
-    
+
     const statusStr = String(teacher.status ?? "").toLowerCase()
     if (statusStr && statusStr !== "active") {
       return NextResponse.json({ error: "Teacher is inactive" }, { status: 403 })
@@ -45,12 +61,22 @@ export async function GET(req, { params }) {
     const section = searchParams.get("section")
     const session = searchParams.get("session")
 
+    // Single student history
     if (studentId) {
-      const records = await db
-        .collection("attendance")
-        .find({ ...schoolCond, studentId: String(studentId) })
-        .sort({ day: 1 })
-        .toArray()
+      const idStr = String(studentId)
+      const stu = await db.collection("students").findOne({ $or: studentIdConds(idStr) })
+
+      const ids = [idStr]
+      if (stu) {
+        ids.push(String(stu._id))
+        if (stu.id != null) ids.push(String(stu.id))
+      }
+      const sIds = schoolVariants([stu?.schoolId, stu?.orgCode, orgKey, teacher.schoolId])
+
+      const filter = { studentId: { $in: [...new Set(ids)] } }
+      if (sIds.length) filter.schoolId = { $in: sIds }
+
+      const records = await db.collection("attendance").find(filter).sort({ day: 1 }).toArray()
       return NextResponse.json(
         records.map((r) => ({ ...r, id: r._id.toString(), _id: undefined }))
       )
@@ -62,17 +88,23 @@ export async function GET(req, { params }) {
     if (section) studentFilter.section = section
     if (session) studentFilter.session = session
 
-    // Fetch only the correct students
     const students = await db
       .collection("students")
       .find(studentFilter)
       .sort({ rollNo: 1, _id: 1 })
       .toArray()
-      
+
     if (students.length === 0) return NextResponse.json([])
 
-    const studentIds = students.map((s) => String(s._id))
-    const attFilter = { ...schoolCond, studentId: { $in: studentIds } }
+    // Records may be saved under the short id (new) or the long _id (old)
+    const studentIds = students.flatMap((s) =>
+      [String(s._id), s.id != null ? String(s.id) : null].filter(Boolean)
+    )
+    const schoolIds = schoolVariants([
+      ...students.map((s) => s.schoolId ?? s.orgCode),
+      orgKey,
+    ])
+    const attFilter = { schoolId: { $in: schoolIds }, studentId: { $in: studentIds } }
     if (month) attFilter.date = month
 
     const records = await db.collection("attendance").find(attFilter).toArray()
@@ -88,13 +120,15 @@ export async function GET(req, { params }) {
       students.map((s) => ({
         studentId: s._id.toString(),
         rollNo: s.rollNo,
-        name: `${s.firstName || ''} ${s.lastName || ''}`.trim() || s.name,
+        name: `${s.firstName || ""} ${s.lastName || ""}`.trim() || s.name,
         grade: s.grade,
         section: s.section,
         session: s.session,
-        attendance: byStudent[s._id.toString()] || {},
-        // ✅ CRITICAL FIX: Send the FCM token to the frontend
-        fcmToken: s.fcmToken || s.deviceToken || s.pushToken 
+        attendance:
+          (s.id != null && byStudent[String(s.id)]) ||
+          byStudent[String(s._id)] ||
+          {},
+        fcmToken: s.fcmToken || s.deviceToken || s.pushToken,
       }))
     )
   } catch (err) {
@@ -113,10 +147,12 @@ export async function POST(req, { params }) {
     })
     if (!teacher) return NextResponse.json({ error: "Invalid link" }, { status: 404 })
 
-    const schoolId = teacher.orgCode || teacher.schoolId
-    const data = await req.json()
-    const { studentId, day, date, status, present } = data
+    const statusStr = String(teacher.status ?? "").toLowerCase()
+    if (statusStr && statusStr !== "active") {
+      return NextResponse.json({ error: "Teacher is inactive" }, { status: 403 })
+    }
 
+    const { studentId, day, date, status, present } = await req.json()
     if (!studentId || day === undefined || !date) {
       return NextResponse.json(
         { error: "studentId, day, date are required" },
@@ -124,19 +160,30 @@ export async function POST(req, { params }) {
       )
     }
 
-    const finalStatus = status || (present === true ? "P" : present === false ? "A" : "P")
+    // Find the student so we save the same IDs the website saves
+    const student = await db
+      .collection("students")
+      .findOne({ $or: studentIdConds(String(studentId)) })
+    if (!student) return NextResponse.json({ error: "Student not found" }, { status: 404 })
+
+    const schoolId = student.schoolId ?? teacher.orgCode ?? teacher.schoolId
+    const realStudentId = String(student.id ?? student._id)
+
+    const finalStatus = String(
+      status || (present === true ? "P" : present === false ? "A" : "P")
+    ).toUpperCase()
+
+    const filter = {
+      schoolId,
+      studentId: realStudentId,
+      day: Number(day),
+      date: String(date),
+    }
 
     await db.collection("attendance").updateOne(
-      { schoolId, studentId: String(studentId), day: Number(day), date: String(date) },
+      filter,
       {
-        $set: {
-          schoolId,
-          studentId: String(studentId),
-          day: Number(day),
-          date: String(date),
-          status: String(finalStatus).toUpperCase(),
-          updatedAt: new Date(),
-        },
+        $set: { ...filter, status: finalStatus, updatedAt: new Date() },
         $setOnInsert: { createdAt: new Date() },
       },
       { upsert: true }
