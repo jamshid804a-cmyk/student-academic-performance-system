@@ -15,10 +15,12 @@ function initFirebase() {
         }),
       })
     } catch (error) {
-      console.error("Firebase Admin Initialization Error:", error)
+      console.error("Firebase init error:", error)
     }
   }
 }
+
+const isExpoToken = (t) => /^Expo(nent)?PushToken\[/.test(String(t || ""))
 
 export async function POST(req, { params }) {
   try {
@@ -28,77 +30,107 @@ export async function POST(req, { params }) {
     const teacher = await db.collection("teachers").findOne({
       $or: [{ publicToken: id }, { token: id }],
     })
-    
-    if (!teacher) {
-      console.log("🚨 ERROR: Teacher link is invalid.")
-      return NextResponse.json({ error: "Invalid link" }, { status: 404 })
+    if (!teacher) return NextResponse.json({ error: "Invalid link" }, { status: 404 })
+
+    const statusStr = String(teacher.status ?? "").toLowerCase()
+    if (statusStr && statusStr !== "active") {
+      return NextResponse.json({ error: "Teacher is inactive" }, { status: 403 })
     }
 
     const data = await req.json()
-    const { studentId, message, type } = data
-    
-    console.log(`🚨 STEP 1: Received request from frontend.`)
-    console.log(`🚨 Type: ${type} | Student ID: ${studentId}`)
+    const { fcmToken: clientToken, studentId, message, type } = data
+
+    if (!studentId || !message) {
+      return NextResponse.json({ error: "studentId and message required" }, { status: 400 })
+    }
 
     const schoolId = teacher.orgCode || teacher.schoolId
+    const idStr = String(studentId)
 
-    // 1. Save the notification to the database
+    // 1. Save notification (without the token)
+    const { fcmToken: _omit, ...safeData } = data
     await db.collection("notifications").insertOne({
-      ...data,
+      ...safeData,
+      studentId: idStr,
       schoolId,
       createdAt: new Date(),
       readStatus: false,
     })
-    console.log(`🚨 STEP 2: Notification saved to database.`)
+    console.log("STEP 1: notification saved for", idStr)
 
-    // 2. FORCE DB LOOKUP FOR TOKEN
-    let fcmToken = null
-    if (studentId && ObjectId.isValid(studentId)) {
-      console.log(`🚨 STEP 3: Searching for student in MongoDB...`)
-      const student = await db.collection("students").findOne({ 
-        _id: new ObjectId(studentId) 
-      })
-      
-      if (student) {
-        fcmToken = student.fcmToken || student.deviceToken || student.pushToken
-        console.log(`🚨 STEP 4: Student found. FCM Token exists? ${fcmToken ? "YES" : "NO"}`)
-      } else {
-        console.log(`🚨 STEP 4 ERROR: Student NOT found in MongoDB with ID: ${studentId}`)
+    // 2. Find student (by _id or id/studentId fields)
+    const conds = [{ id: idStr }, { studentId: idStr }]
+    if (!isNaN(Number(idStr))) conds.push({ id: Number(idStr) }, { studentId: Number(idStr) })
+    if (ObjectId.isValid(idStr)) conds.push({ _id: new ObjectId(idStr) })
+
+    const student = await db.collection("students").findOne({ $or: conds })
+    console.log("STEP 2: student found?", !!student)
+
+    // 3. Collect every possible token
+    const tokens = new Set()
+    if (clientToken) tokens.add(String(clientToken))
+    if (student) {
+      ;[student.fcmToken, student.deviceToken, student.pushToken].forEach((t) => t && tokens.add(String(t)))
+
+      // parent token (Expo)
+      const candidates = []
+      if (student.contact) {
+        const raw = String(student.contact)
+        const digits = raw.replace(/\D/g, "")
+        candidates.push({ phone: raw }, { phone: digits }, { phone: "+" + digits })
+        if (digits.length >= 10) candidates.push({ phone: { $regex: digits.slice(-10) + "$" } })
       }
-    } else {
-      console.log(`🚨 STEP 3 ERROR: Invalid or missing studentId.`)
-    }
+      if (student.email) candidates.push({ email: String(student.email).toLowerCase() })
 
-    // 3. Send Push Notification
-    if (fcmToken) {
-      console.log(`🚨 STEP 5: Initializing Firebase...`)
-      initFirebase()
-      
-      try {
-        console.log(`🚨 STEP 6: Sending notification via Firebase...`)
-        const payload = {
-          token: fcmToken,
-          notification: {
-            title: "New Notification from School",
-            body: message || "You have a new update.",
-          },
-          data: {
-            studentId: String(studentId),
-            type: String(type || "general"),
-          },
+      for (const c of candidates) {
+        const parent = await db.collection("parents").findOne(c)
+        if (parent) {
+          ;[parent.pushToken, parent.fcmToken].forEach((t) => t && tokens.add(String(t)))
+          break
         }
-        await getMessaging().send(payload)
-        console.log(`✅ SUCCESS: Push sent to ${studentId}`)
-      } catch (fcmError) {
-        console.error("🚨 FIREBASE ERROR:", fcmError.message)
       }
-    } else {
-      console.log(`⚠️ SKIPPED: No token found to send.`)
     }
+    console.log("STEP 3: tokens found:", tokens.size)
+
+    // 4. Send: Expo tokens via Expo, others via Firebase
+    const title = "Attendance Alert"
+    const dataPayload = { studentId: idStr, type: String(type || "attendance") }
+
+    for (const tok of tokens) {
+      try {
+        if (isExpoToken(tok)) {
+          const r = await fetch("https://exp.host/--/api/v2/push/send", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              to: tok,
+              sound: "default",
+              title,
+              body: message,
+              data: dataPayload,
+              channelId: `channel_${dataPayload.type}`,
+            }),
+          })
+          console.log("EXPO RESPONSE:", JSON.stringify(await r.json().catch(() => ({}))))
+        } else {
+          initFirebase()
+          await getMessaging().send({
+            token: tok,
+            notification: { title, body: message },
+            data: dataPayload,
+          })
+          console.log("FIREBASE SENT OK")
+        }
+      } catch (e) {
+        console.error("PUSH ERROR:", e.message)
+      }
+    }
+
+    if (tokens.size === 0) console.warn("SKIPPED: no token found for student", idStr)
 
     return NextResponse.json({ success: true })
   } catch (err) {
-    console.error("🚨 SERVER CRASH:", err)
+    console.error("SERVER CRASH:", err)
     return NextResponse.json({ error: err.message }, { status: 500 })
   }
 }
