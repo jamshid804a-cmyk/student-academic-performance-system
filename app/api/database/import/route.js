@@ -3,6 +3,7 @@ import { ObjectId } from "mongodb";
 import getClientPromise from "@/utils/mongodb";
 import { getCurrentSchool } from "@/utils/getCurrentSchool";
 
+// Convert JSON _id strings back to ObjectId
 function reviveObjectIds(value) {
   if (Array.isArray(value)) return value.map(reviveObjectIds);
   if (value && typeof value === "object") {
@@ -14,8 +15,10 @@ function reviveObjectIds(value) {
       } else if (
         typeof v === "string" &&
         /^[a-f0-9]{24}$/i.test(v) &&
-        (k.endsWith("Id") || k.endsWith("_id"))
+        (k.endsWith("Id") || k.endsWith("_id")) &&
+        k !== "studentId" && k !== "teacherId" && k !== "schoolId"
       ) {
+        // Only revive actual ObjectId refs — not string IDs like "studentId"
         out[k] = new ObjectId(v);
       } else if (typeof v === "object" && v !== null && v.$oid) {
         out[k] = new ObjectId(v.$oid);
@@ -32,6 +35,7 @@ function reviveObjectIds(value) {
 
 export async function POST(request) {
   try {
+    // 1. Verify logged-in user
     const schoolResult = await getCurrentSchool();
     if (!schoolResult.success) {
       return NextResponse.json(
@@ -41,6 +45,7 @@ export async function POST(request) {
     }
     const { schoolId } = schoolResult.school;
 
+    // 2. Parse request
     const body = await request.json();
     const { data, schoolId: backupSchoolId } = body;
 
@@ -48,11 +53,11 @@ export async function POST(request) {
       return NextResponse.json({ error: "Invalid backup file" }, { status: 400 });
     }
 
-    // Safety: prevent restoring another school's backup
+    // 3. Safety: prevent restoring another school's backup
     if (backupSchoolId && backupSchoolId !== schoolId) {
       return NextResponse.json(
         {
-          error: `This backup is for school "${backupSchoolId}", but you are logged in as "${schoolId}". Restore blocked for safety.`,
+          error: `This backup is for school "${backupSchoolId}" but you're logged in as "${schoolId}". Restore blocked.`,
         },
         { status: 403 }
       );
@@ -66,78 +71,101 @@ export async function POST(request) {
     const client = await getClientPromise();
     const db = client.db("school_db");
 
-    let session;
-    try {
-      session = client.startSession();
-    } catch {
-      session = null;
-    }
-
     const counts = {};
+    const errors = [];
 
-    async function doRestore(useSession) {
-      for (const name of collectionNames) {
-        const docs = data[name];
-        if (!Array.isArray(docs)) continue;
+    // 4. Restore each collection — NO transaction to avoid Atlas replica set issues
+    for (const name of collectionNames) {
+      const docs = data[name];
+      if (!Array.isArray(docs)) {
+        counts[name] = 0;
+        continue;
+      }
 
+      try {
         const coll = db.collection(name);
 
-        // ⚠️ CRITICAL: Only delete THIS school's documents
-        // Special case: "schools" and "school_info" store the school itself
+        // ────── Delete only THIS school's documents ──────
         let deleteFilter;
         if (name === "schools" || name === "school_info") {
-          deleteFilter = { $or: [{ schoolId }, { id: schoolId }] };
+          deleteFilter = { $or: [{ schoolId }, { id: schoolId }, { _id: schoolId }] };
         } else if (name === "counters") {
-          // Global counters — leave them alone
+          // Global counters — skip delete and skip insert (leave existing)
+          counts[name] = 0;
+          continue;
+        } else if (name === "school_settings") {
+          // Don't touch password settings on restore
+          counts[name] = 0;
           continue;
         } else {
           deleteFilter = { schoolId };
         }
 
-        await coll.deleteMany(deleteFilter, useSession ? { session } : {});
+        const deleted = await coll.deleteMany(deleteFilter);
+        console.log(`[import] ${name}: deleted ${deleted.deletedCount} docs for schoolId=${schoolId}`);
 
-        // Re-insert this school's backup docs
+        // ────── Insert backup documents ──────
         if (docs.length > 0) {
           const revived = reviveObjectIds(docs);
-          // Ensure every doc is tagged with this schoolId (defensive)
-          const tagged = revived.map((d) =>
-            name === "schools" || name === "school_info"
-              ? d
-              : { ...d, schoolId }
-          );
-          await coll.insertMany(tagged, useSession ? { session } : {});
+
+          // Ensure every doc carries the correct schoolId (defensive)
+          const tagged = revived.map((d) => {
+            if (name === "schools" || name === "school_info") return d;
+            return { ...d, schoolId };
+          });
+
+          try {
+            const inserted = await coll.insertMany(tagged, { ordered: false });
+            counts[name] = inserted.insertedCount;
+            console.log(`[import] ${name}: inserted ${inserted.insertedCount} docs`);
+          } catch (insertErr) {
+            // Handle duplicate key errors: insert one by one to skip failures
+            if (insertErr.code === 11000 || insertErr.writeErrors) {
+              let successCount = 0;
+              for (const doc of tagged) {
+                try {
+                  await coll.insertOne(doc);
+                  successCount++;
+                } catch (e) {
+                  if (e.code !== 11000) errors.push(`${name}: ${e.message}`);
+                }
+              }
+              counts[name] = successCount;
+              console.log(`[import] ${name}: inserted ${successCount}/${tagged.length} (duplicates skipped)`);
+            } else {
+              throw insertErr;
+            }
+          }
+        } else {
+          counts[name] = 0;
         }
-
-        counts[name] = docs.length;
+      } catch (collErr) {
+        console.error(`[import] ${name} failed:`, collErr.message);
+        errors.push(`${name}: ${collErr.message}`);
+        counts[name] = -1; // -1 = error
       }
     }
 
-    let usedTransaction = false;
+    // 5. Verify student count
+    const finalStudentCount = await db
+      .collection("students")
+      .countDocuments({ schoolId });
 
-    if (session) {
-      try {
-        await session.withTransaction(async () => {
-          await doRestore(true);
-        });
-        usedTransaction = true;
-      } catch (txErr) {
-        console.warn("Transaction failed, fallback:", txErr.message);
-        for (const k of Object.keys(counts)) delete counts[k];
-        await doRestore(false);
-      } finally {
-        await session.endSession();
-      }
-    } else {
-      await doRestore(false);
-    }
+    console.log(`[import] ✓ DONE. Students for ${schoolId}: ${finalStudentCount}`);
+    console.log(`[import] Counts:`, counts);
+
+    const totalRestored = Object.values(counts)
+      .filter((n) => n > 0)
+      .reduce((a, b) => a + b, 0);
 
     return NextResponse.json({
       success: true,
-      message: "Your school's data restored successfully",
+      message: `Restored ${totalRestored} records for school ${schoolId}`,
       schoolId,
-      usedTransaction,
+      finalStudentCount,
       collectionsRestored: collectionNames.length,
       counts,
+      errors: errors.length > 0 ? errors : undefined,
     });
   } catch (error) {
     console.error("Import failed:", error);
