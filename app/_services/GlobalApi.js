@@ -92,8 +92,7 @@ const DeleteTeacher = (id) => axios.delete(`/api/teacher/${id}`);
 const RegenerateTeacherToken = (id) => axios.patch(`/api/teacher/${id}`);
 const GetPublicTeacher = (token) => axios.get(`/api/teacher/${token}/public`);
 
-// ✅ Teacher public link (no login) — students / attendance / tests / exams / subjects / notifications
-// ✅ Accepts grade/section/session so the server can filter to the teacher's own class.
+// Teacher public link (no login)
 const GetTeacherPublicStudents = (token, params = {}) => {
     const qs = new URLSearchParams();
     if (params.grade) qs.append('grade', params.grade);
@@ -124,17 +123,15 @@ const GetTeacherPublicExams = (token, params = {}) => {
 const SaveTeacherPublicExam = (token, data) =>
     axios.post(`/api/teacher/${token}/exams`, data);
 
-// ✅ Subjects (needed by TestingModule in teacher mode)
 const GetTeacherPublicSubjects = (token, studentId) => {
     const qs = studentId ? `?studentId=${studentId}` : "";
     return axios.get(`/api/teacher/${token}/subjects${qs}`);
 };
 
-// ✅ Notifications (needed by TestingModule "Send" in teacher mode)
 const SaveTeacherPublicNotification = (token, data) =>
     axios.post(`/api/teacher/${token}/notifications`, data);
 
-// Teacher Attendance (teacher's own attendance)
+// Teacher Attendance
 const GetTeacherAttendance = (month, teacherId) => {
     const params = new URLSearchParams();
     params.append('month', month);
@@ -225,6 +222,12 @@ const GetAcademyAttendanceFlat = (email, course, monthKey, section, year) => {
     return axios.get('/api/academy/attendance/flat?' + params.toString());
 };
 
+// ─────────────────────────────────────────────
+// DATABASE BACKUP & RESTORE
+// ─────────────────────────────────────────────
+const ExportDatabase = () => axios.get('/api/database/export');
+const ImportDatabase = (data) => axios.post('/api/database/import', data);
+
 export default {
     // School
     GetAllGrades,
@@ -258,7 +261,7 @@ export default {
     RegenerateTeacherToken,
     GetPublicTeacher,
 
-    // ✅ Teacher public link (no login)
+    // Teacher public link
     GetTeacherPublicStudents,
     GetTeacherPublicAttendance,
     SaveTeacherPublicAttendance,
@@ -299,4 +302,8 @@ export default {
     SaveAcademyAttendance,
     DeleteAcademyAttendance,
     GetAcademyAttendanceFlat,
+
+    // Backup & Restore
+    ExportDatabase,
+    ImportDatabase,
 };

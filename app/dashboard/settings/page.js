@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button'
 import {
   Building2, Mail, Phone, MapPin, User as UserIcon, Upload, Loader2, Save, X, ImagePlus,
   Sun, Moon, Lock, Eye, EyeOff, Shield, KeyRound, Download, UploadCloud, Database,
-  AlertTriangle, CheckCircle2, RefreshCw, LogOut, Smartphone, Monitor, Trash2, HardDrive
+  AlertTriangle, CheckCircle2, RefreshCw, HardDrive
 } from 'lucide-react'
 import GlobalApi from '@/app/_services/GlobalApi'
 import { toast } from 'sonner'
@@ -55,12 +55,8 @@ export default function SettingsPage() {
   const fileInputRef = useRef(null)
 
   // Password system
-  const [passwords, setPasswords] = useState({
-    current: '', new: '', confirm: ''
-  })
-  const [showPasswords, setShowPasswords] = useState({
-    current: false, new: false, confirm: false
-  })
+  const [passwords, setPasswords] = useState({ current: '', new: '', confirm: '' })
+  const [showPasswords, setShowPasswords] = useState({ current: false, new: false, confirm: false })
   const [passwordSaving, setPasswordSaving] = useState(false)
 
   // Backup / Restore
@@ -72,9 +68,7 @@ export default function SettingsPage() {
 
   useEffect(() => {
     GlobalApi.GetSchoolInfo()
-      .then(resp => {
-        if (resp.data) setForm(resp.data)
-      })
+      .then(resp => { if (resp.data) setForm(resp.data) })
       .catch(() => toast.error("Failed to load school info"))
       .finally(() => setLoading(false))
 
@@ -152,7 +146,6 @@ export default function SettingsPage() {
           newPassword: passwords.new,
         })
       } else {
-        // Fallback: simulate API call
         await new Promise(r => setTimeout(r, 900))
         console.warn("ChangePassword API not found — using fallback")
       }
@@ -169,14 +162,19 @@ export default function SettingsPage() {
   const handleBackup = async () => {
     setBackingUp(true)
     try {
-      let payload
-      if (GlobalApi.ExportDatabase) {
-        const resp = await GlobalApi.ExportDatabase()
-        payload = resp.data
+      const resp = await GlobalApi.ExportDatabase()
+      const payload = resp.data
+
+      const counts = payload?.counts || {}
+      const totalDocs = Object.values(counts).reduce((a, b) => a + b, 0)
+      const studentCount = counts.students || 0
+
+      if (totalDocs === 0) {
+        toast.warning("Backup is empty — your database has no records")
       } else {
-        // Fallback: fetch school info + simulate
-        const resp = await GlobalApi.GetSchoolInfo().catch(() => ({ data: form }))
-        payload = { schoolInfo: resp.data, exportedAt: new Date().toISOString() }
+        toast.success(
+          `Backed up ${totalDocs} records (${studentCount} students) across ${payload.collections?.length || 0} collections`
+        )
       }
 
       const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })
@@ -193,10 +191,9 @@ export default function SettingsPage() {
       const time = new Date().toLocaleString()
       setLastBackup(time)
       localStorage.setItem('lastBackupTime', time)
-      toast.success("Backup downloaded successfully")
     } catch (err) {
       console.error(err)
-      toast.error("Backup failed")
+      toast.error("Backup failed: " + (err?.response?.data?.error || err.message || "Unknown error"))
     }
     setBackingUp(false)
   }
@@ -217,23 +214,41 @@ export default function SettingsPage() {
       const text = await file.text()
       const data = JSON.parse(text)
 
-      if (!data || (typeof data !== 'object')) {
-        throw new Error("Invalid backup format")
+      const counts = data?.counts || {}
+      const totalDocs = Object.values(counts).reduce((a, b) => a + b, 0)
+      const studentCount = counts.students || 0
+
+      if (totalDocs === 0) {
+        throw new Error("Backup file has no records to restore")
       }
 
-      if (GlobalApi.ImportDatabase) {
-        await GlobalApi.ImportDatabase(data)
-      } else {
-        // Fallback: simulate restore
-        await new Promise(r => setTimeout(r, 1200))
-        if (data.schoolInfo) setForm(data.schoolInfo)
+      const ok = confirm(
+        `⚠️ RESTORE WARNING ⚠️\n\n` +
+        `This will ERASE all current data and replace it with:\n\n` +
+        `• ${studentCount} students\n` +
+        `• ${counts.teachers || 0} teachers\n` +
+        `• ${counts.fees || 0} fee records\n` +
+        `• ${counts.attendance || 0} attendance records\n` +
+        `• Total: ${totalDocs} records across ${Object.keys(counts).length} collections\n\n` +
+        `Continue?`
+      )
+
+      if (!ok) {
+        setRestoring(false)
+        e.target.value = ''
+        setConfirmRestore(false)
+        return
       }
 
-      toast.success("Database restored successfully. Reloading...")
+      const resp = await GlobalApi.ImportDatabase(data)
+      const result = resp?.data
+      const restoredTotal = Object.values(result?.counts || {}).reduce((a, b) => a + b, 0)
+
+      toast.success(`Restored ${restoredTotal} records. Reloading...`)
       setTimeout(() => window.location.reload(), 1200)
     } catch (err) {
       console.error(err)
-      toast.error("Restore failed: invalid or corrupted backup file")
+      toast.error("Restore failed: " + (err?.response?.data?.error || err.message || "Unknown error"))
     }
     setRestoring(false)
     e.target.value = ''
@@ -306,7 +321,6 @@ export default function SettingsPage() {
       {/* ============ GENERAL TAB ============ */}
       {activeTab === 'general' && (
         <div className={cardClass}>
-          {/* Logo upload */}
           <div className="flex flex-col md:flex-row items-center gap-6 mb-8 p-6 rounded-2xl bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-slate-700 dark:to-slate-800 border border-blue-100 dark:border-slate-700">
             <div className="relative group">
               {form.logo ? (
@@ -357,7 +371,6 @@ export default function SettingsPage() {
             </div>
           </div>
 
-          {/* Form fields */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mb-8">
             <div>
               <label className={labelClass}><Building2 size={15} /> School Name</label>
@@ -445,7 +458,6 @@ export default function SettingsPage() {
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {/* Light option */}
             <button
               onClick={() => { if (theme === 'dark') toggleTheme() }}
               className={`relative p-5 rounded-2xl border-2 text-left transition-all ${
@@ -472,7 +484,6 @@ export default function SettingsPage() {
               )}
             </button>
 
-            {/* Dark option */}
             <button
               onClick={() => { if (theme === 'light') toggleTheme() }}
               className={`relative p-5 rounded-2xl border-2 text-left transition-all ${
@@ -523,7 +534,6 @@ export default function SettingsPage() {
           </div>
 
           <div className="space-y-5 max-w-xl">
-            {/* Current Password */}
             <div>
               <label className={labelClass}><Lock size={15} /> Current Password</label>
               <div className="relative">
@@ -544,7 +554,6 @@ export default function SettingsPage() {
               </div>
             </div>
 
-            {/* New Password */}
             <div>
               <label className={labelClass}><KeyRound size={15} /> New Password</label>
               <div className="relative">
@@ -563,7 +572,6 @@ export default function SettingsPage() {
                   {showPasswords.new ? <EyeOff size={18} /> : <Eye size={18} />}
                 </button>
               </div>
-              {/* Strength meter */}
               {passwords.new && (
                 <div className="mt-2">
                   <div className="flex gap-1 h-1.5">
@@ -593,7 +601,6 @@ export default function SettingsPage() {
               )}
             </div>
 
-            {/* Confirm Password */}
             <div>
               <label className={labelClass}><KeyRound size={15} /> Confirm New Password</label>
               <div className="relative">
@@ -639,7 +646,6 @@ export default function SettingsPage() {
             </div>
           </div>
 
-          {/* Security tips */}
           <div className="mt-8 p-4 rounded-xl bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800">
             <div className="flex items-start gap-3">
               <Shield size={18} className="text-blue-600 dark:text-blue-400 mt-0.5 shrink-0" />
@@ -678,7 +684,8 @@ export default function SettingsPage() {
               <div className="text-sm text-emerald-800 dark:text-emerald-200">
                 <p className="font-semibold mb-1">What's included?</p>
                 <p className="text-emerald-700 dark:text-emerald-300">
-                  School info, students, teachers, classes, attendance, fees, exams and all related records.
+                  Every collection in your database: school info, students, teachers, classes, attendance,
+                  fees, exams, tests, subjects, parents, academy data and all related records.
                 </p>
                 {lastBackup && (
                   <p className="mt-2 text-xs text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
