@@ -1,3 +1,7 @@
+// ✅ Force Node.js to use public DNS (fixes SRV lookup on Windows)
+const dns = require('dns');
+dns.setServers(['8.8.8.8', '8.8.4.4']);
+
 import { MongoClient } from 'mongodb';
 
 let client;
