@@ -1,43 +1,26 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 import { ObjectId } from "mongodb";
-import getClientPromise from "@/lib/mongodb";
+import getClientPromise from "@/utils/mongodb";
 
-// Recursively revive ObjectId strings back to ObjectId instances
 function reviveObjectIds(value) {
   if (Array.isArray(value)) return value.map(reviveObjectIds);
 
   if (value && typeof value === "object") {
-    // If it's already an ObjectId-shaped object from JSON, skip
     if (value._bsontype === "ObjectId") return value;
 
     const out = {};
     for (const [k, v] of Object.entries(value)) {
-      if (
-        k === "_id" &&
-        typeof v === "string" &&
-        /^[a-f0-9]{24}$/i.test(v)
-      ) {
+      if (k === "_id" && typeof v === "string" && /^[a-f0-9]{24}$/i.test(v)) {
         out[k] = new ObjectId(v);
       } else if (
         typeof v === "string" &&
         /^[a-f0-9]{24}$/i.test(v) &&
-        (k.endsWith("Id") || k.endsWith("_id") || k.endsWith("IDs"))
+        (k.endsWith("Id") || k.endsWith("_id"))
       ) {
         out[k] = new ObjectId(v);
-      } else if (
-        typeof v === "object" &&
-        v !== null &&
-        v.$oid &&
-        typeof v.$oid === "string"
-      ) {
-        // Extended JSON format: { "$oid": "..." }
+      } else if (typeof v === "object" && v !== null && v.$oid && typeof v.$oid === "string") {
         out[k] = new ObjectId(v.$oid);
-      } else if (
-        typeof v === "object" &&
-        v !== null &&
-        v.$date
-      ) {
-        // Extended JSON date
+      } else if (typeof v === "object" && v !== null && v.$date) {
         out[k] = new Date(v.$date);
       } else {
         out[k] = reviveObjectIds(v);
@@ -55,24 +38,17 @@ export async function POST(request) {
     const { data } = body;
 
     if (!data || typeof data !== "object") {
-      return NextResponse.json(
-        { error: "Invalid backup file — missing data object" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Invalid backup file" }, { status: 400 });
     }
 
     const collectionNames = Object.keys(data);
     if (collectionNames.length === 0) {
-      return NextResponse.json(
-        { error: "Backup file has no collections to restore" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Backup file has no collections" }, { status: 400 });
     }
 
     const client = await getClientPromise();
     const db = client.db("school_db");
 
-    // Try transaction (works on Atlas replica set). If it fails, fall back to non-transactional.
     let session;
     try {
       session = client.startSession();
@@ -88,11 +64,8 @@ export async function POST(request) {
         if (!Array.isArray(docs)) continue;
 
         const coll = db.collection(name);
-
-        // Wipe existing collection
         await coll.deleteMany({}, useSession ? { session } : {});
 
-        // Re-insert from backup with revived ObjectIds
         if (docs.length > 0) {
           const revived = reviveObjectIds(docs);
           await coll.insertMany(revived, useSession ? { session } : {});
@@ -106,16 +79,10 @@ export async function POST(request) {
 
     if (session) {
       try {
-        await session.withTransaction(async () => {
-          await doRestore(true);
-        });
+        await session.withTransaction(async () => { await doRestore(true); });
         usedTransaction = true;
       } catch (txErr) {
-        console.warn(
-          "Transaction failed, falling back to non-transactional restore:",
-          txErr.message
-        );
-        // Reset counts because transaction may have partially run
+        console.warn("Transaction failed, fallback:", txErr.message);
         for (const k of Object.keys(counts)) delete counts[k];
         await doRestore(false);
       } finally {
@@ -134,9 +101,6 @@ export async function POST(request) {
     });
   } catch (error) {
     console.error("Import failed:", error);
-    return NextResponse.json(
-      { error: "Import failed: " + error.message },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Import failed: " + error.message }, { status: 500 });
   }
 }

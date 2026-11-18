@@ -1,12 +1,11 @@
-import { NextResponse } from "next/server";
-import getClientPromise from "@/lib/mongodb";
+﻿import { NextResponse } from "next/server";
+import getClientPromise from "@/utils/mongodb";
 
 export async function GET() {
   try {
     const client = await getClientPromise();
     const db = client.db("school_db");
 
-    // Dynamically discover all collections
     const collections = await db.listCollections().toArray();
     const collectionNames = collections.map((c) => c.name).sort();
 
@@ -30,9 +29,6 @@ export async function GET() {
     });
   } catch (error) {
     console.error("Export failed:", error);
-    return NextResponse.json(
-      { error: "Export failed: " + error.message },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Export failed: " + error.message }, { status: 500 });
   }
 }
