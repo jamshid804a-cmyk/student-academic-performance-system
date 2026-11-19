@@ -200,7 +200,6 @@ function SideNav() {
         </h1>
       </div>
 
-      {/* Section Switcher — only for Both-orgs with both active */}
       {showSwitcher && (
         <div className="mt-2">
           {collapsed ? (
@@ -340,7 +339,12 @@ function SideNav() {
                 Profile Settings
               </Link>
 
-              <LogoutLink className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-600 hover:bg-red-50 hover:text-red-600 transition-all duration-200 mt-1">
+              <LogoutLink
+                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-600 hover:bg-red-50 hover:text-red-600 transition-all duration-200 mt-1"
+                onClick={() => {
+                  sessionStorage.removeItem('school_unlocked')
+                }}
+              >
                 <LogOut size={16} />
                 Logout
               </LogoutLink>
