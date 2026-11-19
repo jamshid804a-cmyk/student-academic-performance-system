@@ -12,9 +12,9 @@ export async function POST(req) {
     const { schoolId } = schoolResult.school;
     const { currentPassword, newPassword } = await req.json();
 
-    if (!currentPassword || !newPassword) {
+    if (!newPassword) {
       return NextResponse.json(
-        { error: "Both current and new password are required" },
+        { error: "New password is required" },
         { status: 400 }
       );
     }
@@ -31,8 +31,14 @@ export async function POST(req) {
       .collection("school_settings")
       .findOne({ schoolId, key: "password" });
 
-    // If password already set, verify current
+    // If a password already exists, verify current
     if (settings?.hash) {
+      if (!currentPassword) {
+        return NextResponse.json(
+          { error: "Current password is required" },
+          { status: 400 }
+        );
+      }
       const ok = await bcrypt.compare(currentPassword, settings.hash);
       if (!ok) {
         return NextResponse.json(
@@ -41,6 +47,7 @@ export async function POST(req) {
         );
       }
     }
+    // If no password exists yet (first-time set) — skip current-password check
 
     const hash = await bcrypt.hash(newPassword, 10);
 

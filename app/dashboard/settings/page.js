@@ -6,7 +6,7 @@ import {
   Building2, Mail, Phone, MapPin, User as UserIcon, Upload, Loader2, Save, X, ImagePlus,
   Sun, Moon, Lock, Eye, EyeOff, Shield, KeyRound, Download, UploadCloud, Database,
   AlertTriangle, CheckCircle2, RefreshCw, HardDrive, ShieldCheck, ShieldOff,
-  ShieldAlert, ToggleLeft, ToggleRight, Fingerprint, Trash2
+  ToggleLeft, ToggleRight, Fingerprint, Trash2
 } from 'lucide-react'
 import GlobalApi from '@/app/_services/GlobalApi'
 import { toast } from 'sonner'
@@ -71,6 +71,7 @@ export default function SettingsPage() {
     current: false, new: false, confirm: false,
   })
   const [passwordSaving, setPasswordSaving] = useState(false)
+  const [passwordToggling, setPasswordToggling] = useState(false)
 
   // ── Backup / restore ──
   const [backingUp, setBackingUp] = useState(false)
@@ -84,18 +85,15 @@ export default function SettingsPage() {
   // Load initial data
   // ─────────────────────────────────────────────
   useEffect(() => {
-    // School info
     GlobalApi.GetSchoolInfo()
       .then((resp) => {
         if (resp.data) setForm(resp.data)
-        // try to pick up schoolId from response
         if (resp.data?.schoolId) setCurrentSchoolId(resp.data.schoolId)
         else if (resp.data?.id) setCurrentSchoolId(resp.data.id)
       })
       .catch(() => toast.error('Failed to load school info'))
       .finally(() => setLoading(false))
 
-    // Password enabled state
     fetch('/api/settings/password')
       .then((r) => r.json())
       .then((d) => {
@@ -156,23 +154,45 @@ export default function SettingsPage() {
   // Handlers — password
   // ─────────────────────────────────────────────
   const togglePasswordFeature = async () => {
+    if (passwordToggling) return
+
     const next = !passwordEnabled
+
+    // Confirm before removing a password
+    if (!next) {
+      const ok = confirm(
+        '⚠️ Remove Password ⚠️\n\n' +
+        'This will DELETE the stored password and disable protection.\n\n' +
+        'Next time you enable it, you can set a NEW password without entering the old one.\n\n' +
+        'Continue?'
+      )
+      if (!ok) return
+    }
+
+    setPasswordToggling(true)
     try {
       const resp = await fetch('/api/settings/password', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ enabled: next }),
       })
-      if (!resp.ok) throw new Error(await resp.text())
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}))
+        throw new Error(err.error || 'Failed to update')
+      }
+      const result = await resp.json()
       setPasswordEnabled(next)
       toast.success(
-        next ? 'Password protection enabled' : 'Password protection disabled'
+        next
+          ? 'Password protection enabled — set your password below'
+          : 'Password protection disabled and password removed'
       )
       setPasswords({ current: '', new: '', confirm: '' })
     } catch (err) {
       console.error(err)
-      toast.error('Failed to update password setting')
+      toast.error(err.message || 'Failed to update password setting')
     }
+    setPasswordToggling(false)
   }
 
   const handlePasswordChange = async () => {
@@ -180,8 +200,8 @@ export default function SettingsPage() {
       toast.error('Enable password protection first')
       return
     }
-    if (!passwords.current || !passwords.new || !passwords.confirm) {
-      toast.error('Please fill all password fields')
+    if (!passwords.new || !passwords.confirm) {
+      toast.error('Please fill new password fields')
       return
     }
     if (passwords.new.length < 8) {
@@ -190,10 +210,6 @@ export default function SettingsPage() {
     }
     if (passwords.new !== passwords.confirm) {
       toast.error('New password and confirm password do not match')
-      return
-    }
-    if (passwords.new === passwords.current) {
-      toast.error('New password must be different from current password')
       return
     }
 
@@ -211,7 +227,7 @@ export default function SettingsPage() {
         const err = await resp.json().catch(() => ({}))
         throw new Error(err.error || 'Failed to update password')
       }
-      toast.success('Password updated successfully')
+      toast.success('Password saved successfully')
       setPasswords({ current: '', new: '', confirm: '' })
     } catch (err) {
       console.error(err)
@@ -244,6 +260,10 @@ export default function SettingsPage() {
         )
       }
 
+      if (payload?.warnings?.length) {
+        console.warn('[backup] Warnings:', payload.warnings)
+      }
+
       const blob = new Blob([JSON.stringify(payload, null, 2)], {
         type: 'application/json',
       })
@@ -271,7 +291,9 @@ export default function SettingsPage() {
     setBackingUp(false)
   }
 
-  // Replace the existing handleRestoreFile in your settings page with this one.
+  // ─────────────────────────────────────────────
+  // Handlers — restore
+  // ─────────────────────────────────────────────
   const handleRestoreFile = async (e) => {
     const file = e.target.files?.[0]
     if (!file) return
@@ -311,6 +333,8 @@ export default function SettingsPage() {
           `• ${counts.teachers || 0} teachers\n` +
           `• ${counts.fees || 0} fee records\n` +
           `• ${counts.attendance || 0} attendance records\n` +
+          `• ${counts.tests || 0} test records\n` +
+          `• ${counts.exams || 0} exam records\n` +
           `• Total: ${totalDocs} records across ${Object.keys(counts).length} collections\n\n` +
           `Other schools' data will NOT be affected.\n\n` +
           `Continue?`
@@ -329,7 +353,6 @@ export default function SettingsPage() {
       })
       const result = resp?.data
 
-      // Count what was REALLY written (ignore the global "counters" collection)
       const restoredTotal = Object.entries(result?.counts || {})
         .filter(([name]) => name !== 'counters')
         .reduce((a, [, n]) => a + (n > 0 ? n : 0), 0)
@@ -451,7 +474,6 @@ export default function SettingsPage() {
       ════════════════════════════════════════ */}
       {activeTab === 'general' && (
         <div className={cardClass}>
-          {/* Logo upload */}
           <div className="flex flex-col md:flex-row items-center gap-6 mb-8 p-6 rounded-2xl bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-slate-700 dark:to-slate-800 border border-blue-100 dark:border-slate-700">
             <div className="relative group">
               {form.logo ? (
@@ -508,7 +530,6 @@ export default function SettingsPage() {
             </div>
           </div>
 
-          {/* Fields */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mb-8">
             <div>
               <label className={labelClass}>
@@ -701,7 +722,7 @@ export default function SettingsPage() {
       ════════════════════════════════════════ */}
       {activeTab === 'security' && (
         <div className="space-y-6">
-          {/* Password Enable/Disable card */}
+          {/* Password Enable/Remove card */}
           <div className={cardClass}>
             <div className="flex items-start justify-between gap-4 flex-wrap">
               <div className="flex items-center gap-3">
@@ -712,7 +733,11 @@ export default function SettingsPage() {
                       : 'bg-gradient-to-br from-slate-400 to-slate-500'
                   }`}
                 >
-                  {passwordEnabled ? <ShieldCheck size={22} /> : <ShieldOff size={22} />}
+                  {passwordEnabled ? (
+                    <ShieldCheck size={22} />
+                  ) : (
+                    <ShieldOff size={22} />
+                  )}
                 </div>
                 <div>
                   <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100">
@@ -720,24 +745,28 @@ export default function SettingsPage() {
                   </h3>
                   <p className="text-sm text-slate-500 dark:text-slate-400">
                     {passwordEnabled
-                      ? 'Password protection is currently enabled for your school.'
-                      : 'Enable password protection to secure your school dashboard.'}
+                      ? 'Password is enabled. You can change or remove it anytime.'
+                      : 'Enable to require a password for your school dashboard.'}
                   </p>
                 </div>
               </div>
 
               <button
                 onClick={togglePasswordFeature}
-                disabled={passwordLoading}
+                disabled={passwordLoading || passwordToggling}
                 className={`inline-flex items-center gap-2 px-5 py-2.5 rounded-xl font-semibold shadow-sm transition-all disabled:opacity-60 ${
                   passwordEnabled
                     ? 'bg-rose-50 dark:bg-rose-900/20 text-rose-600 dark:text-rose-300 border border-rose-200 dark:border-rose-800 hover:bg-rose-100 dark:hover:bg-rose-900/30'
                     : 'bg-emerald-600 hover:bg-emerald-700 text-white hover:scale-105'
                 }`}
               >
-                {passwordEnabled ? (
+                {passwordToggling ? (
                   <>
-                    <ToggleRight size={18} /> Disable
+                    <Loader2 size={16} className="animate-spin" /> Please wait...
+                  </>
+                ) : passwordEnabled ? (
+                  <>
+                    <Trash2 size={16} /> Remove Password
                   </>
                 ) : (
                   <>
@@ -747,8 +776,7 @@ export default function SettingsPage() {
               </button>
             </div>
 
-            {/* Status chip */}
-            <div className="mt-5 flex items-center gap-2">
+            <div className="mt-5 flex items-center gap-2 flex-wrap">
               <span
                 className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold ${
                   passwordEnabled
@@ -769,9 +797,23 @@ export default function SettingsPage() {
                 </span>
               )}
             </div>
+
+            {passwordEnabled && (
+              <div className="mt-4 p-3 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 flex items-start gap-2">
+                <AlertTriangle
+                  size={16}
+                  className="text-amber-600 dark:text-amber-400 mt-0.5 shrink-0"
+                />
+                <p className="text-xs text-amber-800 dark:text-amber-200">
+                  Clicking <strong>Remove Password</strong> will delete the stored
+                  password. You can set a new one afterwards without entering the
+                  old password.
+                </p>
+              </div>
+            )}
           </div>
 
-          {/* Change password card — only when enabled */}
+          {/* Change / Set Password card — only when enabled */}
           {passwordEnabled && (
             <div className={cardClass}>
               <div className="flex items-center gap-3 mb-6">
@@ -780,10 +822,10 @@ export default function SettingsPage() {
                 </div>
                 <div>
                   <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100">
-                    Change Password
+                    Change / Set Password
                   </h3>
                   <p className="text-sm text-slate-500 dark:text-slate-400">
-                    Update the password for your school
+                    Leave current password blank if setting for the first time
                   </p>
                 </div>
               </div>
@@ -793,6 +835,9 @@ export default function SettingsPage() {
                 <div>
                   <label className={labelClass}>
                     <Lock size={15} /> Current Password
+                    <span className="text-xs font-normal text-slate-400">
+                      (blank if first time)
+                    </span>
                   </label>
                   <div className="relative">
                     <input
@@ -801,7 +846,7 @@ export default function SettingsPage() {
                       onChange={(e) =>
                         setPasswords((p) => ({ ...p, current: e.target.value }))
                       }
-                      placeholder="Enter current password"
+                      placeholder="Enter current password or leave blank"
                       className={inputClass + ' pr-12'}
                     />
                     <button
@@ -811,7 +856,11 @@ export default function SettingsPage() {
                       }
                       className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
                     >
-                      {showPasswords.current ? <EyeOff size={18} /> : <Eye size={18} />}
+                      {showPasswords.current ? (
+                        <EyeOff size={18} />
+                      ) : (
+                        <Eye size={18} />
+                      )}
                     </button>
                   </div>
                 </div>
@@ -923,11 +972,11 @@ export default function SettingsPage() {
                   >
                     {passwordSaving ? (
                       <>
-                        <Loader2 className="w-4 h-4 mr-2 animate-spin" /> Updating...
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" /> Saving...
                       </>
                     ) : (
                       <>
-                        <Shield className="w-4 h-4 mr-2" /> Update Password
+                        <Shield className="w-4 h-4 mr-2" /> Save Password
                       </>
                     )}
                   </Button>
@@ -949,7 +998,7 @@ export default function SettingsPage() {
                   <li>Use at least 8 characters, mixing letters, numbers & symbols</li>
                   <li>Avoid using personal info like birthdates or names</li>
                   <li>Never reuse passwords across different services</li>
-                  <li>Disable password protection only if you are sure</li>
+                  <li>You can remove and re-set the password at any time</li>
                 </ul>
               </div>
             </div>
@@ -962,7 +1011,6 @@ export default function SettingsPage() {
       ════════════════════════════════════════ */}
       {activeTab === 'backup' && (
         <div className="space-y-6">
-          {/* Info banner */}
           <div className="p-5 rounded-2xl bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 flex items-start gap-3">
             <Database
               size={20}
@@ -975,7 +1023,8 @@ export default function SettingsPage() {
                 {currentSchoolId && (
                   <>
                     {' '}
-                    (<code className="px-1 py-0.5 rounded bg-indigo-100 dark:bg-indigo-900/40">
+                    (
+                    <code className="px-1 py-0.5 rounded bg-indigo-100 dark:bg-indigo-900/40">
                       {currentSchoolId}
                     </code>
                     )
@@ -987,7 +1036,6 @@ export default function SettingsPage() {
             </div>
           </div>
 
-          {/* Backup */}
           <div className={cardClass}>
             <div className="flex items-center gap-3 mb-6">
               <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 text-white flex items-center justify-center shadow">
@@ -1041,7 +1089,6 @@ export default function SettingsPage() {
             </Button>
           </div>
 
-          {/* Restore */}
           <div className={cardClass}>
             <div className="flex items-center gap-3 mb-6">
               <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-500 to-orange-600 text-white flex items-center justify-center shadow">
@@ -1120,7 +1167,6 @@ export default function SettingsPage() {
             )}
           </div>
 
-          {/* Best practices */}
           <div className="p-5 rounded-2xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
             <div className="flex items-start gap-3">
               <Database
