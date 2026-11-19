@@ -3,7 +3,6 @@ import { ObjectId } from "mongodb";
 import getClientPromise from "@/utils/mongodb";
 import { getCurrentSchool } from "@/utils/getCurrentSchool";
 
-// Convert JSON _id strings back to ObjectId
 function reviveObjectIds(value) {
   if (Array.isArray(value)) return value.map(reviveObjectIds);
   if (value && typeof value === "object") {
@@ -11,14 +10,6 @@ function reviveObjectIds(value) {
     const out = {};
     for (const [k, v] of Object.entries(value)) {
       if (k === "_id" && typeof v === "string" && /^[a-f0-9]{24}$/i.test(v)) {
-        out[k] = new ObjectId(v);
-      } else if (
-        typeof v === "string" &&
-        /^[a-f0-9]{24}$/i.test(v) &&
-        (k.endsWith("Id") || k.endsWith("_id")) &&
-        k !== "studentId" && k !== "teacherId" && k !== "schoolId"
-      ) {
-        // Only revive actual ObjectId refs — not string IDs like "studentId"
         out[k] = new ObjectId(v);
       } else if (typeof v === "object" && v !== null && v.$oid) {
         out[k] = new ObjectId(v.$oid);
@@ -35,7 +26,7 @@ function reviveObjectIds(value) {
 
 export async function POST(request) {
   try {
-    // 1. Verify logged-in user
+    // 1. Verify login
     const schoolResult = await getCurrentSchool();
     if (!schoolResult.success) {
       return NextResponse.json(
@@ -53,14 +44,20 @@ export async function POST(request) {
       return NextResponse.json({ error: "Invalid backup file" }, { status: 400 });
     }
 
-    // 3. Safety: prevent restoring another school's backup
+    // 3. Safety check
     if (backupSchoolId && backupSchoolId !== schoolId) {
       return NextResponse.json(
         {
-          error: `This backup is for school "${backupSchoolId}" but you're logged in as "${schoolId}". Restore blocked.`,
+          error: `Backup is for "${backupSchoolId}", you're logged in as "${schoolId}"`,
         },
         { status: 403 }
       );
+    }
+
+    // 4. Pre-check: does backup actually have data?
+    const backupStudentCount = data?.students?.length || 0;
+    if (backupStudentCount === 0) {
+      console.warn(`[import] WARNING: Backup has 0 students — nothing will be restored to students collection`);
     }
 
     const collectionNames = Object.keys(data);
@@ -68,13 +65,15 @@ export async function POST(request) {
       return NextResponse.json({ error: "Backup file is empty" }, { status: 400 });
     }
 
+    console.log(`[import] Starting restore for schoolId=${schoolId}`);
+    console.log(`[import] Backup has ${collectionNames.length} collections`);
+
     const client = await getClientPromise();
     const db = client.db("school_db");
 
     const counts = {};
     const errors = [];
 
-    // 4. Restore each collection — NO transaction to avoid Atlas replica set issues
     for (const name of collectionNames) {
       const docs = data[name];
       if (!Array.isArray(docs)) {
@@ -85,41 +84,44 @@ export async function POST(request) {
       try {
         const coll = db.collection(name);
 
-        // ────── Delete only THIS school's documents ──────
+        // Decide delete filter
         let deleteFilter;
         if (name === "schools" || name === "school_info") {
           deleteFilter = { $or: [{ schoolId }, { id: schoolId }, { _id: schoolId }] };
-        } else if (name === "counters") {
-          // Global counters — skip delete and skip insert (leave existing)
-          counts[name] = 0;
-          continue;
-        } else if (name === "school_settings") {
-          // Don't touch password settings on restore
+        } else if (name === "counters" || name === "school_settings") {
+          // Skip global/secret collections
           counts[name] = 0;
           continue;
         } else {
           deleteFilter = { schoolId };
         }
 
+        // Delete
         const deleted = await coll.deleteMany(deleteFilter);
-        console.log(`[import] ${name}: deleted ${deleted.deletedCount} docs for schoolId=${schoolId}`);
+        console.log(`[import] ${name}: deleted ${deleted.deletedCount}`);
 
-        // ────── Insert backup documents ──────
+        // Insert
         if (docs.length > 0) {
           const revived = reviveObjectIds(docs);
 
-          // Ensure every doc carries the correct schoolId (defensive)
+          // Tag with schoolId
           const tagged = revived.map((d) => {
             if (name === "schools" || name === "school_info") return d;
-            return { ...d, schoolId };
+            const out = { ...d, schoolId };
+            // Default program for students
+            if (name === "students" && !out.program) {
+              out.program = "school";
+            }
+            return out;
           });
 
+          // Insert with duplicate fallback
           try {
-            const inserted = await coll.insertMany(tagged, { ordered: false });
-            counts[name] = inserted.insertedCount;
-            console.log(`[import] ${name}: inserted ${inserted.insertedCount} docs`);
+            const result = await coll.insertMany(tagged, { ordered: false });
+            counts[name] = result.insertedCount;
+            console.log(`[import] ${name}: inserted ${result.insertedCount}`);
           } catch (insertErr) {
-            // Handle duplicate key errors: insert one by one to skip failures
+            // Handle duplicate key errors
             if (insertErr.code === 11000 || insertErr.writeErrors) {
               let successCount = 0;
               for (const doc of tagged) {
@@ -127,32 +129,35 @@ export async function POST(request) {
                   await coll.insertOne(doc);
                   successCount++;
                 } catch (e) {
-                  if (e.code !== 11000) errors.push(`${name}: ${e.message}`);
+                  if (e.code !== 11000) {
+                    errors.push(`${name}: ${e.message}`);
+                  }
                 }
               }
               counts[name] = successCount;
-              console.log(`[import] ${name}: inserted ${successCount}/${tagged.length} (duplicates skipped)`);
+              console.log(`[import] ${name}: inserted ${successCount}/${tagged.length}`);
             } else {
               throw insertErr;
             }
           }
         } else {
           counts[name] = 0;
+          console.log(`[import] ${name}: backup had 0 docs`);
         }
       } catch (collErr) {
-        console.error(`[import] ${name} failed:`, collErr.message);
+        console.error(`[import] ${name} FAILED:`, collErr.message);
         errors.push(`${name}: ${collErr.message}`);
-        counts[name] = -1; // -1 = error
+        counts[name] = -1;
       }
     }
 
-    // 5. Verify student count
+    // 5. Verify
     const finalStudentCount = await db
       .collection("students")
       .countDocuments({ schoolId });
 
-    console.log(`[import] ✓ DONE. Students for ${schoolId}: ${finalStudentCount}`);
-    console.log(`[import] Counts:`, counts);
+    console.log(`[import] ✓ DONE. finalStudentCount=${finalStudentCount}`);
+    console.log(`[import] counts:`, counts);
 
     const totalRestored = Object.values(counts)
       .filter((n) => n > 0)
@@ -160,15 +165,14 @@ export async function POST(request) {
 
     return NextResponse.json({
       success: true,
-      message: `Restored ${totalRestored} records for school ${schoolId}`,
+      message: `Restored ${totalRestored} records`,
       schoolId,
       finalStudentCount,
-      collectionsRestored: collectionNames.length,
       counts,
       errors: errors.length > 0 ? errors : undefined,
     });
   } catch (error) {
-    console.error("Import failed:", error);
+    console.error("[import] FATAL:", error);
     return NextResponse.json(
       { error: "Import failed: " + error.message },
       { status: 500 }
