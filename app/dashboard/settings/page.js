@@ -271,9 +271,7 @@ export default function SettingsPage() {
     setBackingUp(false)
   }
 
-  // ─────────────────────────────────────────────
-  // Handlers — restore
-  // ─────────────────────────────────────────────
+  // Replace the existing handleRestoreFile in your settings page with this one.
   const handleRestoreFile = async (e) => {
     const file = e.target.files?.[0]
     if (!file) return
@@ -330,13 +328,33 @@ export default function SettingsPage() {
         schoolId: backupSchoolId,
       })
       const result = resp?.data
-      const restoredTotal = Object.values(result?.counts || {}).reduce(
-        (a, b) => a + b,
-        0
-      )
 
-      toast.success(`Restored ${restoredTotal} records. Reloading...`)
-      setTimeout(() => window.location.reload(), 1200)
+      // Count what was REALLY written (ignore the global "counters" collection)
+      const restoredTotal = Object.entries(result?.counts || {})
+        .filter(([name]) => name !== 'counters')
+        .reduce((a, [, n]) => a + (n > 0 ? n : 0), 0)
+
+      if (restoredTotal === 0) {
+        console.error('Restore details:', result)
+        throw new Error(
+          'Nothing was restored. ' + (result?.details?.slice(0, 3).join(' | ') || '')
+        )
+      }
+
+      if (result?.errors?.length) {
+        console.error('Restore errors:', result.errors)
+        toast.warning(
+          `Restored ${restoredTotal} records (${result.finalStudentCount} students) with ` +
+            `${result.errors.length} problem(s). First: ${result.errors[0]}`,
+          { duration: 8000 }
+        )
+        setTimeout(() => window.location.reload(), 4000)
+      } else {
+        toast.success(
+          `Restored ${restoredTotal} records — ${result.finalStudentCount} students in ${result.schoolId}. Reloading...`
+        )
+        setTimeout(() => window.location.reload(), 1200)
+      }
     } catch (err) {
       console.error(err)
       toast.error(
