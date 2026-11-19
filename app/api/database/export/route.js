@@ -3,11 +3,8 @@ import { BSON } from "mongodb";
 import getClientPromise from "@/utils/mongodb";
 import { getCurrentSchool } from "@/utils/getCurrentSchool";
 
-// If `BSON.EJSON` is undefined on your driver version, run `npm i bson`
-// and use: import { EJSON } from "bson";
 const { EJSON } = BSON;
 
-// Collections that are scoped per-school
 const SCHOOL_SCOPED = [
   "students",
   "teachers",
@@ -24,10 +21,10 @@ const SCHOOL_SCOPED = [
   "academy_courses",
 ];
 
-// School's own record
-const SCHOOL_OWN = ["schools", "school_info"];
+// These collections often have legacy docs without schoolId
+const LEGACY_FALLBACK = ["tests", "exams", "subjects"];
 
-// Global helpers (exported for reference only; never restored)
+const SCHOOL_OWN = ["schools", "school_info"];
 const GLOBAL = ["counters"];
 
 export async function GET() {
@@ -50,10 +47,38 @@ export async function GET() {
 
     const data = {};
     const counts = {};
+    const warnings = [];
 
+    // ── School-scoped collections ──
     for (const name of SCHOOL_SCOPED) {
       try {
-        const docs = await db.collection(name).find({ schoolId }).toArray();
+        const coll = db.collection(name);
+
+        // 1) Strict: docs with matching schoolId
+        let docs = await coll.find({ schoolId }).toArray();
+
+        // 2) Fallback for legacy tests/exams/subjects: docs with NO schoolId
+        //    Only used when strict match returned 0, and only for a small
+        //    set of collections where legacy data is common.
+        if (docs.length === 0 && LEGACY_FALLBACK.includes(name)) {
+          const legacyDocs = await coll
+            .find({
+              $or: [
+                { schoolId: { $exists: false } },
+                { schoolId: null },
+                { schoolId: "" },
+              ],
+            })
+            .toArray();
+
+          if (legacyDocs.length > 0) {
+            warnings.push(
+              `${name}: ${legacyDocs.length} legacy docs without schoolId — included`
+            );
+            docs = legacyDocs;
+          }
+        }
+
         data[name] = docs;
         counts[name] = docs.length;
       } catch (e) {
@@ -63,6 +88,7 @@ export async function GET() {
       }
     }
 
+    // ── School's own record ──
     for (const name of SCHOOL_OWN) {
       try {
         const docs = await db
@@ -78,6 +104,7 @@ export async function GET() {
       }
     }
 
+    // ── Global counters ──
     for (const name of GLOBAL) {
       try {
         const docs = await db.collection(name).find({}).toArray();
@@ -92,8 +119,8 @@ export async function GET() {
     const totalRecords = Object.values(counts).reduce((a, b) => a + b, 0);
 
     return NextResponse.json({
-      version: 7,
-      format: "ejson", // tells the import route that ObjectId/Date are encoded
+      version: 8,
+      format: "ejson",
       exportedAt: new Date().toISOString(),
       dbType: "mongodb",
       database: "school_db",
@@ -101,7 +128,7 @@ export async function GET() {
       collections: Object.keys(data),
       counts,
       totalRecords,
-      // ObjectId -> {"$oid": "..."}, Date -> {"$date": "..."}
+      warnings,
       data: EJSON.serialize(data, { relaxed: true }),
     });
   } catch (error) {

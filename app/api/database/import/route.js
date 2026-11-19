@@ -3,11 +3,8 @@ import { ObjectId, BSON } from "mongodb";
 import getClientPromise from "@/utils/mongodb";
 import { getCurrentSchool } from "@/utils/getCurrentSchool";
 
-// If `BSON.EJSON` is undefined on your driver version, run `npm i bson`
-// and use: import { EJSON } from "bson";
 const { EJSON } = BSON;
 
-// Keep these lists identical to the export route.
 const SCHOOL_SCOPED = [
   "students",
   "teachers",
@@ -29,7 +26,6 @@ const HEX24 = /^[a-f0-9]{24}$/i;
 
 export async function POST(request) {
   try {
-    // 1. Auth
     const schoolResult = await getCurrentSchool();
     if (!schoolResult.success) {
       return NextResponse.json(
@@ -39,9 +35,6 @@ export async function POST(request) {
     }
     const { schoolId } = schoolResult.school;
 
-    // 2. Parse body.
-    //    The settings page sends the WHOLE backup file as `body.data`,
-    //    so the collections are at `body.data.data`. Accept both shapes.
     const body = await request.json();
     const backup = body?.data;
 
@@ -70,10 +63,9 @@ export async function POST(request) {
     const errors = [];
     const details = [];
 
-    // 3. Only whitelisted collections are ever touched
     for (const name of [...SCHOOL_SCOPED, ...SCHOOL_OWN]) {
       const raw = collections[name];
-      if (raw === undefined) continue; // not in this backup
+      if (raw === undefined) continue;
       if (!Array.isArray(raw)) {
         details.push(`${name}: skipped (not an array)`);
         counts[name] = 0;
@@ -83,11 +75,8 @@ export async function POST(request) {
       try {
         const isOwn = SCHOOL_OWN.includes(name);
 
-        // Restore real ObjectId / Date types
         let docs = EJSON.deserialize(raw, { relaxed: true });
 
-        // Backups made by the OLD export have no type info:
-        // convert string _id values back to ObjectId.
         if (!isEjson) {
           docs = docs.map((d) =>
             typeof d._id === "string" && HEX24.test(d._id)
@@ -96,13 +85,12 @@ export async function POST(request) {
           );
         }
 
-        // Tag / validate ownership
         const prepared = [];
         for (const d of docs) {
           if (isOwn) {
             const mine =
               d.schoolId === schoolId || d.id === schoolId || String(d._id) === schoolId;
-            if (!mine) continue; // never touch another school's record
+            if (!mine) continue;
             prepared.push(d);
           } else {
             const out = { ...d, schoolId };
@@ -113,8 +101,6 @@ export async function POST(request) {
 
         const coll = db.collection(name);
 
-        // 4. Upsert every backup doc (matched on _id AND schoolId, so another
-        //    school's document with the same _id is never overwritten).
         let written = 0;
         let writeFailed = false;
 
@@ -150,10 +136,8 @@ export async function POST(request) {
         counts[name] = written;
         details.push(`${name}: restored ${written}/${prepared.length}`);
 
-        // 5. Remove this school's docs that were NOT in the backup
-        //    (i.e. students added after the backup). Only when every write
-        //    succeeded and the backup is non-empty, so a partial failure or an
-        //    empty export can never wipe data.
+        // Only remove docs NOT in backup when every write succeeded AND
+        // the backup actually had docs (guards against wiping on empty file)
         if (!isOwn) {
           if (writeFailed) {
             details.push(`${name}: cleanup skipped (some writes failed)`);
@@ -173,8 +157,9 @@ export async function POST(request) {
       }
     }
 
-    // 6. Verify
-    const finalStudentCount = await db.collection("students").countDocuments({ schoolId });
+    const finalStudentCount = await db
+      .collection("students")
+      .countDocuments({ schoolId });
 
     return NextResponse.json({
       success: errors.length === 0,
@@ -187,6 +172,9 @@ export async function POST(request) {
     });
   } catch (error) {
     console.error("[import] FATAL:", error);
-    return NextResponse.json({ error: "Import failed: " + error.message }, { status: 500 });
+    return NextResponse.json(
+      { error: "Import failed: " + error.message },
+      { status: 500 }
+    );
   }
 }
