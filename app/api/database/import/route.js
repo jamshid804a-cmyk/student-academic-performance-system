@@ -3,6 +3,7 @@ import { ObjectId } from "mongodb";
 import getClientPromise from "@/utils/mongodb";
 import { getCurrentSchool } from "@/utils/getCurrentSchool";
 
+// Convert JSON strings back to ObjectId where appropriate
 function reviveObjectIds(value) {
   if (Array.isArray(value)) return value.map(reviveObjectIds);
   if (value && typeof value === "object") {
@@ -26,7 +27,7 @@ function reviveObjectIds(value) {
 
 export async function POST(request) {
   try {
-    // 1. Verify login
+    // 1. Auth check
     const schoolResult = await getCurrentSchool();
     if (!schoolResult.success) {
       return NextResponse.json(
@@ -36,47 +37,37 @@ export async function POST(request) {
     }
     const { schoolId } = schoolResult.school;
 
-    // 2. Parse request
+    // 2. Parse body
     const body = await request.json();
     const { data, schoolId: backupSchoolId } = body;
+
+    console.log(`[import] === START ===`);
+    console.log(`[import] logged in as: ${schoolId}`);
+    console.log(`[import] backup is for: ${backupSchoolId}`);
 
     if (!data || typeof data !== "object") {
       return NextResponse.json({ error: "Invalid backup file" }, { status: 400 });
     }
 
-    // 3. Safety check
     if (backupSchoolId && backupSchoolId !== schoolId) {
       return NextResponse.json(
-        {
-          error: `Backup is for "${backupSchoolId}", you're logged in as "${schoolId}"`,
-        },
+        { error: `Backup is for "${backupSchoolId}", you're logged in as "${schoolId}"` },
         { status: 403 }
       );
     }
-
-    // 4. Pre-check: does backup actually have data?
-    const backupStudentCount = data?.students?.length || 0;
-    if (backupStudentCount === 0) {
-      console.warn(`[import] WARNING: Backup has 0 students — nothing will be restored to students collection`);
-    }
-
-    const collectionNames = Object.keys(data);
-    if (collectionNames.length === 0) {
-      return NextResponse.json({ error: "Backup file is empty" }, { status: 400 });
-    }
-
-    console.log(`[import] Starting restore for schoolId=${schoolId}`);
-    console.log(`[import] Backup has ${collectionNames.length} collections`);
 
     const client = await getClientPromise();
     const db = client.db("school_db");
 
     const counts = {};
     const errors = [];
+    const details = [];
 
-    for (const name of collectionNames) {
+    // 3. Process each collection
+    for (const name of Object.keys(data)) {
       const docs = data[name];
       if (!Array.isArray(docs)) {
+        details.push(`${name}: skipped (not array)`);
         counts[name] = 0;
         continue;
       }
@@ -84,97 +75,101 @@ export async function POST(request) {
       try {
         const coll = db.collection(name);
 
-        // Decide delete filter
+        // Delete only THIS school's docs (except globals)
         let deleteFilter;
         if (name === "schools" || name === "school_info") {
           deleteFilter = { $or: [{ schoolId }, { id: schoolId }, { _id: schoolId }] };
         } else if (name === "counters" || name === "school_settings") {
-          // Skip global/secret collections
+          details.push(`${name}: skipped (global)`);
           counts[name] = 0;
           continue;
         } else {
           deleteFilter = { schoolId };
         }
 
-        // Delete
         const deleted = await coll.deleteMany(deleteFilter);
-        console.log(`[import] ${name}: deleted ${deleted.deletedCount}`);
+        details.push(`${name}: deleted ${deleted.deletedCount}`);
 
         // Insert
         if (docs.length > 0) {
           const revived = reviveObjectIds(docs);
 
-          // Tag with schoolId
+          // Force schoolId on every doc (except schools/school_info)
           const tagged = revived.map((d) => {
             if (name === "schools" || name === "school_info") return d;
             const out = { ...d, schoolId };
-            // Default program for students
-            if (name === "students" && !out.program) {
-              out.program = "school";
-            }
+            if (name === "students" && !out.program) out.program = "school";
             return out;
           });
 
-          // Insert with duplicate fallback
           try {
             const result = await coll.insertMany(tagged, { ordered: false });
             counts[name] = result.insertedCount;
-            console.log(`[import] ${name}: inserted ${result.insertedCount}`);
+            details.push(`${name}: inserted ${result.insertedCount}/${tagged.length}`);
           } catch (insertErr) {
-            // Handle duplicate key errors
+            // Handle duplicates
             if (insertErr.code === 11000 || insertErr.writeErrors) {
-              let successCount = 0;
+              let ok = 0;
               for (const doc of tagged) {
                 try {
                   await coll.insertOne(doc);
-                  successCount++;
+                  ok++;
                 } catch (e) {
                   if (e.code !== 11000) {
                     errors.push(`${name}: ${e.message}`);
                   }
                 }
               }
-              counts[name] = successCount;
-              console.log(`[import] ${name}: inserted ${successCount}/${tagged.length}`);
+              counts[name] = ok;
+              details.push(`${name}: inserted ${ok}/${tagged.length} (dupes skipped)`);
             } else {
               throw insertErr;
             }
           }
         } else {
           counts[name] = 0;
-          console.log(`[import] ${name}: backup had 0 docs`);
+          details.push(`${name}: 0 docs in backup`);
         }
       } catch (collErr) {
         console.error(`[import] ${name} FAILED:`, collErr.message);
         errors.push(`${name}: ${collErr.message}`);
         counts[name] = -1;
+        details.push(`${name}: ERROR - ${collErr.message}`);
       }
     }
 
-    // 5. Verify
+    // 4. Verify
     const finalStudentCount = await db
       .collection("students")
       .countDocuments({ schoolId });
 
-    console.log(`[import] ✓ DONE. finalStudentCount=${finalStudentCount}`);
-    console.log(`[import] counts:`, counts);
+    const verifyStudents = await db
+      .collection("students")
+      .find({ schoolId })
+      .toArray();
 
-    const totalRestored = Object.values(counts)
-      .filter((n) => n > 0)
-      .reduce((a, b) => a + b, 0);
+    console.log(`[import] === DONE ===`);
+    console.log(`[import] students in DB now: ${finalStudentCount}`);
 
     return NextResponse.json({
       success: true,
-      message: `Restored ${totalRestored} records`,
+      message: `Restored ${counts.students || 0} students to ${schoolId}`,
       schoolId,
       finalStudentCount,
       counts,
       errors: errors.length > 0 ? errors : undefined,
+      details,
+      restoredStudents: verifyStudents.map((s) => ({
+        id: s.id,
+        name: s.name,
+        schoolId: s.schoolId,
+        program: s.program,
+      })),
     });
   } catch (error) {
     console.error("[import] FATAL:", error);
     return NextResponse.json(
-      { error: "Import failed: " + error.message },
+      { error: "Import failed: " + error.message, stack: error.stack },
       { status: 500 }
     );
   }
