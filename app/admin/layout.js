@@ -1,6 +1,5 @@
 import { getKindeServerSession } from "@kinde-oss/kinde-auth-nextjs/server"
 import { redirect } from "next/navigation"
-import PasswordGate from "@/app/_components/PasswordGate"
 
 const OWNER_EMAIL = "jamshid804a@gmail.com"
 
@@ -19,12 +18,10 @@ export default async function AdminLayout({ children }) {
     redirect("/no-access")
   }
 
-  // Owner → render (but wrap with password gate)
+  // Owner → render
   return (
-    <PasswordGate>
-      <div className="min-h-screen bg-slate-50">
-        {children}
-      </div>
-    </PasswordGate>
+    <div className="min-h-screen bg-slate-50">
+      {children}
+    </div>
   )
 }

@@ -4,8 +4,8 @@ import React, { useEffect, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import {
   Building2, Mail, Phone, MapPin, User as UserIcon, Upload, Loader2, Save, X, ImagePlus,
-  Sun, Moon, Lock, Eye, EyeOff, Shield, KeyRound, Download, UploadCloud, Database,
-  AlertTriangle, CheckCircle2, RefreshCw, HardDrive, ShieldCheck, ShieldOff, Fingerprint
+  Sun, Moon, Download, UploadCloud, Database,
+  AlertTriangle, CheckCircle2, RefreshCw, HardDrive
 } from 'lucide-react'
 import GlobalApi from '@/app/_services/GlobalApi'
 import { toast } from 'sonner'
@@ -47,87 +47,11 @@ function useTheme() {
 }
 
 // ─────────────────────────────────────────────
-// Small reusable pieces
-// ─────────────────────────────────────────────
-function PasswordField({ label, icon: Icon, value, onChange, placeholder, show, onToggle }) {
-  return (
-    <div>
-      <label className={labelClass}>
-        <Icon size={15} /> {label}
-      </label>
-      <div className="relative">
-        <input
-          type={show ? 'text' : 'password'}
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          placeholder={placeholder}
-          autoComplete="new-password"
-          className={inputClass + ' pr-12'}
-        />
-        <button
-          type="button"
-          onClick={onToggle}
-          className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
-        >
-          {show ? <EyeOff size={18} /> : <Eye size={18} />}
-        </button>
-      </div>
-    </div>
-  )
-}
-
-function StrengthMeter({ value }) {
-  if (!value) return null
-  const len = value.length
-  const color = len >= 12 ? 'bg-emerald-500' : len >= 8 ? 'bg-amber-500' : 'bg-rose-500'
-  return (
-    <div className="mt-2">
-      <div className="flex gap-1 h-1.5">
-        {[1, 2, 3, 4].map((i) => (
-          <div
-            key={i}
-            className={`flex-1 rounded-full transition-colors ${
-              len >= i * 3 ? color : 'bg-slate-200 dark:bg-slate-700'
-            }`}
-          />
-        ))}
-      </div>
-      <p className="text-xs mt-1.5 text-slate-500 dark:text-slate-400">
-        {len < 8
-          ? 'Too short — use at least 8 characters'
-          : len < 12
-          ? 'Good — consider adding symbols or numbers'
-          : 'Strong password ✓'}
-      </p>
-    </div>
-  )
-}
-
-function MatchHint({ a, b }) {
-  if (!a || !b) return null
-  return a !== b ? (
-    <p className="text-xs mt-1.5 text-rose-500 flex items-center gap-1">
-      <AlertTriangle size={12} /> Passwords do not match
-    </p>
-  ) : (
-    <p className="text-xs mt-1.5 text-emerald-500 flex items-center gap-1">
-      <CheckCircle2 size={12} /> Passwords match
-    </p>
-  )
-}
-
-async function readError(resp, fallback) {
-  const j = await resp.json().catch(() => null)
-  return j?.error || fallback
-}
-
-// ─────────────────────────────────────────────
 // Tabs
 // ─────────────────────────────────────────────
 const TABS = [
   { id: 'general', label: 'General', icon: Building2 },
   { id: 'appearance', label: 'Appearance', icon: Sun },
-  { id: 'security', label: 'Security', icon: Shield },
   { id: 'backup', label: 'Backup & Restore', icon: Database },
 ]
 
@@ -146,21 +70,6 @@ export default function SettingsPage() {
   const [saving, setSaving] = useState(false)
   const [uploading, setUploading] = useState(false)
   const fileInputRef = useRef(null)
-
-  // ── Password / security ──
-  const [passwordEnabled, setPasswordEnabled] = useState(false)
-  const [hasPassword, setHasPassword] = useState(false)
-  const [passwordLoading, setPasswordLoading] = useState(true)
-  const [setup, setSetup] = useState({ new: '', confirm: '' })
-  const [passwords, setPasswords] = useState({ current: '', new: '', confirm: '' })
-  const [showSetup, setShowSetup] = useState({ new: false, confirm: false })
-  const [showPasswords, setShowPasswords] = useState({
-    current: false, new: false, confirm: false,
-  })
-  const [passwordSaving, setPasswordSaving] = useState(false)
-
-  // Protection really applies only when it is enabled AND a password exists
-  const protectionActive = passwordEnabled && hasPassword
 
   // ── Backup / restore ──
   const [backingUp, setBackingUp] = useState(false)
@@ -182,16 +91,6 @@ export default function SettingsPage() {
       })
       .catch(() => toast.error('Failed to load school info'))
       .finally(() => setLoading(false))
-
-    fetch('/api/settings/password', { cache: 'no-store' })
-      .then((r) => r.json())
-      .then((d) => {
-        setPasswordEnabled(!!d.passwordEnabled)
-        setHasPassword(!!d.hasPassword)
-        if (d.schoolId) setCurrentSchoolId((prev) => prev || d.schoolId)
-      })
-      .catch(() => {})
-      .finally(() => setPasswordLoading(false))
 
     const saved = localStorage.getItem('lastBackupTime')
     if (saved) setLastBackup(saved)
@@ -238,111 +137,6 @@ export default function SettingsPage() {
       toast.error('Failed to save')
     }
     setSaving(false)
-  }
-
-  // ─────────────────────────────────────────────
-  // Handlers — password
-  // ─────────────────────────────────────────────
-
-  // First-time setup (or re-setup): sets the password AND turns protection on
-  const handleEnableProtection = async () => {
-    if (!setup.new || !setup.confirm) {
-      toast.error('Please enter and confirm the password')
-      return
-    }
-    if (setup.new.length < 8) {
-      toast.error('Password must be at least 8 characters')
-      return
-    }
-    if (setup.new !== setup.confirm) {
-      toast.error('Passwords do not match')
-      return
-    }
-
-    setPasswordSaving(true)
-    try {
-      const resp = await fetch('/api/settings/password', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ enabled: true, password: setup.new }),
-      })
-      if (!resp.ok) throw new Error(await readError(resp, 'Failed to enable protection'))
-
-      setPasswordEnabled(true)
-      setHasPassword(true)
-      setSetup({ new: '', confirm: '' })
-      toast.success('Password protection enabled')
-    } catch (err) {
-      console.error(err)
-      toast.error(err.message || 'Failed to enable protection')
-    }
-    setPasswordSaving(false)
-  }
-
-  const handleDisableProtection = async () => {
-    if (!confirm('Disable password protection? The saved password will be removed.')) return
-
-    setPasswordSaving(true)
-    try {
-      const resp = await fetch('/api/settings/password', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ enabled: false }),
-      })
-      if (!resp.ok) throw new Error(await readError(resp, 'Failed to disable protection'))
-
-      setPasswordEnabled(false)
-      setHasPassword(false)
-      setPasswords({ current: '', new: '', confirm: '' })
-      toast.success('Password protection disabled')
-    } catch (err) {
-      console.error(err)
-      toast.error(err.message || 'Failed to disable protection')
-    }
-    setPasswordSaving(false)
-  }
-
-  const handlePasswordChange = async () => {
-    if (!protectionActive) {
-      toast.error('Enable password protection first')
-      return
-    }
-    if (!passwords.current || !passwords.new || !passwords.confirm) {
-      toast.error('Please fill all password fields')
-      return
-    }
-    if (passwords.new.length < 8) {
-      toast.error('New password must be at least 8 characters')
-      return
-    }
-    if (passwords.new !== passwords.confirm) {
-      toast.error('New password and confirm password do not match')
-      return
-    }
-    if (passwords.new === passwords.current) {
-      toast.error('New password must be different from current password')
-      return
-    }
-
-    setPasswordSaving(true)
-    try {
-      const resp = await fetch('/api/settings/password/change', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          currentPassword: passwords.current,
-          newPassword: passwords.new,
-        }),
-      })
-      if (!resp.ok) throw new Error(await readError(resp, 'Failed to update password'))
-
-      toast.success('Password updated successfully')
-      setPasswords({ current: '', new: '', confirm: '' })
-    } catch (err) {
-      console.error(err)
-      toast.error(err.message || 'Failed to update password')
-    }
-    setPasswordSaving(false)
   }
 
   // ─────────────────────────────────────────────
@@ -785,226 +579,6 @@ export default function SettingsPage() {
         </div>
       )}
 
-      {/* ════════════ SECURITY TAB ════════════ */}
-      {activeTab === 'security' && (
-        <div className="space-y-6">
-          {/* Status card */}
-          <div className={cardClass}>
-            <div className="flex items-start justify-between gap-4 flex-wrap">
-              <div className="flex items-center gap-3">
-                <div
-                  className={`w-12 h-12 rounded-2xl text-white flex items-center justify-center shadow-md ${
-                    protectionActive
-                      ? 'bg-gradient-to-br from-emerald-500 to-teal-600'
-                      : 'bg-gradient-to-br from-slate-400 to-slate-500'
-                  }`}
-                >
-                  {protectionActive ? <ShieldCheck size={22} /> : <ShieldOff size={22} />}
-                </div>
-                <div>
-                  <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100">
-                    Password Protection
-                  </h3>
-                  <p className="text-sm text-slate-500 dark:text-slate-400">
-                    {protectionActive
-                      ? 'Your school is locked with a password.'
-                      : passwordEnabled
-                      ? 'Protection was on, but no valid password is saved. Set a password below.'
-                      : 'Set a password below to secure your school dashboard.'}
-                  </p>
-                </div>
-              </div>
-
-              {protectionActive && (
-                <button
-                  onClick={handleDisableProtection}
-                  disabled={passwordLoading || passwordSaving}
-                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl font-semibold shadow-sm transition-all disabled:opacity-60 bg-rose-50 dark:bg-rose-900/20 text-rose-600 dark:text-rose-300 border border-rose-200 dark:border-rose-800 hover:bg-rose-100 dark:hover:bg-rose-900/30"
-                >
-                  <ShieldOff size={18} /> Disable
-                </button>
-              )}
-            </div>
-
-            <div className="mt-5 flex items-center gap-2">
-              <span
-                className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold ${
-                  protectionActive
-                    ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300'
-                    : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
-                }`}
-              >
-                <span
-                  className={`w-2 h-2 rounded-full ${
-                    protectionActive ? 'bg-emerald-500' : 'bg-slate-400'
-                  }`}
-                />
-                {protectionActive ? 'Enabled' : 'Disabled'}
-              </span>
-              {currentSchoolId && (
-                <span className="text-xs text-slate-400 dark:text-slate-500">
-                  Scope: {currentSchoolId}
-                </span>
-              )}
-            </div>
-          </div>
-
-          {/* Set password (first time) — shown when protection is not active */}
-          {!protectionActive && (
-            <div className={cardClass}>
-              <div className="flex items-center gap-3 mb-6">
-                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 text-white flex items-center justify-center shadow">
-                  <KeyRound size={20} />
-                </div>
-                <div>
-                  <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100">
-                    Set Password & Enable
-                  </h3>
-                  <p className="text-sm text-slate-500 dark:text-slate-400">
-                    Choose a password. Protection turns on as soon as you save.
-                  </p>
-                </div>
-              </div>
-
-              <div className="space-y-5 max-w-xl">
-                <div>
-                  <PasswordField
-                    label="New Password"
-                    icon={KeyRound}
-                    value={setup.new}
-                    onChange={(v) => setSetup((p) => ({ ...p, new: v }))}
-                    placeholder="At least 8 characters"
-                    show={showSetup.new}
-                    onToggle={() => setShowSetup((p) => ({ ...p, new: !p.new }))}
-                  />
-                  <StrengthMeter value={setup.new} />
-                </div>
-
-                <div>
-                  <PasswordField
-                    label="Confirm Password"
-                    icon={KeyRound}
-                    value={setup.confirm}
-                    onChange={(v) => setSetup((p) => ({ ...p, confirm: v }))}
-                    placeholder="Re-enter password"
-                    show={showSetup.confirm}
-                    onToggle={() => setShowSetup((p) => ({ ...p, confirm: !p.confirm }))}
-                  />
-                  <MatchHint a={setup.new} b={setup.confirm} />
-                </div>
-
-                <Button
-                  onClick={handleEnableProtection}
-                  disabled={passwordSaving || passwordLoading}
-                  className="bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white px-6 py-2.5 rounded-xl shadow-md hover:scale-105 transition-transform disabled:opacity-60"
-                >
-                  {passwordSaving ? (
-                    <>
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" /> Saving...
-                    </>
-                  ) : (
-                    <>
-                      <ShieldCheck className="w-4 h-4 mr-2" /> Enable Protection
-                    </>
-                  )}
-                </Button>
-              </div>
-            </div>
-          )}
-
-          {/* Change password — only when protection is active */}
-          {protectionActive && (
-            <div className={cardClass}>
-              <div className="flex items-center gap-3 mb-6">
-                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-rose-500 to-red-600 text-white flex items-center justify-center shadow">
-                  <Shield size={20} />
-                </div>
-                <div>
-                  <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100">
-                    Change Password
-                  </h3>
-                  <p className="text-sm text-slate-500 dark:text-slate-400">
-                    Update the password for your school
-                  </p>
-                </div>
-              </div>
-
-              <div className="space-y-5 max-w-xl">
-                <PasswordField
-                  label="Current Password"
-                  icon={Lock}
-                  value={passwords.current}
-                  onChange={(v) => setPasswords((p) => ({ ...p, current: v }))}
-                  placeholder="Enter current password"
-                  show={showPasswords.current}
-                  onToggle={() => setShowPasswords((p) => ({ ...p, current: !p.current }))}
-                />
-
-                <div>
-                  <PasswordField
-                    label="New Password"
-                    icon={KeyRound}
-                    value={passwords.new}
-                    onChange={(v) => setPasswords((p) => ({ ...p, new: v }))}
-                    placeholder="At least 8 characters"
-                    show={showPasswords.new}
-                    onToggle={() => setShowPasswords((p) => ({ ...p, new: !p.new }))}
-                  />
-                  <StrengthMeter value={passwords.new} />
-                </div>
-
-                <div>
-                  <PasswordField
-                    label="Confirm New Password"
-                    icon={KeyRound}
-                    value={passwords.confirm}
-                    onChange={(v) => setPasswords((p) => ({ ...p, confirm: v }))}
-                    placeholder="Re-enter new password"
-                    show={showPasswords.confirm}
-                    onToggle={() => setShowPasswords((p) => ({ ...p, confirm: !p.confirm }))}
-                  />
-                  <MatchHint a={passwords.new} b={passwords.confirm} />
-                </div>
-
-                <div className="pt-2">
-                  <Button
-                    onClick={handlePasswordChange}
-                    disabled={passwordSaving}
-                    className="bg-gradient-to-r from-rose-500 to-red-600 hover:from-rose-600 hover:to-red-700 text-white px-6 py-2.5 rounded-xl shadow-md hover:scale-105 transition-transform disabled:opacity-60"
-                  >
-                    {passwordSaving ? (
-                      <>
-                        <Loader2 className="w-4 h-4 mr-2 animate-spin" /> Updating...
-                      </>
-                    ) : (
-                      <>
-                        <Shield className="w-4 h-4 mr-2" /> Update Password
-                      </>
-                    )}
-                  </Button>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Tips */}
-          <div className="p-5 rounded-2xl bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800">
-            <div className="flex items-start gap-3">
-              <Fingerprint size={18} className="text-blue-600 dark:text-blue-400 mt-0.5 shrink-0" />
-              <div className="text-sm text-blue-800 dark:text-blue-200">
-                <p className="font-semibold mb-1">Password Security Tips</p>
-                <ul className="list-disc list-inside space-y-0.5 text-blue-700 dark:text-blue-300">
-                  <li>Use at least 8 characters, mixing letters, numbers & symbols</li>
-                  <li>Avoid using personal info like birthdates or names</li>
-                  <li>Never reuse passwords across different services</li>
-                  <li>Disabling protection removes the saved password completely</li>
-                </ul>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* ════════════ BACKUP & RESTORE TAB ════════════ */}
       {activeTab === 'backup' && (
         <div className="space-y-6">
@@ -1173,6 +747,6 @@ export default function SettingsPage() {
           </div>
         </div>
       )}
-    </div>
+    </div>s
   )
 }
