@@ -19,17 +19,25 @@ const GRADES = [
     "1st", "2nd", "3rd", "4th", "5th", "6th", "7th", "8th", "9th", "10th", "11th", "12th",
 ]
 
+const WORD_NUMBERS = {
+    one: 1, two: 2, three: 3, four: 4, five: 5, six: 6,
+    seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12,
+}
+
 // Accepted Excel header names (spaces, dots and case are ignored)
 const ALIASES = {
     name: ['studentname', 'name', 'sname', 'nameofstudent'],
     fatherName: ['fathername', 'father', 'fname'],
     fatherOccupation: ['fatheroccupation', 'occupation'],
-    admissionNo: ['admissionno', 'admno', 'admissionnumber', 'admission'],
+    admissionNo: ['admissionno', 'admno', 'admissionnumber', 'admission', 'adno'],
     contact: ['contactno', 'contact', 'phone', 'mobile', 'phoneno', 'mobileno'],
-    grade: ['grade', 'class'],
-    section: ['section'],
+    grade: [
+        'grade', 'class', 'classname', 'gradeclass', 'classgrade',
+        'standard', 'std', 'currentclass', 'admittedclass', 'cls',
+    ],
+    section: ['section', 'sec'],
     rollNo: ['rollno', 'roll', 'rollnumber'],
-    session: ['session'],
+    session: ['session', 'year', 'academicyear'],
     admissionDate: ['admissiondate', 'dateofadmission'],
     fee: ['fee', 'fees'],
     address: ['address'],
@@ -51,15 +59,26 @@ const isNameHeader = (c) => {
 function normalizeGrade(v) {
     const raw = clean(v).toLowerCase()
     if (!raw) return ''
+
     const direct = GRADES.find((g) => g.toLowerCase() === raw)
     if (direct) return direct
-    const m = raw.match(/^(\d+)/)
+
+    if (raw.includes('nursery')) return 'Nursery'
+    if (raw.includes('prep')) return 'Prep'
+
+    // "Class 5", "Grade 5", "5th", "5"
+    let n = null
+    const m = raw.match(/(\d+)/)
     if (m) {
-        const n = Number(m[1])
-        if (n >= 1 && n <= 12) {
-            const suffix = n === 1 ? 'st' : n === 2 ? 'nd' : n === 3 ? 'rd' : 'th'
-            return `${n}${suffix}`
-        }
+        n = Number(m[1])
+    } else {
+        const word = Object.keys(WORD_NUMBERS).find((w) => raw.includes(w))
+        if (word) n = WORD_NUMBERS[word]
+    }
+
+    if (n && n >= 1 && n <= 12) {
+        const suffix = n === 1 ? 'st' : n === 2 ? 'nd' : n === 3 ? 'rd' : 'th'
+        return `${n}${suffix}`
     }
     return ''
 }
@@ -119,20 +138,35 @@ function ImportStudents({ refreshData, students = [] }) {
 
             if (headerIdx === -1) {
                 const firstRow = grid.find((r) => r.some((c) => clean(c) !== '')) || []
-                const found = firstRow.map(clean).filter(Boolean).join(', ')
+                const found = firstRow.map(clean).filter(Boolean)
                 setReport({
                     saved: 0,
                     total: Math.max(grid.length - 1, 0),
-                    errors: [
-                        `Could not find a Student Name column. Columns found in your file: ${found || '(none)'}`,
-                    ],
+                    columns: found,
+                    errors: ['Could not find a Student Name column.'],
                 })
                 setLoading(false)
                 return
             }
 
+            const originalHeaders = grid[headerIdx].map(clean).filter(Boolean)
             const headerRow = grid[headerIdx].map((h) => norm(h))
             const nameKey = headerRow.find(isNameHeader)
+
+            // Stop early if the Grade/Class column is missing
+            const hasGradeColumn = ALIASES.grade.some((a) => headerRow.includes(a))
+            if (!hasGradeColumn) {
+                setReport({
+                    saved: 0,
+                    total: 0,
+                    columns: originalHeaders,
+                    errors: [
+                        'Could not find a Grade / Class column. Rename your class column to "Grade" and try again.',
+                    ],
+                })
+                setLoading(false)
+                return
+            }
 
             const rawRows = grid
                 .slice(headerIdx + 1)
@@ -175,14 +209,19 @@ function ImportStudents({ refreshData, students = [] }) {
                 }
 
                 const name = clean(map[nameKey])
-                const grade = normalizeGrade(get('grade'))
+                const gradeRaw = clean(get('grade'))
+                const grade = normalizeGrade(gradeRaw)
 
                 if (!name) return errors.push(`Row ${rowNo}: Student Name is missing`)
                 if (!/^[A-Za-z\s]+$/.test(name)) {
                     return errors.push(`Row ${rowNo}: Name "${name}" must be letters only`)
                 }
                 if (!grade) {
-                    return errors.push(`Row ${rowNo}: Grade "${clean(get('grade'))}" is not valid`)
+                    return errors.push(
+                        gradeRaw
+                            ? `Row ${rowNo}: Grade "${gradeRaw}" is not valid`
+                            : `Row ${rowNo}: Grade is empty`
+                    )
                 }
 
                 let contact = clean(get('contact')).replace(/[^0-9]/g, '')
@@ -249,7 +288,12 @@ function ImportStudents({ refreshData, students = [] }) {
                 setProgress({ done: Math.min(i + BATCH, valid.length), total: valid.length })
             }
 
-            setReport({ saved, errors, total: rawRows.length })
+            setReport({
+                saved,
+                errors,
+                total: rawRows.length,
+                columns: originalHeaders,
+            })
             if (saved > 0) toast.success(`${saved} student(s) imported`)
             else toast.error('No students were imported')
 
@@ -312,6 +356,13 @@ function ImportStudents({ refreshData, students = [] }) {
                             {report?.errors.length ? `, ${report.errors.length} skipped` : ''}.
                         </DialogDescription>
                     </DialogHeader>
+
+                    {report?.columns?.length > 0 && (
+                        <div className="rounded-lg border border-blue-100 bg-blue-50 p-3 text-xs text-blue-800">
+                            <p className="font-semibold mb-1">Columns found in your file:</p>
+                            <p>{report.columns.join(' | ')}</p>
+                        </div>
+                    )}
 
                     {report?.errors.length > 0 && (
                         <div className="max-h-64 overflow-y-auto rounded-lg border border-red-100 bg-red-50 p-3 text-xs text-red-700 space-y-1">
