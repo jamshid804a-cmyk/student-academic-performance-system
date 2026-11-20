@@ -19,24 +19,34 @@ const GRADES = [
     "1st", "2nd", "3rd", "4th", "5th", "6th", "7th", "8th", "9th", "10th", "11th", "12th",
 ]
 
-// Accepted Excel header names (spaces/case ignored)
+// Accepted Excel header names (spaces, dots and case are ignored)
 const ALIASES = {
-    name: ['studentname', 'name'],
-    fatherName: ['fathername'],
-    fatherOccupation: ['fatheroccupation'],
-    admissionNo: ['admissionno', 'admno', 'admissionnumber'],
-    contact: ['contactno', 'contact', 'phone', 'mobile'],
+    name: ['studentname', 'name', 'sname', 'nameofstudent'],
+    fatherName: ['fathername', 'father', 'fname'],
+    fatherOccupation: ['fatheroccupation', 'occupation'],
+    admissionNo: ['admissionno', 'admno', 'admissionnumber', 'admission'],
+    contact: ['contactno', 'contact', 'phone', 'mobile', 'phoneno', 'mobileno'],
     grade: ['grade', 'class'],
     section: ['section'],
-    rollNo: ['rollno', 'roll'],
+    rollNo: ['rollno', 'roll', 'rollnumber'],
     session: ['session'],
-    admissionDate: ['admissiondate'],
+    admissionDate: ['admissiondate', 'dateofadmission'],
     fee: ['fee', 'fees'],
     address: ['address'],
 }
 
-const norm = (k) => String(k).toLowerCase().replace(/[^a-z0-9]/g, '')
+const norm = (k) => String(k ?? '').toLowerCase().replace(/[^a-z0-9]/g, '')
 const clean = (v) => String(v ?? '').trim()
+
+const isNameHeader = (c) => {
+    const n = norm(c)
+    return (
+        n === 'name' ||
+        n === 'sname' ||
+        n === 'nameofstudent' ||
+        (n.includes('student') && n.includes('name'))
+    )
+}
 
 function normalizeGrade(v) {
     const raw = clean(v).toLowerCase()
@@ -100,10 +110,41 @@ function ImportStudents({ refreshData, students = [] }) {
             const buffer = await file.arrayBuffer()
             const wb = XLSX.read(buffer, { cellDates: true })
             const sheet = wb.Sheets[wb.SheetNames[0]]
-            const rawRows = XLSX.utils.sheet_to_json(sheet, { defval: '' })
+            const grid = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' })
+
+            // Find the heading row (searches the first 15 rows)
+            const headerIdx = grid.findIndex(
+                (r, i) => i < 15 && r.some(isNameHeader)
+            )
+
+            if (headerIdx === -1) {
+                const firstRow = grid.find((r) => r.some((c) => clean(c) !== '')) || []
+                const found = firstRow.map(clean).filter(Boolean).join(', ')
+                setReport({
+                    saved: 0,
+                    total: Math.max(grid.length - 1, 0),
+                    errors: [
+                        `Could not find a Student Name column. Columns found in your file: ${found || '(none)'}`,
+                    ],
+                })
+                setLoading(false)
+                return
+            }
+
+            const headerRow = grid[headerIdx].map((h) => norm(h))
+            const nameKey = headerRow.find(isNameHeader)
+
+            const rawRows = grid
+                .slice(headerIdx + 1)
+                .filter((r) => r.some((c) => clean(c) !== ''))
+                .map((r) => {
+                    const o = {}
+                    headerRow.forEach((h, i) => { if (h) o[h] = r[i] })
+                    return o
+                })
 
             if (rawRows.length === 0) {
-                toast.error('The Excel file is empty')
+                toast.error('No student rows found in the file')
                 setLoading(false)
                 return
             }
@@ -123,10 +164,9 @@ function ImportStudents({ refreshData, students = [] }) {
             const valid = []
             const errors = []
 
-            rawRows.forEach((raw, idx) => {
-                const rowNo = idx + 2 // +2 = header row + 1-based
-                const map = {}
-                Object.keys(raw).forEach((k) => { map[norm(k)] = raw[k] })
+            rawRows.forEach((map, idx) => {
+                const rowNo = idx + headerIdx + 2 // real Excel row number
+
                 const get = (field) => {
                     for (const a of ALIASES[field]) {
                         if (map[a] !== undefined && map[a] !== '') return map[a]
@@ -134,11 +174,16 @@ function ImportStudents({ refreshData, students = [] }) {
                     return ''
                 }
 
-                const name = clean(get('name'))
+                const name = clean(map[nameKey])
                 const grade = normalizeGrade(get('grade'))
+
                 if (!name) return errors.push(`Row ${rowNo}: Student Name is missing`)
-                if (!/^[A-Za-z\s]+$/.test(name)) return errors.push(`Row ${rowNo}: Name "${name}" must be letters only`)
-                if (!grade) return errors.push(`Row ${rowNo}: Grade "${clean(get('grade'))}" is not valid`)
+                if (!/^[A-Za-z\s]+$/.test(name)) {
+                    return errors.push(`Row ${rowNo}: Name "${name}" must be letters only`)
+                }
+                if (!grade) {
+                    return errors.push(`Row ${rowNo}: Grade "${clean(get('grade'))}" is not valid`)
+                }
 
                 let contact = clean(get('contact')).replace(/[^0-9]/g, '')
                 if (contact.length === 10) contact = '0' + contact // Excel removes leading 0
@@ -156,7 +201,9 @@ function ImportStudents({ refreshData, students = [] }) {
                 }
                 const rk = rollKey(rollNo, grade, section, session)
                 if (rollNo && usedRoll.has(rk)) {
-                    return errors.push(`Row ${rowNo}: Roll No ${rollNo} already exists in ${grade} ${section} ${session}`)
+                    return errors.push(
+                        `Row ${rowNo}: Roll No ${rollNo} already exists in ${grade} ${section} ${session}`
+                    )
                 }
                 if (admissionNo) usedAdmission.add(admissionNo)
                 if (rollNo) usedRoll.add(rk)
@@ -244,7 +291,9 @@ function ImportStudents({ refreshData, students = [] }) {
                 {loading ? (
                     <>
                         <Loader2 className="w-4 h-4 animate-spin" />
-                        {progress.total ? `Importing ${progress.done}/${progress.total}...` : 'Reading file...'}
+                        {progress.total
+                            ? `Importing ${progress.done}/${progress.total}...`
+                            : 'Reading file...'}
                     </>
                 ) : (
                     <>
@@ -266,7 +315,12 @@ function ImportStudents({ refreshData, students = [] }) {
 
                     {report?.errors.length > 0 && (
                         <div className="max-h-64 overflow-y-auto rounded-lg border border-red-100 bg-red-50 p-3 text-xs text-red-700 space-y-1">
-                            {report.errors.map((m, i) => <p key={i}>{m}</p>)}
+                            {report.errors.slice(0, 100).map((m, i) => <p key={i}>{m}</p>)}
+                            {report.errors.length > 100 && (
+                                <p className="font-semibold">
+                                    ...and {report.errors.length - 100} more
+                                </p>
+                            )}
                         </div>
                     )}
 
