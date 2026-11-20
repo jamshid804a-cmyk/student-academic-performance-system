@@ -19,32 +19,37 @@ const GRADES = [
     "1st", "2nd", "3rd", "4th", "5th", "6th", "7th", "8th", "9th", "10th", "11th", "12th",
 ]
 
+const SESSIONS = Array.from({ length: 30 }, (_, i) => `${2025 + i}-${2026 + i}`)
+
 const WORD_NUMBERS = {
     one: 1, two: 2, three: 3, four: 4, five: 5, six: 6,
     seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12,
 }
 
-// Accepted Excel header names (spaces, dots and case are ignored)
+// Accepted Excel header names (spaces, dots, # and ' are ignored, case ignored)
 const ALIASES = {
-    name: ['studentname', 'name', 'sname', 'nameofstudent'],
-    fatherName: ['fathername', 'father', 'fname'],
+    name: ['studentname', 'studentsname', 'name', 'sname', 'nameofstudent'],
+    fatherName: ['fathername', 'fathersname', 'father', 'fname'],
     fatherOccupation: ['fatheroccupation', 'occupation'],
-    admissionNo: ['admissionno', 'admno', 'admissionnumber', 'admission', 'adno'],
+    admissionNo: ['admissionno', 'admno', 'adm', 'admissionnumber', 'admission', 'adno'],
     contact: ['contactno', 'contact', 'phone', 'mobile', 'phoneno', 'mobileno'],
     grade: [
-        'grade', 'class', 'classname', 'gradeclass', 'classgrade',
-        'standard', 'std', 'currentclass', 'admittedclass', 'cls',
+        'grade', 'class', 'classname', 'gradeclass', 'classgrade', 'standard', 'std',
+        'currentclass', 'admittedclass', 'admitedclass', 'admittedtoclass',
+        'admitedtoclass', 'cls',
     ],
     section: ['section', 'sec'],
     rollNo: ['rollno', 'roll', 'rollnumber'],
-    session: ['session', 'year', 'academicyear'],
+    session: ['session', 'academicyear'],
     admissionDate: ['admissiondate', 'dateofadmission'],
     fee: ['fee', 'fees'],
-    address: ['address'],
+    address: ['address', 'permanentaddress', 'currentaddress'],
 }
 
 const norm = (k) => String(k ?? '').toLowerCase().replace(/[^a-z0-9]/g, '')
 const clean = (v) => String(v ?? '').trim()
+const lettersOnly = (v) =>
+    clean(v).replace(/[^A-Za-z\s]/g, ' ').replace(/\s+/g, ' ').trim()
 
 const isNameHeader = (c) => {
     const n = norm(c)
@@ -91,7 +96,7 @@ function normalizeDate(v) {
         const dd = String(d.getDate()).padStart(2, '0')
         return `${d.getFullYear()}-${mm}-${dd}`
     }
-    return clean(v) || null // text like 2025-04-01
+    return clean(v) || null
 }
 
 function ImportStudents({ refreshData, students = [] }) {
@@ -99,6 +104,7 @@ function ImportStudents({ refreshData, students = [] }) {
     const [loading, setLoading] = useState(false)
     const [progress, setProgress] = useState({ done: 0, total: 0 })
     const [report, setReport] = useState(null)
+    const [defaultSession, setDefaultSession] = useState('')
 
     const downloadTemplate = () => {
         const headers = [[
@@ -115,6 +121,14 @@ function ImportStudents({ refreshData, students = [] }) {
         const wb = XLSX.utils.book_new()
         XLSX.utils.book_append_sheet(wb, ws, 'Students')
         XLSX.writeFile(wb, 'students-template.xlsx')
+    }
+
+    const handleImportClick = () => {
+        if (!defaultSession) {
+            toast.error('Please select a session first')
+            return
+        }
+        fileRef.current?.click()
     }
 
     const handleFile = async (e) => {
@@ -138,12 +152,12 @@ function ImportStudents({ refreshData, students = [] }) {
 
             if (headerIdx === -1) {
                 const firstRow = grid.find((r) => r.some((c) => clean(c) !== '')) || []
-                const found = firstRow.map(clean).filter(Boolean)
                 setReport({
                     saved: 0,
                     total: Math.max(grid.length - 1, 0),
-                    columns: found,
+                    columns: firstRow.map(clean).filter(Boolean),
                     errors: ['Could not find a Student Name column.'],
+                    warnings: [],
                 })
                 setLoading(false)
                 return
@@ -153,7 +167,6 @@ function ImportStudents({ refreshData, students = [] }) {
             const headerRow = grid[headerIdx].map((h) => norm(h))
             const nameKey = headerRow.find(isNameHeader)
 
-            // Stop early if the Grade/Class column is missing
             const hasGradeColumn = ALIASES.grade.some((a) => headerRow.includes(a))
             if (!hasGradeColumn) {
                 setReport({
@@ -163,6 +176,7 @@ function ImportStudents({ refreshData, students = [] }) {
                     errors: [
                         'Could not find a Grade / Class column. Rename your class column to "Grade" and try again.',
                     ],
+                    warnings: [],
                 })
                 setLoading(false)
                 return
@@ -173,7 +187,7 @@ function ImportStudents({ refreshData, students = [] }) {
                 .filter((r) => r.some((c) => clean(c) !== ''))
                 .map((r) => {
                     const o = {}
-                    headerRow.forEach((h, i) => { if (h) o[h] = r[i] })
+                    headerRow.forEach((h, i) => { if (h && o[h] === undefined) o[h] = r[i] })
                     return o
                 })
 
@@ -197,51 +211,50 @@ function ImportStudents({ refreshData, students = [] }) {
 
             const valid = []
             const errors = []
+            const warnings = []
 
             rawRows.forEach((map, idx) => {
                 const rowNo = idx + headerIdx + 2 // real Excel row number
 
                 const get = (field) => {
                     for (const a of ALIASES[field]) {
-                        if (map[a] !== undefined && map[a] !== '') return map[a]
+                        if (map[a] !== undefined && clean(map[a]) !== '') return map[a]
                     }
                     return ''
                 }
 
-                const name = clean(map[nameKey])
+                const name = lettersOnly(map[nameKey])
                 const gradeRaw = clean(get('grade'))
                 const grade = normalizeGrade(gradeRaw)
 
                 if (!name) return errors.push(`Row ${rowNo}: Student Name is missing`)
-                if (!/^[A-Za-z\s]+$/.test(name)) {
-                    return errors.push(`Row ${rowNo}: Name "${name}" must be letters only`)
-                }
                 if (!grade) {
                     return errors.push(
                         gradeRaw
-                            ? `Row ${rowNo}: Grade "${gradeRaw}" is not valid`
-                            : `Row ${rowNo}: Grade is empty`
+                            ? `Row ${rowNo} (${name}): Class "${gradeRaw}" is not valid`
+                            : `Row ${rowNo} (${name}): Class is empty`
                     )
                 }
 
                 let contact = clean(get('contact')).replace(/[^0-9]/g, '')
                 if (contact.length === 10) contact = '0' + contact // Excel removes leading 0
                 if (contact && contact.length !== 11) {
-                    return errors.push(`Row ${rowNo}: Contact must be 11 digits`)
+                    warnings.push(`Row ${rowNo} (${name}): contact "${clean(get('contact'))}" is not 11 digits, left empty`)
+                    contact = ''
                 }
 
                 const admissionNo = clean(get('admissionNo')).replace(/[^0-9]/g, '').replace(/^0+/, '')
                 const rollNo = clean(get('rollNo')).replace(/[^0-9]/g, '').replace(/^0+/, '')
                 const section = clean(get('section')).toUpperCase()
-                const session = clean(get('session'))
+                const session = clean(get('session')) || defaultSession
 
                 if (admissionNo && usedAdmission.has(admissionNo)) {
-                    return errors.push(`Row ${rowNo}: Admission No ${admissionNo} already exists`)
+                    return errors.push(`Row ${rowNo} (${name}): Admission No ${admissionNo} already exists`)
                 }
                 const rk = rollKey(rollNo, grade, section, session)
                 if (rollNo && usedRoll.has(rk)) {
                     return errors.push(
-                        `Row ${rowNo}: Roll No ${rollNo} already exists in ${grade} ${section} ${session}`
+                        `Row ${rowNo} (${name}): Roll No ${rollNo} already exists in ${grade} ${section} ${session}`
                     )
                 }
                 if (admissionNo) usedAdmission.add(admissionNo)
@@ -251,14 +264,14 @@ function ImportStudents({ refreshData, students = [] }) {
                     rowNo,
                     payload: {
                         name,
-                        fatherName: clean(get('fatherName')) || null,
-                        fatherOccupation: clean(get('fatherOccupation')) || null,
+                        fatherName: lettersOnly(get('fatherName')) || null,
+                        fatherOccupation: lettersOnly(get('fatherOccupation')) || null,
                         admissionNo: admissionNo || null,
                         contact,
                         grade,
                         section: section || null,
                         rollNo: rollNo ? Number(rollNo) : null,
-                        session: session || null,
+                        session,
                         admissionDate: normalizeDate(get('admissionDate')),
                         fee: Number(get('fee')) || 0,
                         address: clean(get('address')),
@@ -291,6 +304,7 @@ function ImportStudents({ refreshData, students = [] }) {
             setReport({
                 saved,
                 errors,
+                warnings,
                 total: rawRows.length,
                 columns: originalHeaders,
             })
@@ -317,6 +331,19 @@ function ImportStudents({ refreshData, students = [] }) {
                 onChange={handleFile}
             />
 
+            <select
+                value={defaultSession}
+                onChange={(e) => setDefaultSession(e.target.value)}
+                disabled={loading}
+                title="Session applied to imported students"
+                className="px-3 py-2 rounded-lg border border-gray-300 bg-white text-sm text-gray-800 outline-none focus:border-emerald-500"
+            >
+                <option value="">Import session...</option>
+                {SESSIONS.map((s) => (
+                    <option key={s} value={s}>{s}</option>
+                ))}
+            </select>
+
             <Button
                 variant="outline"
                 onClick={downloadTemplate}
@@ -328,7 +355,7 @@ function ImportStudents({ refreshData, students = [] }) {
             </Button>
 
             <Button
-                onClick={() => fileRef.current?.click()}
+                onClick={handleImportClick}
                 disabled={loading}
                 className="bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm gap-2"
             >
@@ -353,25 +380,37 @@ function ImportStudents({ refreshData, students = [] }) {
                         <DialogTitle>Import Result</DialogTitle>
                         <DialogDescription>
                             {report?.saved} of {report?.total} rows imported
-                            {report?.errors.length ? `, ${report.errors.length} skipped` : ''}.
+                            {report?.errors?.length ? `, ${report.errors.length} skipped` : ''}.
                         </DialogDescription>
                     </DialogHeader>
 
-                    {report?.columns?.length > 0 && (
-                        <div className="rounded-lg border border-blue-100 bg-blue-50 p-3 text-xs text-blue-800">
-                            <p className="font-semibold mb-1">Columns found in your file:</p>
-                            <p>{report.columns.join(' | ')}</p>
-                        </div>
-                    )}
-
-                    {report?.errors.length > 0 && (
-                        <div className="max-h-64 overflow-y-auto rounded-lg border border-red-100 bg-red-50 p-3 text-xs text-red-700 space-y-1">
+                    {report?.errors?.length > 0 && (
+                        <div className="max-h-48 overflow-y-auto rounded-lg border border-red-100 bg-red-50 p-3 text-xs text-red-700 space-y-1">
                             {report.errors.slice(0, 100).map((m, i) => <p key={i}>{m}</p>)}
                             {report.errors.length > 100 && (
                                 <p className="font-semibold">
                                     ...and {report.errors.length - 100} more
                                 </p>
                             )}
+                        </div>
+                    )}
+
+                    {report?.warnings?.length > 0 && (
+                        <div className="max-h-32 overflow-y-auto rounded-lg border border-amber-100 bg-amber-50 p-3 text-xs text-amber-800 space-y-1">
+                            <p className="font-semibold">Imported with warnings:</p>
+                            {report.warnings.slice(0, 50).map((m, i) => <p key={i}>{m}</p>)}
+                            {report.warnings.length > 50 && (
+                                <p className="font-semibold">
+                                    ...and {report.warnings.length - 50} more
+                                </p>
+                            )}
+                        </div>
+                    )}
+
+                    {report?.columns?.length > 0 && report?.saved === 0 && (
+                        <div className="rounded-lg border border-blue-100 bg-blue-50 p-3 text-xs text-blue-800">
+                            <p className="font-semibold mb-1">Columns found in your file:</p>
+                            <p>{report.columns.join(' | ')}</p>
                         </div>
                     )}
 
