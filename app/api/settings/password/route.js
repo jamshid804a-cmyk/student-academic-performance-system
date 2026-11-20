@@ -1,54 +1,54 @@
+// app/api/settings/password/route.js
 import { NextResponse } from "next/server";
-import getClientPromise from "@/utils/mongodb";
-import { getCurrentSchool } from "@/utils/getCurrentSchool";
+import {
+  getSchoolSecurity,
+  hasValidHash,
+  hashPassword,
+  createUnlockToken,
+  setUnlockCookie,
+  clearUnlockCookie,
+} from "@/utils/schoolUnlock";
 
-// GET — is password enabled for this school?
-export async function GET() {
+// GET — current security state for this school
+export async function GET(req) {
   try {
-    const schoolResult = await getCurrentSchool();
-    if (!schoolResult.success) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-    const { schoolId } = schoolResult.school;
-
-    const client = await getClientPromise();
-    const db = client.db("school_db");
-    const record = await db
-      .collection("school_settings")
-      .findOne({ schoolId, key: "password" });
+    const s = await getSchoolSecurity(req);
+    if (s.error) return s.error;
 
     return NextResponse.json({
-      schoolId,
-      passwordEnabled: !!record?.enabled,
-      hasPassword: !!record?.hash,
+      schoolId: s.schoolId,
+      passwordEnabled: !!s.record?.enabled,
+      hasPassword: hasValidHash(s.record),
+      required: s.active,
+      unlocked: s.unlocked,
     });
   } catch (err) {
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }
 
-// POST — enable / disable password protection
-// body: { enabled: boolean }
-// When disabled → wipes hash entirely (fresh start next time)
+// POST
+//   enable : { enabled: true,  password: "min 8 chars" }  (password is REQUIRED)
+//   disable: { enabled: false }
+// Once protection is active, changing it requires a valid unlock cookie.
 export async function POST(req) {
   try {
-    const schoolResult = await getCurrentSchool();
-    if (!schoolResult.success) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-    const { schoolId } = schoolResult.school;
-    const { enabled } = await req.json();
+    const s = await getSchoolSecurity(req);
+    if (s.error) return s.error;
 
-    const client = await getClientPromise();
-    const db = client.db("school_db");
+    if (s.active && !s.unlocked) {
+      return NextResponse.json({ error: "School is locked" }, { status: 403 });
+    }
+
+    const { enabled, password } = await req.json();
+    const coll = s.db.collection("school_settings");
 
     if (!enabled) {
-      // ✅ Disable + remove password completely
-      await db.collection("school_settings").updateOne(
-        { schoolId, key: "password" },
+      await coll.updateOne(
+        { schoolId: s.schoolId, key: "password" },
         {
           $set: {
-            schoolId,
+            schoolId: s.schoolId,
             key: "password",
             enabled: false,
             hash: null,
@@ -58,22 +58,28 @@ export async function POST(req) {
         },
         { upsert: true }
       );
-
-      return NextResponse.json({
-        success: true,
-        enabled: false,
-        passwordRemoved: true,
-      });
+      const res = NextResponse.json({ success: true, enabled: false });
+      clearUnlockCookie(res);
+      return res;
     }
 
-    // Enable — if no hash exists, that's fine (first time set)
-    await db.collection("school_settings").updateOne(
-      { schoolId, key: "password" },
+    // Enabling needs a password — this is the "first time set" step
+    if (typeof password !== "string" || password.length < 8) {
+      return NextResponse.json(
+        { error: "Password must be at least 8 characters" },
+        { status: 400 }
+      );
+    }
+
+    const hash = hashPassword(password);
+    await coll.updateOne(
+      { schoolId: s.schoolId, key: "password" },
       {
         $set: {
-          schoolId,
+          schoolId: s.schoolId,
           key: "password",
           enabled: true,
+          hash,
           updatedAt: new Date(),
         },
         $setOnInsert: { createdAt: new Date() },
@@ -81,30 +87,32 @@ export async function POST(req) {
       { upsert: true }
     );
 
-    return NextResponse.json({ success: true, enabled: true });
+    // The person who just set the password stays unlocked
+    const res = NextResponse.json({ success: true, enabled: true });
+    setUnlockCookie(res, createUnlockToken(s.schoolId, hash));
+    return res;
   } catch (err) {
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }
 
-// DELETE — explicit remove password (same effect as disabling)
-export async function DELETE() {
+// DELETE — remove password completely
+export async function DELETE(req) {
   try {
-    const schoolResult = await getCurrentSchool();
-    if (!schoolResult.success) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const s = await getSchoolSecurity(req);
+    if (s.error) return s.error;
+
+    if (s.active && !s.unlocked) {
+      return NextResponse.json({ error: "School is locked" }, { status: 403 });
     }
-    const { schoolId } = schoolResult.school;
 
-    const client = await getClientPromise();
-    const db = client.db("school_db");
+    await s.db
+      .collection("school_settings")
+      .deleteOne({ schoolId: s.schoolId, key: "password" });
 
-    await db.collection("school_settings").deleteOne({
-      schoolId,
-      key: "password",
-    });
-
-    return NextResponse.json({ success: true, passwordRemoved: true });
+    const res = NextResponse.json({ success: true, passwordRemoved: true });
+    clearUnlockCookie(res);
+    return res;
   } catch (err) {
     return NextResponse.json({ error: err.message }, { status: 500 });
   }

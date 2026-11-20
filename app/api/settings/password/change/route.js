@@ -1,72 +1,61 @@
+// app/api/settings/password/change/route.js
 import { NextResponse } from "next/server";
-import getClientPromise from "@/utils/mongodb";
-import { getCurrentSchool } from "@/utils/getCurrentSchool";
-import bcrypt from "bcryptjs";
+import {
+  getSchoolSecurity,
+  verifyPassword,
+  hashPassword,
+  createUnlockToken,
+  setUnlockCookie,
+} from "@/utils/schoolUnlock";
 
 export async function POST(req) {
   try {
-    const schoolResult = await getCurrentSchool();
-    if (!schoolResult.success) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-    const { schoolId } = schoolResult.school;
-    const { currentPassword, newPassword } = await req.json();
+    const s = await getSchoolSecurity(req);
+    if (s.error) return s.error;
 
-    if (!newPassword) {
+    if (!s.active) {
       return NextResponse.json(
-        { error: "New password is required" },
+        { error: "Password protection is not enabled" },
         { status: 400 }
       );
     }
-    if (newPassword.length < 8) {
+    if (!s.unlocked) {
+      return NextResponse.json({ error: "School is locked" }, { status: 403 });
+    }
+
+    const { currentPassword, newPassword } = await req.json();
+
+    if (!verifyPassword(String(currentPassword || ""), s.record.hash)) {
+      return NextResponse.json(
+        { error: "Current password is incorrect" },
+        { status: 400 }
+      );
+    }
+    if (typeof newPassword !== "string" || newPassword.length < 8) {
       return NextResponse.json(
         { error: "New password must be at least 8 characters" },
         { status: 400 }
       );
     }
-
-    const client = await getClientPromise();
-    const db = client.db("school_db");
-    const settings = await db
-      .collection("school_settings")
-      .findOne({ schoolId, key: "password" });
-
-    // If a password already exists, verify current
-    if (settings?.hash) {
-      if (!currentPassword) {
-        return NextResponse.json(
-          { error: "Current password is required" },
-          { status: 400 }
-        );
-      }
-      const ok = await bcrypt.compare(currentPassword, settings.hash);
-      if (!ok) {
-        return NextResponse.json(
-          { error: "Current password is incorrect" },
-          { status: 401 }
-        );
-      }
+    if (newPassword === currentPassword) {
+      return NextResponse.json(
+        { error: "New password must be different" },
+        { status: 400 }
+      );
     }
-    // If no password exists yet (first-time set) — skip current-password check
 
-    const hash = await bcrypt.hash(newPassword, 10);
+    const hash = hashPassword(newPassword);
+    await s.db
+      .collection("school_settings")
+      .updateOne(
+        { schoolId: s.schoolId, key: "password" },
+        { $set: { hash, updatedAt: new Date() } }
+      );
 
-    await db.collection("school_settings").updateOne(
-      { schoolId, key: "password" },
-      {
-        $set: {
-          schoolId,
-          key: "password",
-          enabled: true,
-          hash,
-          updatedAt: new Date(),
-        },
-        $setOnInsert: { createdAt: new Date() },
-      },
-      { upsert: true }
-    );
-
-    return NextResponse.json({ success: true });
+    // Old unlock cookies are now invalid; give this browser a fresh one
+    const res = NextResponse.json({ success: true });
+    setUnlockCookie(res, createUnlockToken(s.schoolId, hash));
+    return res;
   } catch (err) {
     return NextResponse.json({ error: err.message }, { status: 500 });
   }

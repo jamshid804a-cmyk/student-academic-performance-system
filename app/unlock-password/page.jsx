@@ -14,17 +14,20 @@ export default function UnlockPasswordPage() {
   const [checking, setChecking] = useState(true)
 
   useEffect(() => {
-    fetch('/api/settings/password/required')
-      .then((r) => r.json())
+    fetch('/api/settings/password/required', { cache: 'no-store' })
+      .then((r) => {
+        if (!r.ok) throw new Error('check failed')
+        return r.json()
+      })
       .then((d) => {
-        if (!d.required) {
-          sessionStorage.setItem('school_unlocked', 'true')
+        // Nothing to unlock, or already unlocked → go in
+        if (d.required === false || d.unlocked === true) {
           router.replace('/')
         } else {
           setChecking(false)
         }
       })
-      .catch(() => setChecking(false))
+      .catch(() => setChecking(false)) // never auto-unlock on errors
   }, [router])
 
   const handleSubmit = async (e) => {
@@ -47,9 +50,10 @@ export default function UnlockPasswordPage() {
         throw new Error(err.error || 'Incorrect password')
       }
 
-      sessionStorage.setItem('school_unlocked', 'true')
+      // The server has set the httpOnly unlock cookie
       toast.success('Unlocked successfully')
       router.replace('/')
+      router.refresh()
     } catch (err) {
       console.error(err)
       toast.error(err.message || 'Incorrect password')

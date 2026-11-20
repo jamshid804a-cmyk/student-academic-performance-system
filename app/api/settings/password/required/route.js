@@ -1,26 +1,18 @@
+// app/api/settings/password/required/route.js
 import { NextResponse } from "next/server";
-import getClientPromise from "@/utils/mongodb";
-import { getCurrentSchool } from "@/utils/getCurrentSchool";
+import { getSchoolSecurity } from "@/utils/schoolUnlock";
 
-export async function GET() {
+export async function GET(req) {
   try {
-    const schoolResult = await getCurrentSchool();
-    if (!schoolResult.success) {
-      return NextResponse.json({ required: false });
-    }
-    const { schoolId } = schoolResult.school;
-
-    const client = await getClientPromise();
-    const db = client.db("school_db");
-    const settings = await db
-      .collection("school_settings")
-      .findOne({ schoolId, key: "password" });
+    const s = await getSchoolSecurity(req);
+    if (s.error) return s.error;
 
     return NextResponse.json({
-      required: !!settings?.enabled && !!settings?.hash,
-      schoolId,
+      schoolId: s.schoolId,
+      required: s.active,
+      unlocked: s.unlocked,
     });
   } catch (err) {
-    return NextResponse.json({ required: false, error: err.message });
+    return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }

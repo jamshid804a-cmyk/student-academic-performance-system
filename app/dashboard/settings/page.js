@@ -5,11 +5,20 @@ import { Button } from '@/components/ui/button'
 import {
   Building2, Mail, Phone, MapPin, User as UserIcon, Upload, Loader2, Save, X, ImagePlus,
   Sun, Moon, Lock, Eye, EyeOff, Shield, KeyRound, Download, UploadCloud, Database,
-  AlertTriangle, CheckCircle2, RefreshCw, HardDrive, ShieldCheck, ShieldOff,
-  ToggleLeft, ToggleRight, Fingerprint, Trash2
+  AlertTriangle, CheckCircle2, RefreshCw, HardDrive, ShieldCheck, ShieldOff, Fingerprint
 } from 'lucide-react'
 import GlobalApi from '@/app/_services/GlobalApi'
 import { toast } from 'sonner'
+
+// ─────────────────────────────────────────────
+// Shared styles
+// ─────────────────────────────────────────────
+const inputClass =
+  'w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 outline-none transition-all duration-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 dark:focus:ring-blue-900/40'
+const labelClass =
+  'flex items-center gap-2 text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2'
+const cardClass =
+  'bg-white dark:bg-slate-800 rounded-2xl shadow-lg border border-slate-100 dark:border-slate-700 p-6 md:p-8'
 
 // ─────────────────────────────────────────────
 // Theme hook
@@ -35,6 +44,81 @@ function useTheme() {
   const toggleTheme = () => setThemeMode(theme === 'dark' ? 'light' : 'dark')
 
   return { theme, setThemeMode, toggleTheme }
+}
+
+// ─────────────────────────────────────────────
+// Small reusable pieces
+// ─────────────────────────────────────────────
+function PasswordField({ label, icon: Icon, value, onChange, placeholder, show, onToggle }) {
+  return (
+    <div>
+      <label className={labelClass}>
+        <Icon size={15} /> {label}
+      </label>
+      <div className="relative">
+        <input
+          type={show ? 'text' : 'password'}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={placeholder}
+          autoComplete="new-password"
+          className={inputClass + ' pr-12'}
+        />
+        <button
+          type="button"
+          onClick={onToggle}
+          className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+        >
+          {show ? <EyeOff size={18} /> : <Eye size={18} />}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function StrengthMeter({ value }) {
+  if (!value) return null
+  const len = value.length
+  const color = len >= 12 ? 'bg-emerald-500' : len >= 8 ? 'bg-amber-500' : 'bg-rose-500'
+  return (
+    <div className="mt-2">
+      <div className="flex gap-1 h-1.5">
+        {[1, 2, 3, 4].map((i) => (
+          <div
+            key={i}
+            className={`flex-1 rounded-full transition-colors ${
+              len >= i * 3 ? color : 'bg-slate-200 dark:bg-slate-700'
+            }`}
+          />
+        ))}
+      </div>
+      <p className="text-xs mt-1.5 text-slate-500 dark:text-slate-400">
+        {len < 8
+          ? 'Too short — use at least 8 characters'
+          : len < 12
+          ? 'Good — consider adding symbols or numbers'
+          : 'Strong password ✓'}
+      </p>
+    </div>
+  )
+}
+
+function MatchHint({ a, b }) {
+  if (!a || !b) return null
+  return a !== b ? (
+    <p className="text-xs mt-1.5 text-rose-500 flex items-center gap-1">
+      <AlertTriangle size={12} /> Passwords do not match
+    </p>
+  ) : (
+    <p className="text-xs mt-1.5 text-emerald-500 flex items-center gap-1">
+      <CheckCircle2 size={12} /> Passwords match
+    </p>
+  )
+}
+
+async function readError(resp, fallback) {
+  const j = await resp.json().catch(() => null)
+  return j?.error || fallback
 }
 
 // ─────────────────────────────────────────────
@@ -65,13 +149,18 @@ export default function SettingsPage() {
 
   // ── Password / security ──
   const [passwordEnabled, setPasswordEnabled] = useState(false)
+  const [hasPassword, setHasPassword] = useState(false)
   const [passwordLoading, setPasswordLoading] = useState(true)
+  const [setup, setSetup] = useState({ new: '', confirm: '' })
   const [passwords, setPasswords] = useState({ current: '', new: '', confirm: '' })
+  const [showSetup, setShowSetup] = useState({ new: false, confirm: false })
   const [showPasswords, setShowPasswords] = useState({
     current: false, new: false, confirm: false,
   })
   const [passwordSaving, setPasswordSaving] = useState(false)
-  const [passwordToggling, setPasswordToggling] = useState(false)
+
+  // Protection really applies only when it is enabled AND a password exists
+  const protectionActive = passwordEnabled && hasPassword
 
   // ── Backup / restore ──
   const [backingUp, setBackingUp] = useState(false)
@@ -94,10 +183,11 @@ export default function SettingsPage() {
       .catch(() => toast.error('Failed to load school info'))
       .finally(() => setLoading(false))
 
-    fetch('/api/settings/password')
+    fetch('/api/settings/password', { cache: 'no-store' })
       .then((r) => r.json())
       .then((d) => {
         setPasswordEnabled(!!d.passwordEnabled)
+        setHasPassword(!!d.hasPassword)
         if (d.schoolId) setCurrentSchoolId((prev) => prev || d.schoolId)
       })
       .catch(() => {})
@@ -153,55 +243,72 @@ export default function SettingsPage() {
   // ─────────────────────────────────────────────
   // Handlers — password
   // ─────────────────────────────────────────────
-  const togglePasswordFeature = async () => {
-    if (passwordToggling) return
 
-    const next = !passwordEnabled
-
-    // Confirm before removing a password
-    if (!next) {
-      const ok = confirm(
-        '⚠️ Remove Password ⚠️\n\n' +
-        'This will DELETE the stored password and disable protection.\n\n' +
-        'Next time you enable it, you can set a NEW password without entering the old one.\n\n' +
-        'Continue?'
-      )
-      if (!ok) return
+  // First-time setup (or re-setup): sets the password AND turns protection on
+  const handleEnableProtection = async () => {
+    if (!setup.new || !setup.confirm) {
+      toast.error('Please enter and confirm the password')
+      return
+    }
+    if (setup.new.length < 8) {
+      toast.error('Password must be at least 8 characters')
+      return
+    }
+    if (setup.new !== setup.confirm) {
+      toast.error('Passwords do not match')
+      return
     }
 
-    setPasswordToggling(true)
+    setPasswordSaving(true)
     try {
       const resp = await fetch('/api/settings/password', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ enabled: next }),
+        body: JSON.stringify({ enabled: true, password: setup.new }),
       })
-      if (!resp.ok) {
-        const err = await resp.json().catch(() => ({}))
-        throw new Error(err.error || 'Failed to update')
-      }
-      const result = await resp.json()
-      setPasswordEnabled(next)
-      toast.success(
-        next
-          ? 'Password protection enabled — set your password below'
-          : 'Password protection disabled and password removed'
-      )
-      setPasswords({ current: '', new: '', confirm: '' })
+      if (!resp.ok) throw new Error(await readError(resp, 'Failed to enable protection'))
+
+      setPasswordEnabled(true)
+      setHasPassword(true)
+      setSetup({ new: '', confirm: '' })
+      toast.success('Password protection enabled')
     } catch (err) {
       console.error(err)
-      toast.error(err.message || 'Failed to update password setting')
+      toast.error(err.message || 'Failed to enable protection')
     }
-    setPasswordToggling(false)
+    setPasswordSaving(false)
+  }
+
+  const handleDisableProtection = async () => {
+    if (!confirm('Disable password protection? The saved password will be removed.')) return
+
+    setPasswordSaving(true)
+    try {
+      const resp = await fetch('/api/settings/password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: false }),
+      })
+      if (!resp.ok) throw new Error(await readError(resp, 'Failed to disable protection'))
+
+      setPasswordEnabled(false)
+      setHasPassword(false)
+      setPasswords({ current: '', new: '', confirm: '' })
+      toast.success('Password protection disabled')
+    } catch (err) {
+      console.error(err)
+      toast.error(err.message || 'Failed to disable protection')
+    }
+    setPasswordSaving(false)
   }
 
   const handlePasswordChange = async () => {
-    if (!passwordEnabled) {
+    if (!protectionActive) {
       toast.error('Enable password protection first')
       return
     }
-    if (!passwords.new || !passwords.confirm) {
-      toast.error('Please fill new password fields')
+    if (!passwords.current || !passwords.new || !passwords.confirm) {
+      toast.error('Please fill all password fields')
       return
     }
     if (passwords.new.length < 8) {
@@ -210,6 +317,10 @@ export default function SettingsPage() {
     }
     if (passwords.new !== passwords.confirm) {
       toast.error('New password and confirm password do not match')
+      return
+    }
+    if (passwords.new === passwords.current) {
+      toast.error('New password must be different from current password')
       return
     }
 
@@ -223,11 +334,9 @@ export default function SettingsPage() {
           newPassword: passwords.new,
         }),
       })
-      if (!resp.ok) {
-        const err = await resp.json().catch(() => ({}))
-        throw new Error(err.error || 'Failed to update password')
-      }
-      toast.success('Password saved successfully')
+      if (!resp.ok) throw new Error(await readError(resp, 'Failed to update password'))
+
+      toast.success('Password updated successfully')
       setPasswords({ current: '', new: '', confirm: '' })
     } catch (err) {
       console.error(err)
@@ -258,10 +367,6 @@ export default function SettingsPage() {
         toast.success(
           `Backed up ${totalDocs} records (${studentCount} students) for ${sid}`
         )
-      }
-
-      if (payload?.warnings?.length) {
-        console.warn('[backup] Warnings:', payload.warnings)
       }
 
       const blob = new Blob([JSON.stringify(payload, null, 2)], {
@@ -333,8 +438,6 @@ export default function SettingsPage() {
           `• ${counts.teachers || 0} teachers\n` +
           `• ${counts.fees || 0} fee records\n` +
           `• ${counts.attendance || 0} attendance records\n` +
-          `• ${counts.tests || 0} test records\n` +
-          `• ${counts.exams || 0} exam records\n` +
           `• Total: ${totalDocs} records across ${Object.keys(counts).length} collections\n\n` +
           `Other schools' data will NOT be affected.\n\n` +
           `Continue?`
@@ -353,6 +456,7 @@ export default function SettingsPage() {
       })
       const result = resp?.data
 
+      // Count what was REALLY written (ignore the global "counters" collection)
       const restoredTotal = Object.entries(result?.counts || {})
         .filter(([name]) => name !== 'counters')
         .reduce((a, [, n]) => a + (n > 0 ? n : 0), 0)
@@ -391,16 +495,6 @@ export default function SettingsPage() {
   }
 
   // ─────────────────────────────────────────────
-  // Styles
-  // ─────────────────────────────────────────────
-  const inputClass =
-    'w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 outline-none transition-all duration-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 dark:focus:ring-blue-900/40'
-  const labelClass =
-    'flex items-center gap-2 text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2'
-  const cardClass =
-    'bg-white dark:bg-slate-800 rounded-2xl shadow-lg border border-slate-100 dark:border-slate-700 p-6 md:p-8'
-
-  // ─────────────────────────────────────────────
   // Loading state
   // ─────────────────────────────────────────────
   if (loading) {
@@ -423,9 +517,7 @@ export default function SettingsPage() {
             <Building2 size={24} />
           </div>
           <div>
-            <h2 className="text-2xl font-bold text-slate-800 dark:text-slate-100">
-              Settings
-            </h2>
+            <h2 className="text-2xl font-bold text-slate-800 dark:text-slate-100">Settings</h2>
             <p className="text-sm text-slate-500 dark:text-slate-400">
               Manage your school, security & data
             </p>
@@ -469,9 +561,7 @@ export default function SettingsPage() {
         })}
       </div>
 
-      {/* ════════════════════════════════════════
-          GENERAL TAB
-      ════════════════════════════════════════ */}
+      {/* ════════════ GENERAL TAB ════════════ */}
       {activeTab === 'general' && (
         <div className={cardClass}>
           <div className="flex flex-col md:flex-row items-center gap-6 mb-8 p-6 rounded-2xl bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-slate-700 dark:to-slate-800 border border-blue-100 dark:border-slate-700">
@@ -617,9 +707,7 @@ export default function SettingsPage() {
         </div>
       )}
 
-      {/* ════════════════════════════════════════
-          APPEARANCE TAB
-      ════════════════════════════════════════ */}
+      {/* ════════════ APPEARANCE TAB ════════════ */}
       {activeTab === 'appearance' && (
         <div className={cardClass}>
           <div className="flex items-center gap-3 mb-6">
@@ -627,9 +715,7 @@ export default function SettingsPage() {
               <Sun size={20} />
             </div>
             <div>
-              <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100">
-                Appearance
-              </h3>
+              <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100">Appearance</h3>
               <p className="text-sm text-slate-500 dark:text-slate-400">
                 Customize how the app looks
               </p>
@@ -650,12 +736,8 @@ export default function SettingsPage() {
                   <Sun size={20} className="text-amber-500" />
                 </div>
                 <div>
-                  <p className="font-bold text-slate-800 dark:text-slate-100">
-                    Light Mode
-                  </p>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">
-                    Bright & clean
-                  </p>
+                  <p className="font-bold text-slate-800 dark:text-slate-100">Light Mode</p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">Bright & clean</p>
                 </div>
               </div>
               <div className="h-14 rounded-lg bg-gradient-to-br from-slate-50 to-slate-100 border border-slate-200 flex items-center px-3">
@@ -663,10 +745,7 @@ export default function SettingsPage() {
                 <div className="h-2 w-16 rounded bg-slate-300" />
               </div>
               {theme === 'light' && (
-                <CheckCircle2
-                  size={18}
-                  className="absolute top-3 right-3 text-blue-600"
-                />
+                <CheckCircle2 size={18} className="absolute top-3 right-3 text-blue-600" />
               )}
             </button>
 
@@ -683,12 +762,8 @@ export default function SettingsPage() {
                   <Moon size={20} className="text-indigo-300" />
                 </div>
                 <div>
-                  <p className="font-bold text-slate-800 dark:text-slate-100">
-                    Dark Mode
-                  </p>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">
-                    Easy on the eyes
-                  </p>
+                  <p className="font-bold text-slate-800 dark:text-slate-100">Dark Mode</p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">Easy on the eyes</p>
                 </div>
               </div>
               <div className="h-14 rounded-lg bg-gradient-to-br from-slate-800 to-slate-900 border border-slate-700 flex items-center px-3">
@@ -696,100 +771,75 @@ export default function SettingsPage() {
                 <div className="h-2 w-16 rounded bg-slate-600" />
               </div>
               {theme === 'dark' && (
-                <CheckCircle2
-                  size={18}
-                  className="absolute top-3 right-3 text-blue-500"
-                />
+                <CheckCircle2 size={18} className="absolute top-3 right-3 text-blue-500" />
               )}
             </button>
           </div>
 
           <div className="mt-6 p-4 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 flex items-start gap-3">
-            <AlertTriangle
-              size={18}
-              className="text-amber-600 dark:text-amber-400 mt-0.5 shrink-0"
-            />
+            <AlertTriangle size={18} className="text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
             <p className="text-sm text-amber-800 dark:text-amber-200">
-              Your preference is saved locally and will persist across sessions on
-              this device.
+              Your preference is saved locally and will persist across sessions on this device.
             </p>
           </div>
         </div>
       )}
 
-      {/* ════════════════════════════════════════
-          SECURITY TAB
-      ════════════════════════════════════════ */}
+      {/* ════════════ SECURITY TAB ════════════ */}
       {activeTab === 'security' && (
         <div className="space-y-6">
-          {/* Password Enable/Remove card */}
+          {/* Status card */}
           <div className={cardClass}>
             <div className="flex items-start justify-between gap-4 flex-wrap">
               <div className="flex items-center gap-3">
                 <div
                   className={`w-12 h-12 rounded-2xl text-white flex items-center justify-center shadow-md ${
-                    passwordEnabled
+                    protectionActive
                       ? 'bg-gradient-to-br from-emerald-500 to-teal-600'
                       : 'bg-gradient-to-br from-slate-400 to-slate-500'
                   }`}
                 >
-                  {passwordEnabled ? (
-                    <ShieldCheck size={22} />
-                  ) : (
-                    <ShieldOff size={22} />
-                  )}
+                  {protectionActive ? <ShieldCheck size={22} /> : <ShieldOff size={22} />}
                 </div>
                 <div>
                   <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100">
                     Password Protection
                   </h3>
                   <p className="text-sm text-slate-500 dark:text-slate-400">
-                    {passwordEnabled
-                      ? 'Password is enabled. You can change or remove it anytime.'
-                      : 'Enable to require a password for your school dashboard.'}
+                    {protectionActive
+                      ? 'Your school is locked with a password.'
+                      : passwordEnabled
+                      ? 'Protection was on, but no valid password is saved. Set a password below.'
+                      : 'Set a password below to secure your school dashboard.'}
                   </p>
                 </div>
               </div>
 
-              <button
-                onClick={togglePasswordFeature}
-                disabled={passwordLoading || passwordToggling}
-                className={`inline-flex items-center gap-2 px-5 py-2.5 rounded-xl font-semibold shadow-sm transition-all disabled:opacity-60 ${
-                  passwordEnabled
-                    ? 'bg-rose-50 dark:bg-rose-900/20 text-rose-600 dark:text-rose-300 border border-rose-200 dark:border-rose-800 hover:bg-rose-100 dark:hover:bg-rose-900/30'
-                    : 'bg-emerald-600 hover:bg-emerald-700 text-white hover:scale-105'
-                }`}
-              >
-                {passwordToggling ? (
-                  <>
-                    <Loader2 size={16} className="animate-spin" /> Please wait...
-                  </>
-                ) : passwordEnabled ? (
-                  <>
-                    <Trash2 size={16} /> Remove Password
-                  </>
-                ) : (
-                  <>
-                    <ToggleLeft size={18} /> Enable
-                  </>
-                )}
-              </button>
+              {protectionActive && (
+                <button
+                  onClick={handleDisableProtection}
+                  disabled={passwordLoading || passwordSaving}
+                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl font-semibold shadow-sm transition-all disabled:opacity-60 bg-rose-50 dark:bg-rose-900/20 text-rose-600 dark:text-rose-300 border border-rose-200 dark:border-rose-800 hover:bg-rose-100 dark:hover:bg-rose-900/30"
+                >
+                  <ShieldOff size={18} /> Disable
+                </button>
+              )}
             </div>
 
-            <div className="mt-5 flex items-center gap-2 flex-wrap">
+            <div className="mt-5 flex items-center gap-2">
               <span
                 className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold ${
-                  passwordEnabled
+                  protectionActive
                     ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300'
                     : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
                 }`}
               >
                 <span
                   className={`w-2 h-2 rounded-full ${
-                    passwordEnabled ? 'bg-emerald-500' : 'bg-slate-400'
+                    protectionActive ? 'bg-emerald-500' : 'bg-slate-400'
                   }`}
                 />
-                {passwordEnabled ? 'Enabled' : 'Disabled'}
+                {protectionActive ? 'Enabled' : 'Disabled'}
               </span>
               {currentSchoolId && (
                 <span className="text-xs text-slate-400 dark:text-slate-500">
@@ -797,24 +847,73 @@ export default function SettingsPage() {
                 </span>
               )}
             </div>
-
-            {passwordEnabled && (
-              <div className="mt-4 p-3 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 flex items-start gap-2">
-                <AlertTriangle
-                  size={16}
-                  className="text-amber-600 dark:text-amber-400 mt-0.5 shrink-0"
-                />
-                <p className="text-xs text-amber-800 dark:text-amber-200">
-                  Clicking <strong>Remove Password</strong> will delete the stored
-                  password. You can set a new one afterwards without entering the
-                  old password.
-                </p>
-              </div>
-            )}
           </div>
 
-          {/* Change / Set Password card — only when enabled */}
-          {passwordEnabled && (
+          {/* Set password (first time) — shown when protection is not active */}
+          {!protectionActive && (
+            <div className={cardClass}>
+              <div className="flex items-center gap-3 mb-6">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 text-white flex items-center justify-center shadow">
+                  <KeyRound size={20} />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100">
+                    Set Password & Enable
+                  </h3>
+                  <p className="text-sm text-slate-500 dark:text-slate-400">
+                    Choose a password. Protection turns on as soon as you save.
+                  </p>
+                </div>
+              </div>
+
+              <div className="space-y-5 max-w-xl">
+                <div>
+                  <PasswordField
+                    label="New Password"
+                    icon={KeyRound}
+                    value={setup.new}
+                    onChange={(v) => setSetup((p) => ({ ...p, new: v }))}
+                    placeholder="At least 8 characters"
+                    show={showSetup.new}
+                    onToggle={() => setShowSetup((p) => ({ ...p, new: !p.new }))}
+                  />
+                  <StrengthMeter value={setup.new} />
+                </div>
+
+                <div>
+                  <PasswordField
+                    label="Confirm Password"
+                    icon={KeyRound}
+                    value={setup.confirm}
+                    onChange={(v) => setSetup((p) => ({ ...p, confirm: v }))}
+                    placeholder="Re-enter password"
+                    show={showSetup.confirm}
+                    onToggle={() => setShowSetup((p) => ({ ...p, confirm: !p.confirm }))}
+                  />
+                  <MatchHint a={setup.new} b={setup.confirm} />
+                </div>
+
+                <Button
+                  onClick={handleEnableProtection}
+                  disabled={passwordSaving || passwordLoading}
+                  className="bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white px-6 py-2.5 rounded-xl shadow-md hover:scale-105 transition-transform disabled:opacity-60"
+                >
+                  {passwordSaving ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" /> Saving...
+                    </>
+                  ) : (
+                    <>
+                      <ShieldCheck className="w-4 h-4 mr-2" /> Enable Protection
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* Change password — only when protection is active */}
+          {protectionActive && (
             <div className={cardClass}>
               <div className="flex items-center gap-3 mb-6">
                 <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-rose-500 to-red-600 text-white flex items-center justify-center shadow">
@@ -822,146 +921,49 @@ export default function SettingsPage() {
                 </div>
                 <div>
                   <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100">
-                    Change / Set Password
+                    Change Password
                   </h3>
                   <p className="text-sm text-slate-500 dark:text-slate-400">
-                    Leave current password blank if setting for the first time
+                    Update the password for your school
                   </p>
                 </div>
               </div>
 
               <div className="space-y-5 max-w-xl">
-                {/* Current */}
+                <PasswordField
+                  label="Current Password"
+                  icon={Lock}
+                  value={passwords.current}
+                  onChange={(v) => setPasswords((p) => ({ ...p, current: v }))}
+                  placeholder="Enter current password"
+                  show={showPasswords.current}
+                  onToggle={() => setShowPasswords((p) => ({ ...p, current: !p.current }))}
+                />
+
                 <div>
-                  <label className={labelClass}>
-                    <Lock size={15} /> Current Password
-                    <span className="text-xs font-normal text-slate-400">
-                      (blank if first time)
-                    </span>
-                  </label>
-                  <div className="relative">
-                    <input
-                      type={showPasswords.current ? 'text' : 'password'}
-                      value={passwords.current}
-                      onChange={(e) =>
-                        setPasswords((p) => ({ ...p, current: e.target.value }))
-                      }
-                      placeholder="Enter current password or leave blank"
-                      className={inputClass + ' pr-12'}
-                    />
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setShowPasswords((p) => ({ ...p, current: !p.current }))
-                      }
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
-                    >
-                      {showPasswords.current ? (
-                        <EyeOff size={18} />
-                      ) : (
-                        <Eye size={18} />
-                      )}
-                    </button>
-                  </div>
+                  <PasswordField
+                    label="New Password"
+                    icon={KeyRound}
+                    value={passwords.new}
+                    onChange={(v) => setPasswords((p) => ({ ...p, new: v }))}
+                    placeholder="At least 8 characters"
+                    show={showPasswords.new}
+                    onToggle={() => setShowPasswords((p) => ({ ...p, new: !p.new }))}
+                  />
+                  <StrengthMeter value={passwords.new} />
                 </div>
 
-                {/* New */}
                 <div>
-                  <label className={labelClass}>
-                    <KeyRound size={15} /> New Password
-                  </label>
-                  <div className="relative">
-                    <input
-                      type={showPasswords.new ? 'text' : 'password'}
-                      value={passwords.new}
-                      onChange={(e) =>
-                        setPasswords((p) => ({ ...p, new: e.target.value }))
-                      }
-                      placeholder="At least 8 characters"
-                      className={inputClass + ' pr-12'}
-                    />
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setShowPasswords((p) => ({ ...p, new: !p.new }))
-                      }
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
-                    >
-                      {showPasswords.new ? <EyeOff size={18} /> : <Eye size={18} />}
-                    </button>
-                  </div>
-                  {passwords.new && (
-                    <div className="mt-2">
-                      <div className="flex gap-1 h-1.5">
-                        {[1, 2, 3, 4].map((i) => (
-                          <div
-                            key={i}
-                            className={`flex-1 rounded-full transition-colors ${
-                              passwords.new.length >= i * 2
-                                ? passwords.new.length >= 12
-                                  ? 'bg-emerald-500'
-                                  : passwords.new.length >= 8
-                                  ? 'bg-amber-500'
-                                  : 'bg-rose-500'
-                                : 'bg-slate-200 dark:bg-slate-700'
-                            }`}
-                          />
-                        ))}
-                      </div>
-                      <p className="text-xs mt-1.5 text-slate-500 dark:text-slate-400">
-                        {passwords.new.length < 8
-                          ? 'Too short — use at least 8 characters'
-                          : passwords.new.length < 12
-                          ? 'Good — consider adding symbols or numbers'
-                          : 'Strong password ✓'}
-                      </p>
-                    </div>
-                  )}
-                </div>
-
-                {/* Confirm */}
-                <div>
-                  <label className={labelClass}>
-                    <KeyRound size={15} /> Confirm New Password
-                  </label>
-                  <div className="relative">
-                    <input
-                      type={showPasswords.confirm ? 'text' : 'password'}
-                      value={passwords.confirm}
-                      onChange={(e) =>
-                        setPasswords((p) => ({ ...p, confirm: e.target.value }))
-                      }
-                      placeholder="Re-enter new password"
-                      className={inputClass + ' pr-12'}
-                    />
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setShowPasswords((p) => ({ ...p, confirm: !p.confirm }))
-                      }
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
-                    >
-                      {showPasswords.confirm ? (
-                        <EyeOff size={18} />
-                      ) : (
-                        <Eye size={18} />
-                      )}
-                    </button>
-                  </div>
-                  {passwords.confirm &&
-                    passwords.new &&
-                    passwords.confirm !== passwords.new && (
-                      <p className="text-xs mt-1.5 text-rose-500 flex items-center gap-1">
-                        <AlertTriangle size={12} /> Passwords do not match
-                      </p>
-                    )}
-                  {passwords.confirm &&
-                    passwords.new &&
-                    passwords.confirm === passwords.new && (
-                      <p className="text-xs mt-1.5 text-emerald-500 flex items-center gap-1">
-                        <CheckCircle2 size={12} /> Passwords match
-                      </p>
-                    )}
+                  <PasswordField
+                    label="Confirm New Password"
+                    icon={KeyRound}
+                    value={passwords.confirm}
+                    onChange={(v) => setPasswords((p) => ({ ...p, confirm: v }))}
+                    placeholder="Re-enter new password"
+                    show={showPasswords.confirm}
+                    onToggle={() => setShowPasswords((p) => ({ ...p, confirm: !p.confirm }))}
+                  />
+                  <MatchHint a={passwords.new} b={passwords.confirm} />
                 </div>
 
                 <div className="pt-2">
@@ -972,11 +974,11 @@ export default function SettingsPage() {
                   >
                     {passwordSaving ? (
                       <>
-                        <Loader2 className="w-4 h-4 mr-2 animate-spin" /> Saving...
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" /> Updating...
                       </>
                     ) : (
                       <>
-                        <Shield className="w-4 h-4 mr-2" /> Save Password
+                        <Shield className="w-4 h-4 mr-2" /> Update Password
                       </>
                     )}
                   </Button>
@@ -988,17 +990,14 @@ export default function SettingsPage() {
           {/* Tips */}
           <div className="p-5 rounded-2xl bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800">
             <div className="flex items-start gap-3">
-              <Fingerprint
-                size={18}
-                className="text-blue-600 dark:text-blue-400 mt-0.5 shrink-0"
-              />
+              <Fingerprint size={18} className="text-blue-600 dark:text-blue-400 mt-0.5 shrink-0" />
               <div className="text-sm text-blue-800 dark:text-blue-200">
                 <p className="font-semibold mb-1">Password Security Tips</p>
                 <ul className="list-disc list-inside space-y-0.5 text-blue-700 dark:text-blue-300">
                   <li>Use at least 8 characters, mixing letters, numbers & symbols</li>
                   <li>Avoid using personal info like birthdates or names</li>
                   <li>Never reuse passwords across different services</li>
-                  <li>You can remove and re-set the password at any time</li>
+                  <li>Disabling protection removes the saved password completely</li>
                 </ul>
               </div>
             </div>
@@ -1006,16 +1005,11 @@ export default function SettingsPage() {
         </div>
       )}
 
-      {/* ════════════════════════════════════════
-          BACKUP & RESTORE TAB
-      ════════════════════════════════════════ */}
+      {/* ════════════ BACKUP & RESTORE TAB ════════════ */}
       {activeTab === 'backup' && (
         <div className="space-y-6">
           <div className="p-5 rounded-2xl bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 flex items-start gap-3">
-            <Database
-              size={20}
-              className="text-indigo-600 dark:text-indigo-400 mt-0.5 shrink-0"
-            />
+            <Database size={20} className="text-indigo-600 dark:text-indigo-400 mt-0.5 shrink-0" />
             <div className="text-sm text-indigo-800 dark:text-indigo-200">
               <p className="font-semibold mb-1">School-scoped backup</p>
               <p className="text-indigo-700 dark:text-indigo-300">
@@ -1023,19 +1017,18 @@ export default function SettingsPage() {
                 {currentSchoolId && (
                   <>
                     {' '}
-                    (
-                    <code className="px-1 py-0.5 rounded bg-indigo-100 dark:bg-indigo-900/40">
+                    (<code className="px-1 py-0.5 rounded bg-indigo-100 dark:bg-indigo-900/40">
                       {currentSchoolId}
                     </code>
                     )
                   </>
                 )}
-                . Other schools' data is never included, and restore never
-                touches other schools.
+                . Other schools' data is never included, and restore never touches other schools.
               </p>
             </div>
           </div>
 
+          {/* Backup */}
           <div className={cardClass}>
             <div className="flex items-center gap-3 mb-6">
               <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 text-white flex items-center justify-center shadow">
@@ -1052,16 +1045,12 @@ export default function SettingsPage() {
             </div>
 
             <div className="p-5 rounded-xl bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 mb-5 flex items-start gap-3">
-              <HardDrive
-                size={20}
-                className="text-emerald-600 dark:text-emerald-400 mt-0.5 shrink-0"
-              />
+              <HardDrive size={20} className="text-emerald-600 dark:text-emerald-400 mt-0.5 shrink-0" />
               <div className="text-sm text-emerald-800 dark:text-emerald-200">
                 <p className="font-semibold mb-1">What's included?</p>
                 <p className="text-emerald-700 dark:text-emerald-300">
-                  Students, teachers, classes, attendance, fees, exams, tests,
-                  subjects, parents, notifications, academy data — all limited to
-                  your school.
+                  Students, teachers, classes, attendance, fees, exams, tests, subjects, parents,
+                  notifications, academy data — all limited to your school.
                 </p>
                 {lastBackup && (
                   <p className="mt-2 text-xs text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
@@ -1078,8 +1067,7 @@ export default function SettingsPage() {
             >
               {backingUp ? (
                 <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" /> Creating
-                  backup...
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" /> Creating backup...
                 </>
               ) : (
                 <>
@@ -1089,6 +1077,7 @@ export default function SettingsPage() {
             </Button>
           </div>
 
+          {/* Restore */}
           <div className={cardClass}>
             <div className="flex items-center gap-3 mb-6">
               <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-500 to-orange-600 text-white flex items-center justify-center shadow">
@@ -1105,15 +1094,12 @@ export default function SettingsPage() {
             </div>
 
             <div className="p-5 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 mb-5 flex items-start gap-3">
-              <AlertTriangle
-                size={20}
-                className="text-amber-600 dark:text-amber-400 mt-0.5 shrink-0"
-              />
+              <AlertTriangle size={20} className="text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
               <div className="text-sm text-amber-800 dark:text-amber-200">
                 <p className="font-semibold mb-1">Warning — Destructive Action</p>
                 <p className="text-amber-700 dark:text-amber-300">
-                  Restoring will <strong>replace your school's current data</strong>{' '}
-                  with the backup file's contents. Other schools are not affected.
+                  Restoring will <strong>replace your school's current data</strong> with the
+                  backup file's contents. Other schools are not affected.
                 </p>
               </div>
             </div>
@@ -1136,8 +1122,7 @@ export default function SettingsPage() {
             ) : (
               <div className="p-4 rounded-xl bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800">
                 <p className="text-sm font-semibold text-rose-800 dark:text-rose-200 mb-3 flex items-center gap-2">
-                  <AlertTriangle size={16} /> Are you sure? This will overwrite
-                  your school's data.
+                  <AlertTriangle size={16} /> Are you sure? This will overwrite your school's data.
                 </p>
                 <div className="flex flex-wrap gap-3">
                   <Button
@@ -1167,12 +1152,10 @@ export default function SettingsPage() {
             )}
           </div>
 
+          {/* Best practices */}
           <div className="p-5 rounded-2xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
             <div className="flex items-start gap-3">
-              <Database
-                size={18}
-                className="text-slate-500 dark:text-slate-400 mt-0.5 shrink-0"
-              />
+              <Database size={18} className="text-slate-500 dark:text-slate-400 mt-0.5 shrink-0" />
               <div className="text-sm text-slate-600 dark:text-slate-400">
                 <p className="font-semibold text-slate-700 dark:text-slate-300 mb-1">
                   Best Practices
@@ -1182,8 +1165,7 @@ export default function SettingsPage() {
                   <li>Store backups in a safe place — cloud or external drive</li>
                   <li>Test restores on a staging environment if possible</li>
                   <li>
-                    Each school's backup is isolated — you can only restore your
-                    own school's backup
+                    Each school's backup is isolated — you can only restore your own school's backup
                   </li>
                 </ul>
               </div>
