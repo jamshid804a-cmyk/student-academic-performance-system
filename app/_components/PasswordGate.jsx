@@ -18,7 +18,8 @@ export default function PasswordGate({ children }) {
       return
     }
 
-    setState('checking')
+    // Show the spinner only on the first check; later checks run silently
+    setState((s) => (s === 'allowed' ? s : 'checking'))
     try {
       // The server reads the httpOnly unlock cookie — the browser cannot fake it
       const r = await fetch('/api/settings/password/required', { cache: 'no-store' })

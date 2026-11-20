@@ -6,6 +6,7 @@ import { Toaster } from "sonner"
 import { usePathname, useRouter } from 'next/navigation'
 import { ProgramProvider, useProgram } from "@/src/context/ProgramContext"
 import GlobalApi from "@/app/_services/GlobalApi"
+import PasswordGate from "@/app/_components/PasswordGate"   // ← NEW
 
 const SideNav = dynamic(() => import('./_component/SideNav'), { ssr: false })
 const Header = dynamic(() => import('./_component/Header'), { ssr: false })
@@ -34,9 +35,12 @@ function writeSectionsCache(data) {
 
 function DashboardLayout({ children }) {
   return (
-    <ProgramProvider initialProgram="school">
-      <GuardAndShell>{children}</GuardAndShell>
-    </ProgramProvider>
+    // ← NEW: the gate is outermost, so SideNav/Header/pages never render while locked
+    <PasswordGate>
+      <ProgramProvider initialProgram="school">
+        <GuardAndShell>{children}</GuardAndShell>
+      </ProgramProvider>
+    </PasswordGate>
   )
 }
 
