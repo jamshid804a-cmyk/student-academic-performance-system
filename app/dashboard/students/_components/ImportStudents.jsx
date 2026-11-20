@@ -1,0 +1,282 @@
+"use client"
+
+import React, { useRef, useState } from 'react'
+import * as XLSX from 'xlsx'
+import { Button } from '@/components/ui/button'
+import {
+    Dialog,
+    DialogContent,
+    DialogHeader,
+    DialogTitle,
+    DialogDescription,
+} from "@/components/ui/dialog"
+import GlobalApi from '@/app/_services/GlobalApi'
+import { toast } from 'sonner'
+import { FileSpreadsheet, Loader2, Download } from 'lucide-react'
+
+const GRADES = [
+    "Nursery", "Prep",
+    "1st", "2nd", "3rd", "4th", "5th", "6th", "7th", "8th", "9th", "10th", "11th", "12th",
+]
+
+// Accepted Excel header names (spaces/case ignored)
+const ALIASES = {
+    name: ['studentname', 'name'],
+    fatherName: ['fathername'],
+    fatherOccupation: ['fatheroccupation'],
+    admissionNo: ['admissionno', 'admno', 'admissionnumber'],
+    contact: ['contactno', 'contact', 'phone', 'mobile'],
+    grade: ['grade', 'class'],
+    section: ['section'],
+    rollNo: ['rollno', 'roll'],
+    session: ['session'],
+    admissionDate: ['admissiondate'],
+    fee: ['fee', 'fees'],
+    address: ['address'],
+}
+
+const norm = (k) => String(k).toLowerCase().replace(/[^a-z0-9]/g, '')
+const clean = (v) => String(v ?? '').trim()
+
+function normalizeGrade(v) {
+    const raw = clean(v).toLowerCase()
+    if (!raw) return ''
+    const direct = GRADES.find((g) => g.toLowerCase() === raw)
+    if (direct) return direct
+    const m = raw.match(/^(\d+)/)
+    if (m) {
+        const n = Number(m[1])
+        if (n >= 1 && n <= 12) {
+            const suffix = n === 1 ? 'st' : n === 2 ? 'nd' : n === 3 ? 'rd' : 'th'
+            return `${n}${suffix}`
+        }
+    }
+    return ''
+}
+
+function normalizeDate(v) {
+    if (!v) return null
+    if (v instanceof Date && !isNaN(v)) {
+        const d = new Date(v.getTime() + 12 * 3600 * 1000) // avoids timezone off-by-one
+        const mm = String(d.getMonth() + 1).padStart(2, '0')
+        const dd = String(d.getDate()).padStart(2, '0')
+        return `${d.getFullYear()}-${mm}-${dd}`
+    }
+    return clean(v) || null // text like 2025-04-01
+}
+
+function ImportStudents({ refreshData, students = [] }) {
+    const fileRef = useRef(null)
+    const [loading, setLoading] = useState(false)
+    const [progress, setProgress] = useState({ done: 0, total: 0 })
+    const [report, setReport] = useState(null)
+
+    const downloadTemplate = () => {
+        const headers = [[
+            'Student Name', 'Father Name', 'Father Occupation', 'Admission No',
+            'Contact No', 'Grade', 'Section', 'Roll No', 'Session',
+            'Admission Date', 'Fee', 'Address',
+        ]]
+        const sample = [[
+            'Ahmed Khan', 'Imran Khan', 'Businessman', 1001,
+            '03001234567', '5th', 'A', 1, '2025-2026',
+            '2025-04-01', 5000, 'Peshawar',
+        ]]
+        const ws = XLSX.utils.aoa_to_sheet([...headers, ...sample])
+        const wb = XLSX.utils.book_new()
+        XLSX.utils.book_append_sheet(wb, ws, 'Students')
+        XLSX.writeFile(wb, 'students-template.xlsx')
+    }
+
+    const handleFile = async (e) => {
+        const file = e.target.files?.[0]
+        e.target.value = ''
+        if (!file) return
+
+        setLoading(true)
+        setReport(null)
+
+        try {
+            const buffer = await file.arrayBuffer()
+            const wb = XLSX.read(buffer, { cellDates: true })
+            const sheet = wb.Sheets[wb.SheetNames[0]]
+            const rawRows = XLSX.utils.sheet_to_json(sheet, { defval: '' })
+
+            if (rawRows.length === 0) {
+                toast.error('The Excel file is empty')
+                setLoading(false)
+                return
+            }
+
+            // Existing students (for duplicate checks)
+            const usedAdmission = new Set(
+                students.map((s) => clean(s.admissionNo)).filter(Boolean)
+            )
+            const rollKey = (roll, grade, section, session) =>
+                [roll, grade, section, session].map((x) => clean(x).toLowerCase()).join('|')
+            const usedRoll = new Set(
+                students
+                    .filter((s) => s.rollNo)
+                    .map((s) => rollKey(s.rollNo, s.grade, s.section, s.session))
+            )
+
+            const valid = []
+            const errors = []
+
+            rawRows.forEach((raw, idx) => {
+                const rowNo = idx + 2 // +2 = header row + 1-based
+                const map = {}
+                Object.keys(raw).forEach((k) => { map[norm(k)] = raw[k] })
+                const get = (field) => {
+                    for (const a of ALIASES[field]) {
+                        if (map[a] !== undefined && map[a] !== '') return map[a]
+                    }
+                    return ''
+                }
+
+                const name = clean(get('name'))
+                const grade = normalizeGrade(get('grade'))
+                if (!name) return errors.push(`Row ${rowNo}: Student Name is missing`)
+                if (!/^[A-Za-z\s]+$/.test(name)) return errors.push(`Row ${rowNo}: Name "${name}" must be letters only`)
+                if (!grade) return errors.push(`Row ${rowNo}: Grade "${clean(get('grade'))}" is not valid`)
+
+                let contact = clean(get('contact')).replace(/[^0-9]/g, '')
+                if (contact.length === 10) contact = '0' + contact // Excel removes leading 0
+                if (contact && contact.length !== 11) {
+                    return errors.push(`Row ${rowNo}: Contact must be 11 digits`)
+                }
+
+                const admissionNo = clean(get('admissionNo')).replace(/[^0-9]/g, '').replace(/^0+/, '')
+                const rollNo = clean(get('rollNo')).replace(/[^0-9]/g, '').replace(/^0+/, '')
+                const section = clean(get('section')).toUpperCase()
+                const session = clean(get('session'))
+
+                if (admissionNo && usedAdmission.has(admissionNo)) {
+                    return errors.push(`Row ${rowNo}: Admission No ${admissionNo} already exists`)
+                }
+                const rk = rollKey(rollNo, grade, section, session)
+                if (rollNo && usedRoll.has(rk)) {
+                    return errors.push(`Row ${rowNo}: Roll No ${rollNo} already exists in ${grade} ${section} ${session}`)
+                }
+                if (admissionNo) usedAdmission.add(admissionNo)
+                if (rollNo) usedRoll.add(rk)
+
+                valid.push({
+                    rowNo,
+                    payload: {
+                        name,
+                        fatherName: clean(get('fatherName')) || null,
+                        fatherOccupation: clean(get('fatherOccupation')) || null,
+                        admissionNo: admissionNo || null,
+                        contact,
+                        grade,
+                        section: section || null,
+                        rollNo: rollNo ? Number(rollNo) : null,
+                        session: session || null,
+                        admissionDate: normalizeDate(get('admissionDate')),
+                        fee: Number(get('fee')) || 0,
+                        address: clean(get('address')),
+                        image: null,
+                    },
+                })
+            })
+
+            // Save in small parallel batches
+            const BATCH = 5
+            let saved = 0
+            setProgress({ done: 0, total: valid.length })
+
+            for (let i = 0; i < valid.length; i += BATCH) {
+                const chunk = valid.slice(i, i + BATCH)
+                const results = await Promise.allSettled(
+                    chunk.map((r) => GlobalApi.CreateNewStudent(r.payload))
+                )
+                results.forEach((res, j) => {
+                    if (res.status === 'fulfilled') {
+                        saved++
+                    } else {
+                        const msg = res.reason?.response?.data?.error || 'Failed to save'
+                        errors.push(`Row ${chunk[j].rowNo} (${chunk[j].payload.name}): ${msg}`)
+                    }
+                })
+                setProgress({ done: Math.min(i + BATCH, valid.length), total: valid.length })
+            }
+
+            setReport({ saved, errors, total: rawRows.length })
+            if (saved > 0) toast.success(`${saved} student(s) imported`)
+            else toast.error('No students were imported')
+
+            if (refreshData) await refreshData()
+        } catch (err) {
+            console.error('IMPORT ERROR:', err)
+            toast.error('Could not read the Excel file')
+        }
+
+        setLoading(false)
+        setProgress({ done: 0, total: 0 })
+    }
+
+    return (
+        <>
+            <input
+                ref={fileRef}
+                type="file"
+                accept=".xlsx,.xls,.csv"
+                className="hidden"
+                onChange={handleFile}
+            />
+
+            <Button
+                variant="outline"
+                onClick={downloadTemplate}
+                disabled={loading}
+                className="gap-2"
+            >
+                <Download className="w-4 h-4" />
+                Template
+            </Button>
+
+            <Button
+                onClick={() => fileRef.current?.click()}
+                disabled={loading}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm gap-2"
+            >
+                {loading ? (
+                    <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        {progress.total ? `Importing ${progress.done}/${progress.total}...` : 'Reading file...'}
+                    </>
+                ) : (
+                    <>
+                        <FileSpreadsheet className="w-4 h-4" />
+                        Import Excel
+                    </>
+                )}
+            </Button>
+
+            <Dialog open={!!report} onOpenChange={(o) => !o && setReport(null)}>
+                <DialogContent className="max-w-lg bg-white">
+                    <DialogHeader>
+                        <DialogTitle>Import Result</DialogTitle>
+                        <DialogDescription>
+                            {report?.saved} of {report?.total} rows imported
+                            {report?.errors.length ? `, ${report.errors.length} skipped` : ''}.
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    {report?.errors.length > 0 && (
+                        <div className="max-h-64 overflow-y-auto rounded-lg border border-red-100 bg-red-50 p-3 text-xs text-red-700 space-y-1">
+                            {report.errors.map((m, i) => <p key={i}>{m}</p>)}
+                        </div>
+                    )}
+
+                    <div className="flex justify-end">
+                        <Button onClick={() => setReport(null)}>Close</Button>
+                    </div>
+                </DialogContent>
+            </Dialog>
+        </>
+    )
+}
+
+export default ImportStudents

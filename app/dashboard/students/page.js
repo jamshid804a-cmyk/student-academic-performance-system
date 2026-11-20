@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react'
 import AddNewStudent from './_components/AddNewStudent'
+import ImportStudents from './_components/ImportStudents'
 import StudentListTable from './_components/StudentListTable'
 import GlobalApi from '@/app/_services/GlobalApi'
 
@@ -37,7 +38,17 @@ function Students() {
         <div className='p-7'>
             <div className='flex justify-between items-center mb-5'>
                 <h2 className='font-bold text-2xl'>Students</h2>
-                <AddNewStudent refreshData={GetAllStudents} />
+
+                <div className='flex items-center gap-3'>
+                    <ImportStudents
+                        refreshData={GetAllStudents}
+                        students={studentList}
+                    />
+                    <AddNewStudent
+                        refreshData={GetAllStudents}
+                        students={studentList}
+                    />
+                </div>
             </div>
 
             <StudentListTable
