@@ -21,7 +21,7 @@ export async function POST(req) {
     }
 
     const res = NextResponse.json({ success: true });
-    setUnlockCookie(res, createUnlockToken(s.schoolId, s.record.hash));
+    setUnlockCookie(res, createUnlockToken(s.schoolId, s.record.hash), req);
     return res;
   } catch (err) {
     return NextResponse.json({ error: err.message }, { status: 500 });
