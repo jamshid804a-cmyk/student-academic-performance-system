@@ -19,6 +19,7 @@ import {
     AlertDialogTitle,
     AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
+import { Button } from '@/components/ui/button'
 import GlobalApi from '@/app/_services/GlobalApi'
 import { toast } from 'sonner'
 import StudentDetailsDialog from './StudentDetailsDialog'
@@ -41,6 +42,9 @@ const PROMOTION_ORDER = [
     "Prep",
     "1st","2nd","3rd","4th","5th","6th","7th","8th","9th","10th","11th","12th",
 ]
+
+// Ask for typed confirmation when deleting this many students or more
+const TYPED_CONFIRM_FROM = 10
 
 function getNextGrade(current) {
     const raw = String(current || "").trim().toLowerCase()
@@ -109,6 +113,8 @@ function sortByAdmissionNo(list) {
 const FILTER_CLASS =
   "px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-sm text-slate-800 dark:text-slate-100 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 dark:focus:ring-blue-900/40 transition-all"
 
+const studentKey = (s) => String(s?.id ?? s?._id ?? "")
+
 const ImageCellRenderer = (props) => {
     const student = props.data
     const src = student?.image || null
@@ -127,6 +133,43 @@ const ImageCellRenderer = (props) => {
                     {initial}
                 </div>
             )}
+        </div>
+    )
+}
+
+// ✅ Checkbox in each row (reads the selection from the grid context)
+const SelectCell = (props) => {
+    const id = studentKey(props.data)
+    const checked = props.context?.selectedIds?.has(id) || false
+    return (
+        <div className="flex items-center justify-center h-full w-full">
+            <input
+                type="checkbox"
+                checked={checked}
+                onChange={() => props.context?.toggle(id)}
+                className="w-4 h-4 cursor-pointer accent-blue-600"
+                title="Select student"
+            />
+        </div>
+    )
+}
+
+// ✅ "Select all" checkbox in the header (selects ALL students in the current view, every page)
+const SelectHeader = (props) => {
+    const selectedCount = props.context?.selectedCount || 0
+    const totalCount = props.context?.totalCount || 0
+    const all = totalCount > 0 && selectedCount === totalCount
+    const some = selectedCount > 0 && !all
+    return (
+        <div className="flex items-center justify-center w-full">
+            <input
+                type="checkbox"
+                checked={all}
+                ref={(el) => { if (el) el.indeterminate = some }}
+                onChange={() => props.context?.toggleAll()}
+                className="w-4 h-4 cursor-pointer accent-blue-600"
+                title="Select all students in this view (all pages)"
+            />
         </div>
     )
 }
@@ -152,6 +195,14 @@ function StudentListTable({ StudentList, refreshData, students }) {
     const [promoteSession, setPromoteSession] = useState("")
     const [promoteProgress, setPromoteProgress] = useState({ current: 0, total: 0 })
     const [renumbering, setRenumbering] = useState(false)
+
+    // ✅ Multi-select + bulk delete state
+    const gridRef = useRef(null)
+    const [selectedIds, setSelectedIds] = useState(() => new Set())
+    const [bulkOpen, setBulkOpen] = useState(false)
+    const [bulkDeleting, setBulkDeleting] = useState(false)
+    const [bulkProgress, setBulkProgress] = useState({ done: 0, total: 0 })
+    const [confirmText, setConfirmText] = useState("")
 
     useEffect(() => {
         let mounted = true
@@ -260,6 +311,121 @@ function StudentListTable({ StudentList, refreshData, students }) {
 
         return sortByAdmissionNo(result)
     }, [rowData, gradeFilter, sectionFilter, sessionFilter, newestSession, searchInput])
+
+    // ─────────────────────────────────────────────
+    // ✅ MULTI-SELECT
+    // Only students visible in the current view can be selected/deleted.
+    // ─────────────────────────────────────────────
+    const visibleIds = useMemo(
+        () => filteredData.map((s) => studentKey(s)).filter(Boolean),
+        [filteredData]
+    )
+
+    // Unselect students that are no longer visible (after changing a filter/search/refresh)
+    useEffect(() => {
+        setSelectedIds((prev) => {
+            if (prev.size === 0) return prev
+            const visible = new Set(visibleIds)
+            const next = new Set([...prev].filter((id) => visible.has(id)))
+            return next.size === prev.size ? prev : next
+        })
+    }, [visibleIds])
+
+    const selectedCount = selectedIds.size
+
+    const gridContext = useMemo(() => ({
+        selectedIds,
+        selectedCount,
+        totalCount: visibleIds.length,
+        toggle: (id) =>
+            setSelectedIds((prev) => {
+                const next = new Set(prev)
+                if (next.has(id)) next.delete(id)
+                else next.add(id)
+                return next
+            }),
+        toggleAll: () =>
+            setSelectedIds((prev) =>
+                prev.size === visibleIds.length && visibleIds.length > 0
+                    ? new Set()
+                    : new Set(visibleIds)
+            ),
+    }), [selectedIds, selectedCount, visibleIds])
+
+    // Re-draw the checkbox cells + header whenever the selection changes
+    useEffect(() => {
+        const api = gridRef.current?.api
+        if (!api) return
+        api.refreshCells({ columns: ['select'], force: true })
+        if (api.refreshHeader) api.refreshHeader()
+    }, [selectedIds, visibleIds])
+
+    const selectAllVisible = () => setSelectedIds(new Set(visibleIds))
+    const clearSelection = () => setSelectedIds(new Set())
+
+    const needsTypedConfirm = selectedCount >= TYPED_CONFIRM_FROM
+    const confirmOk = !needsTypedConfirm || confirmText.trim() === "DELETE"
+
+    const openBulkDelete = () => {
+        setConfirmText("")
+        setBulkOpen(true)
+    }
+
+    const handleBulkDelete = async () => {
+        if (!confirmOk || bulkDeleting) return
+
+        // Map selected keys back to the real student ids
+        const byKey = new Map(rowData.map((s) => [studentKey(s), s.id ?? s._id]))
+        const keys = [...selectedIds].filter((k) => byKey.has(k))
+
+        if (keys.length === 0) {
+            toast.error("No students selected")
+            return
+        }
+
+        setBulkDeleting(true)
+        setBulkProgress({ done: 0, total: keys.length })
+
+        const BATCH = 10
+        const deletedKeys = []
+        let failed = 0
+
+        for (let i = 0; i < keys.length; i += BATCH) {
+            const chunk = keys.slice(i, i + BATCH)
+            const results = await Promise.allSettled(
+                chunk.map((k) => GlobalApi.DeleteStudentRecord(byKey.get(k)))
+            )
+            results.forEach((res, j) => {
+                if (res.status === "fulfilled" && res.value?.data?.success) {
+                    deletedKeys.push(chunk[j])
+                } else {
+                    failed++
+                }
+            })
+            setBulkProgress({ done: Math.min(i + BATCH, keys.length), total: keys.length })
+        }
+
+        // Keep only the ones that failed selected
+        setSelectedIds((prev) => {
+            const next = new Set(prev)
+            deletedKeys.forEach((k) => next.delete(k))
+            return next
+        })
+
+        if (deletedKeys.length > 0 && failed === 0) {
+            toast.success(`${deletedKeys.length} student(s) deleted`)
+        } else if (deletedKeys.length > 0) {
+            toast.warning(`${deletedKeys.length} deleted, ${failed} failed`)
+        } else {
+            toast.error("Delete failed. No students were deleted")
+        }
+
+        setBulkDeleting(false)
+        setBulkProgress({ done: 0, total: 0 })
+        setBulkOpen(false)
+        setConfirmText("")
+        if (refreshData) await refreshData()
+    }
 
     // When no grade/section/search is chosen, we are showing the whole school,
     // so use a bigger page size to display more students at once.
@@ -781,6 +947,19 @@ function StudentListTable({ StudentList, refreshData, students }) {
     // that order. Users can still click a column header to re-sort.
     const colDefs = useMemo(() => [
         {
+            colId: "select",
+            headerName: "",
+            width: 60,
+            sortable: false,
+            filter: false,
+            resizable: false,
+            pinned: "left",
+            suppressMovable: true,
+            cellRenderer: SelectCell,
+            headerComponent: SelectHeader,
+            cellStyle: { display: 'flex', alignItems: 'center', justifyContent: 'center' },
+        },
+        {
             field: "image",
             headerName: "Photo",
             width: 90,
@@ -973,16 +1152,52 @@ function StudentListTable({ StudentList, refreshData, students }) {
                 </div>
             </div>
 
+            {/* ✅ Bulk action bar (shows when students are selected) */}
+            {selectedCount > 0 && (
+                <div className="flex flex-wrap items-center gap-3 mb-4 px-4 py-3 rounded-2xl border border-blue-200 bg-blue-50 dark:bg-blue-900/20 dark:border-blue-800 relative z-0">
+                    <span className="text-sm font-semibold text-blue-800 dark:text-blue-200">
+                        {selectedCount} {selectedCount === 1 ? "student" : "students"} selected
+                        {selectedCount > 1 ? " (all pages)" : ""}
+                    </span>
+
+                    {selectedCount < visibleIds.length && (
+                        <button
+                            onClick={selectAllVisible}
+                            className="text-xs font-semibold text-blue-700 hover:text-blue-900 dark:text-blue-300 underline"
+                        >
+                            Select all {visibleIds.length}
+                        </button>
+                    )}
+
+                    <button
+                        onClick={clearSelection}
+                        className="text-xs font-semibold text-slate-600 hover:text-slate-800 dark:text-slate-300 underline"
+                    >
+                        Clear selection
+                    </button>
+
+                    <button
+                        onClick={openBulkDelete}
+                        className="ml-auto flex items-center gap-2 px-4 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white text-sm font-semibold shadow-sm transition-colors"
+                    >
+                        <Trash2 size={15} />
+                        Delete Selected ({selectedCount})
+                    </button>
+                </div>
+            )}
+
             <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg border border-slate-100 dark:border-slate-700 overflow-hidden relative z-0">
                 <div className="h-1 bg-gradient-to-r from-indigo-500 via-blue-500 to-cyan-500" />
 
                 <div className="ag-theme-quartz" style={{ height: 580, width: '100%' }}>
                     <AgGridReact
+                        ref={gridRef}
                         key={isWholeSchoolView ? "whole-school" : "class-view"}
                         getRowId={(params) => String(params.data?.id ?? params.data?._id)}
                         rowData={filteredData}
                         columnDefs={colDefs}
                         defaultColDef={defaultColDef}
+                        context={gridContext}
                         pagination={true}
                         paginationPageSize={gridPageSize}
                         paginationPageSizeSelector={paginationPageSizeSelector}
@@ -1006,6 +1221,66 @@ function StudentListTable({ StudentList, refreshData, students }) {
                 refreshData={refreshData}
                 students={students || rowData}
             />
+
+            {/* ✅ Bulk delete confirmation */}
+            <AlertDialog
+                open={bulkOpen}
+                onOpenChange={(o) => { if (!bulkDeleting) setBulkOpen(o) }}
+            >
+                <AlertDialogContent className="dark:bg-slate-800 dark:text-slate-100 dark:border-slate-700">
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>
+                            Delete {selectedCount} {selectedCount === 1 ? "student" : "students"}?
+                        </AlertDialogTitle>
+                        <AlertDialogDescription className="dark:text-slate-400">
+                            This will permanently remove the selected students from the system.
+                            This cannot be undone.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+
+                    {needsTypedConfirm && (
+                        <div>
+                            <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1.5">
+                                Type <span className="text-red-600">DELETE</span> to confirm
+                            </label>
+                            <input
+                                value={confirmText}
+                                onChange={(e) => setConfirmText(e.target.value)}
+                                disabled={bulkDeleting}
+                                placeholder="DELETE"
+                                className="w-full px-3 py-2.5 rounded-lg border border-slate-300 focus:border-red-500 focus:ring-2 focus:ring-red-100 outline-none transition text-slate-900 bg-white disabled:opacity-60"
+                            />
+                        </div>
+                    )}
+
+                    <AlertDialogFooter>
+                        <Button
+                            variant="outline"
+                            onClick={() => setBulkOpen(false)}
+                            disabled={bulkDeleting}
+                        >
+                            Cancel
+                        </Button>
+                        <Button
+                            onClick={handleBulkDelete}
+                            disabled={!confirmOk || bulkDeleting}
+                            className="bg-red-600 hover:bg-red-700 text-white"
+                        >
+                            {bulkDeleting ? (
+                                <>
+                                    <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                                    Deleting {bulkProgress.done}/{bulkProgress.total}...
+                                </>
+                            ) : (
+                                <>
+                                    <Trash2 className="w-4 h-4 mr-2" />
+                                    Delete {selectedCount}
+                                </>
+                            )}
+                        </Button>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
 
             {promoteOpen && (
                 <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
