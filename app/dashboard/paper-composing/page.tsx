@@ -4,10 +4,9 @@ import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import {
-  FileEdit, Plus, Trash2, Printer, RotateCcw, Eye,
+  FileEdit, Plus, Trash2, Printer, RotateCcw, Loader2,
   FileText, CheckSquare, SquareCheck, AlignLeft, ListOrdered,
-  BookOpen, PenLine, BookMarked, GitCompare, ToggleLeft,
-  Languages, ArrowLeftRight,
+  BookOpen, PenLine, BookMarked, GitCompare, ToggleLeft, Eye,
 } from 'lucide-react'
 import GlobalApi from '@/app/_services/GlobalApi'
 import { useProgram } from '@/src/context/ProgramContext'
@@ -15,7 +14,7 @@ import { useProgram } from '@/src/context/ProgramContext'
 // ─────────────────────────────────────────────
 // Constants
 // ─────────────────────────────────────────────
-const STORAGE_KEY = 'paper_final_v1'
+const STORAGE_KEY = 'paper_simple_v1'
 
 const GRADES = [
   'Nursery', 'Prep',
@@ -28,36 +27,21 @@ const INPUT =
   'w-full px-3 py-2 rounded-lg border border-slate-300 bg-white text-sm text-slate-800 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100'
 const LABEL = 'block text-xs font-semibold text-slate-600 mb-1'
 
+// Question types — every type you asked for
 const Q_TYPES = [
-  { value: 'simple', label: 'Simple Question', icon: FileText, color: 'bg-slate-100 text-slate-700', hint: 'A plain question with an answer line' },
-  { value: 'fill', label: 'Fill in the Blanks', icon: AlignLeft, color: 'bg-blue-100 text-blue-700', hint: 'Statements with a blank _____' },
-  { value: 'mcq', label: 'Choose Correct Option', icon: CheckSquare, color: 'bg-emerald-100 text-emerald-700', hint: 'A question with 2–4 options' },
-  { value: 'tick', label: 'Tick the Correct', icon: SquareCheck, color: 'bg-amber-100 text-amber-700', hint: 'Tick ✓ or ✗ next to each statement' },
-  { value: 'short', label: 'Short Question', icon: ListOrdered, color: 'bg-violet-100 text-violet-700', hint: 'Answer in 2–3 lines' },
-  { value: 'long', label: 'Long Question', icon: BookOpen, color: 'bg-indigo-100 text-indigo-700', hint: 'Detailed answer question' },
-  { value: 'application', label: 'Application Question', icon: PenLine, color: 'bg-orange-100 text-orange-700', hint: 'Apply the concept to a situation' },
-  { value: 'essay', label: 'Essay', icon: BookMarked, color: 'bg-rose-100 text-rose-700', hint: 'Write an essay on the topic' },
-  { value: 'match', label: 'Match the Columns', icon: GitCompare, color: 'bg-teal-100 text-teal-700', hint: 'Column A → Column B' },
-  { value: 'story', label: 'Story / Paragraph', icon: BookOpen, color: 'bg-pink-100 text-pink-700', hint: 'Write a story from the given clues' },
-  { value: 'truefalse', label: 'True / False', icon: ToggleLeft, color: 'bg-cyan-100 text-cyan-700', hint: 'Mark each statement True or False' },
+  { value: 'simple',   label: 'Simple Question',     icon: FileText,    color: 'bg-slate-100 text-slate-700',     hint: 'A plain question with an answer line' },
+  { value: 'fill',     label: 'Fill in the Blanks',  icon: AlignLeft,   color: 'bg-blue-100 text-blue-700',       hint: 'Statements with a blank _____' },
+  { value: 'mcq',      label: 'Choose Correct Option', icon: CheckSquare, color: 'bg-emerald-100 text-emerald-700', hint: 'A question with 2–4 options' },
+  { value: 'tick',     label: 'Tick the Correct',    icon: SquareCheck, color: 'bg-amber-100 text-amber-700',     hint: 'Tick ✓ or ✗ next to each statement' },
+  { value: 'short',    label: 'Short Question',      icon: ListOrdered, color: 'bg-violet-100 text-violet-700',   hint: 'Answer in 2–3 lines' },
+  { value: 'long',     label: 'Long Question',       icon: BookOpen,    color: 'bg-indigo-100 text-indigo-700',   hint: 'Detailed answer question' },
+  { value: 'application', label: 'Application Question', icon: PenLine, color: 'bg-orange-100 text-orange-700',   hint: 'Apply the concept to a situation' },
+  { value: 'essay',    label: 'Essay',               icon: BookMarked,  color: 'bg-rose-100 text-rose-700',       hint: 'Write an essay on the topic' },
+  { value: 'match',    label: 'Match the Columns',   icon: GitCompare,  color: 'bg-teal-100 text-teal-700',       hint: 'Column A → Column B' },
+  { value: 'story',    label: 'Story / Paragraph',   icon: BookOpen,    color: 'bg-pink-100 text-pink-700',       hint: 'Write a story from the given clues' },
+  { value: 'truefalse', label: 'True / False',       icon: ToggleLeft,  color: 'bg-cyan-100 text-cyan-700',       hint: 'Mark each statement True or False' },
 ]
 
-const PART_STYLES = [
-  { value: 'circle', label: 'Circle numbers (① ② ③ …)' },
-  { value: 'roman', label: 'Roman (i. ii. iii. …)' },
-  { value: 'alpha', label: 'Alphabet (a. b. c. …)' },
-  { value: 'number', label: 'Number (1. 2. 3. …)' },
-  { value: 'paren', label: 'Parenthesized ((1) (2) …)' },
-]
-
-const DIRECTIONS = [
-  { value: 'ltr', label: 'English — Left to Right (LTR)' },
-  { value: 'rtl', label: 'Urdu — Right to Left (RTL)' },
-]
-
-// ─────────────────────────────────────────────
-// Helpers
-// ─────────────────────────────────────────────
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7)
 const fmtDate = (d = new Date()) =>
   new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' })
@@ -67,31 +51,7 @@ const esc = (v) =>
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;').replace(/'/g, '&#39;')
 
-const toRoman = (n) => {
-  const map = [[10, 'x'], [9, 'ix'], [5, 'v'], [4, 'iv'], [1, 'i']]
-  let r = ''
-  map.forEach(([v, s]) => { while (n >= v) { r += s; n -= v } })
-  return r
-}
-
-const circledNumber = (n) => {
-  // ①..⑳
-  if (n >= 1 && n <= 20) return String.fromCharCode(0x2460 + n - 1)
-  return `${n}`
-}
-
-const partLabel = (i, style) => {
-  const n = i + 1
-  if (style === 'circle') return circledNumber(n)
-  if (style === 'roman') return `${toRoman(n)}.`
-  if (style === 'alpha') return `${String.fromCharCode(96 + n)}.`
-  if (style === 'number') return `${n}.`
-  if (style === 'paren') return `(${n})`
-  return `${n}.`
-}
-
-const optionsLabel = (i) => `${String.fromCharCode(65 + i)}.`
-
+// Create a fresh question of the given type
 const newQuestion = (type, marks = 5) => {
   const q = { id: uid(), type, text: '', marks, parts: [] }
   if (type === 'fill') {
@@ -99,7 +59,9 @@ const newQuestion = (type, marks = 5) => {
     q.parts = [1, 2, 3, 4, 5].map(() => ({ id: uid(), text: '' }))
   } else if (type === 'mcq') {
     q.text = 'Choose the correct option:'
-    q.parts = [1, 2, 3, 4, 5].map(() => ({ id: uid(), text: '', options: ['', '', '', ''] }))
+    q.parts = [1, 2, 3, 4, 5].map(() => ({
+      id: uid(), text: '', options: ['', '', '', ''],
+    }))
   } else if (type === 'tick' || type === 'truefalse') {
     q.text = type === 'tick' ? 'Tick (✓) the correct statements:' : 'Write True or False:'
     q.parts = [1, 2, 3, 4, 5].map(() => ({ id: uid(), text: '' }))
@@ -121,10 +83,9 @@ export default function PaperComposingPage() {
   const [school, setSchool] = useState({ name: '', address: '', phone: '', logo: '' })
   const [sessionOptions, setSessionOptions] = useState([])
 
+  // Paper meta
   const [meta, setMeta] = useState({
     pageSize: 'A4',
-    direction: 'ltr',           // 'ltr' | 'rtl'
-    partStyle: 'circle',        // 'circle' | 'roman' | 'alpha' | 'number' | 'paren'
     term: 'Mid Term',
     subject: '',
     grade: '',
@@ -135,14 +96,17 @@ export default function PaperComposingPage() {
     signatureLabel: 'Principal',
     accent: '#1e40af',
     font: "'Segoe UI', Arial, sans-serif",
-    urduFont: "'Noto Nastaliq Urdu', 'Jameel Noori Nastaleeq', 'Segoe UI', Tahoma, sans-serif",
     showLogo: true,
     showHeader: true,
   })
 
+  // Questions array (flat — one list, no sections)
   const [questions, setQuestions] = useState([])
-  const hydrated = useRef(false)
 
+  const hydrated = useRef(false)
+  const [busy, setBusy] = useState(false)
+
+  // ── Persist ──
   useEffect(() => {
     try {
       const raw = localStorage.getItem(STORAGE_KEY)
@@ -162,6 +126,7 @@ export default function PaperComposingPage() {
     } catch {}
   }, [meta, questions])
 
+  // ── School info ──
   useEffect(() => {
     let alive = true
     GlobalApi.GetSchoolInfo()
@@ -179,6 +144,7 @@ export default function PaperComposingPage() {
     return () => { alive = false }
   }, [])
 
+  // ── Session options ──
   useEffect(() => {
     let alive = true
     GlobalApi.GetAllStudents?.({ program: programValue })
@@ -193,22 +159,32 @@ export default function PaperComposingPage() {
           return by - ay
         })
         setSessionOptions(arr)
-        if (arr.length && !meta.session) setMeta((m) => ({ ...m, session: arr[0] }))
+        if (arr.length && !meta.session) {
+          setMeta((m) => ({ ...m, session: arr[0] }))
+        }
       })
       .catch(() => {})
     return () => { alive = false }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [programValue])
 
+  // ── Question ops ──
   const addQuestion = (type) => {
     setQuestions((prev) => [...prev, newQuestion(type)])
+    // scroll down
+    setTimeout(() => {
+      window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' })
+    }, 50)
   }
+
   const updateQuestion = (id, patch) =>
     setQuestions((prev) => prev.map((q) => (q.id === id ? { ...q, ...patch } : q)))
+
   const removeQuestion = (id) => {
     if (!window.confirm('Delete this question?')) return
     setQuestions((prev) => prev.filter((q) => q.id !== id))
   }
+
   const moveQuestion = (id, dir) => {
     setQuestions((prev) => {
       const arr = [...prev]
@@ -220,6 +196,7 @@ export default function PaperComposingPage() {
       return arr
     })
   }
+
   const addPart = (qid) =>
     setQuestions((prev) =>
       prev.map((q) => {
@@ -231,13 +208,18 @@ export default function PaperComposingPage() {
         return { ...q, parts: [...(q.parts || []), part] }
       })
     )
+
   const updatePart = (qid, partId, patch) =>
     setQuestions((prev) =>
       prev.map((q) => {
         if (q.id !== qid) return q
-        return { ...q, parts: (q.parts || []).map((p) => (p.id === partId ? { ...p, ...patch } : p)) }
+        return {
+          ...q,
+          parts: (q.parts || []).map((p) => (p.id === partId ? { ...p, ...patch } : p)),
+        }
       })
     )
+
   const removePart = (qid, partId) =>
     setQuestions((prev) =>
       prev.map((q) => {
@@ -245,6 +227,7 @@ export default function PaperComposingPage() {
         return { ...q, parts: (q.parts || []).filter((p) => p.id !== partId) }
       })
     )
+
   const updateOption = (qid, partId, oi, value) =>
     setQuestions((prev) =>
       prev.map((q) => {
@@ -272,14 +255,7 @@ export default function PaperComposingPage() {
     toast.success('Paper cleared')
   }
 
-  // Effective font — use Urdu when direction is RTL
-  const effectiveFont = meta.direction === 'rtl' ? meta.urduFont : meta.font
-  const textAlign = meta.direction === 'rtl' ? 'right' : 'left'
-  const dir = meta.direction === 'rtl' ? 'rtl' : 'ltr'
-
-  // ─────────────────────────────────────────────
-  // PRINT
-  // ─────────────────────────────────────────────
+  // ── PRINT ──
   const handlePrint = () => {
     if (!questions.length) {
       toast.error('Please add at least one question')
@@ -307,16 +283,15 @@ export default function PaperComposingPage() {
     const questionsHtml = questions.map((q, i) => renderQuestionHTML(q, i, meta)).join('')
 
     const html = `<!DOCTYPE html>
-<html dir="${dir}" lang="${meta.direction === 'rtl' ? 'ur' : 'en'}">
-<head><meta charset="utf-8" />
+<html><head><meta charset="utf-8" />
 <title>${esc(meta.subject || 'Paper')} — ${esc(meta.grade || '')}</title>
 <style>
   ${pageCSS}
   * { box-sizing: border-box; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-  html, body { margin: 0; padding: 0; background: #fff; font-family: ${effectiveFont}; color: #0f172a; direction: ${dir}; }
+  html, body { margin: 0; padding: 0; background: #fff; font-family: ${meta.font}; color: #0f172a; }
   .paper { width: 100%; ${meta.showHeader ? `border: 0.4mm solid ${meta.accent}; padding: 6mm; border-radius: 2mm;` : ''} }
   .head { display: flex; align-items: center; gap: 5mm; padding-bottom: 3mm; }
-  .head-info { flex: 1; text-align: ${textAlign}; }
+  .head-info { flex: 1; }
   .school-name { font-size: 16pt; font-weight: 800; color: ${meta.accent}; text-transform: uppercase; line-height: 1.1; }
   .school-addr { font-size: 8.5pt; color: #475569; margin-top: 0.6mm; }
   .sep { height: 0.5mm; background: ${meta.accent}; margin: 1.5mm 0 2.5mm; border-radius: 1mm; }
@@ -324,24 +299,27 @@ export default function PaperComposingPage() {
   .title > div { display: inline-block; font-size: 12pt; font-weight: 800; text-transform: uppercase; letter-spacing: 1mm; padding: 1.2mm 5mm; background: ${meta.accent}1A; border-radius: 2mm; }
   .meta { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.5mm 5mm; font-size: 9.5pt; margin-bottom: 2.5mm; }
   .meta b { color: ${meta.accent}; }
-  .instr { font-size: 8.5pt; color: #475569; background: #f8fafc; padding: 2mm 3mm; border-${meta.direction === 'rtl' ? 'right' : 'left'}: 1mm solid ${meta.accent}; margin-bottom: 3mm; border-radius: 1mm; }
+  .instr { font-size: 8.5pt; color: #475569; background: #f8fafc; padding: 2mm 3mm; border-left: 1mm solid ${meta.accent}; margin-bottom: 3mm; border-radius: 1mm; }
   .instr b { color: #0f172a; }
-  .q { padding: 2mm 0; page-break-inside: avoid; break-inside: avoid; }
+  .q { padding: 2mm 0; border-bottom: 0.2mm dotted #cbd5e1; page-break-inside: avoid; break-inside: avoid; }
+  .q:last-child { border-bottom: none; }
   .q-line { display: flex; align-items: flex-start; gap: 2mm; }
-  .q-num { font-size: 10.5pt; font-weight: 800; color: ${meta.accent}; flex: none; width: 10mm; text-align: ${textAlign}; }
-  .q-text { flex: 1; font-size: 10.5pt; line-height: 1.5; text-align: ${textAlign}; }
+  .q-num { font-size: 10.5pt; font-weight: 800; color: ${meta.accent}; flex: none; width: 10mm; }
+  .q-text { flex: 1; font-size: 10.5pt; line-height: 1.5; }
   .q-marks { flex: none; width: 11mm; text-align: center; font-size: 8.5pt; font-weight: 700; color: ${meta.accent}; background: ${meta.accent}14; padding: 0.8mm 0; border-radius: 1mm; }
-  .parts { margin-top: 1mm; padding-${meta.direction === 'rtl' ? 'right' : 'left'}: 10mm; }
+  /* Sub parts */
+  .parts { margin-top: 1mm; padding-left: 10mm; }
   .part { display: flex; gap: 2mm; font-size: 10.5pt; margin-bottom: 1mm; }
-  .part-label { color: ${meta.accent}; font-weight: 700; width: 8mm; flex: none; text-align: ${textAlign}; }
-  .part-text { flex: 1; text-align: ${textAlign}; }
-  .opts { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.5mm 4mm; margin-top: 0.5mm; padding-${meta.direction === 'rtl' ? 'right' : 'left'}: 10mm; }
-  .opt { font-size: 10.5pt; text-align: ${textAlign}; }
+  .part-label { color: ${meta.accent}; font-weight: 700; width: 8mm; flex: none; }
+  .part-text { flex: 1; }
+  .opts { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.5mm 4mm; margin-top: 0.5mm; padding-left: 10mm; }
+  .opt { font-size: 10.5pt; }
   .opt b { color: ${meta.accent}; }
+  /* Match columns */
   .match-table { width: 100%; border-collapse: collapse; margin-top: 1mm; }
-  .match-table td { padding: 1mm 2mm; font-size: 10.5pt; text-align: ${textAlign}; }
-  .match-table th { padding: 1mm 2mm; font-size: 10pt; color: ${meta.accent}; text-align: ${textAlign}; border-bottom: 0.3mm solid ${meta.accent}; }
-  .match-table .colA { border-${meta.direction === 'rtl' ? 'left' : 'right'}: 0.3mm solid #cbd5e1; }
+  .match-table td { padding: 1mm 2mm; font-size: 10.5pt; }
+  .match-table .colA { border-right: 0.3mm solid #cbd5e1; }
+  /* Footer */
   .foot { margin-top: 4mm; padding-top: 2.5mm; border-top: 0.3mm solid #cbd5e1; display: flex; align-items: center; justify-content: space-between; }
   .foot .sig { min-width: 45mm; text-align: center; }
   .foot .sig-line { width: 40mm; border-top: 0.3mm solid #0f172a; margin: 0 auto; }
@@ -372,7 +350,9 @@ export default function PaperComposingPage() {
     <div><b>Session:</b> ${esc(meta.session || '—')}</div>
   </div>
   ${meta.instructions ? `<div class="instr"><b>Instructions:</b> ${esc(meta.instructions)}</div>` : ''}
+
   ${questionsHtml}
+
   <div class="foot">
     <div class="sig">
       <div class="sig-line"></div>
@@ -405,7 +385,7 @@ export default function PaperComposingPage() {
           </div>
           <div>
             <h2 className="font-bold text-2xl leading-tight">Paper Composing</h2>
-            <p className="text-xs text-slate-500">Fill details → add questions → print A4 / A5 · English or Urdu</p>
+            <p className="text-xs text-slate-500">Fill the details → add questions → print A4 or A5</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -419,8 +399,9 @@ export default function PaperComposingPage() {
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-[1fr_1fr] gap-6 items-start">
-        {/* LEFT FORM */}
+        {/* ═══════════ LEFT: FORM ═══════════ */}
         <div className="space-y-4">
+          {/* STEP 1: Paper details */}
           <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
             <div className="flex items-center gap-2 mb-4">
               <span className="w-6 h-6 rounded-full bg-indigo-600 text-white text-xs font-bold flex items-center justify-center">1</span>
@@ -428,28 +409,6 @@ export default function PaperComposingPage() {
             </div>
 
             <div className="grid grid-cols-2 gap-3">
-              {/* Direction */}
-              <div className="col-span-2">
-                <label className={LABEL}>Paper language / direction</label>
-                <div className="grid grid-cols-2 gap-2">
-                  {DIRECTIONS.map((d) => (
-                    <button
-                      key={d.value}
-                      onClick={() => setMeta((m) => ({ ...m, direction: d.value }))}
-                      className={`px-3 py-2.5 rounded-lg text-xs font-bold border-2 transition flex items-center justify-center gap-1.5 ${
-                        meta.direction === d.value
-                          ? 'bg-indigo-600 text-white border-indigo-600'
-                          : 'bg-white text-slate-600 border-slate-200 hover:border-indigo-400'
-                      }`}
-                    >
-                      <ArrowLeftRight size={13} />
-                      {d.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Page size */}
               <div className="col-span-2">
                 <label className={LABEL}>Page size</label>
                 <div className="grid grid-cols-2 gap-2">
@@ -467,18 +426,6 @@ export default function PaperComposingPage() {
                     </button>
                   ))}
                 </div>
-              </div>
-
-              {/* Sub-part label style */}
-              <div className="col-span-2">
-                <label className={LABEL}>Sub-part numbering style</label>
-                <select
-                  className={INPUT}
-                  value={meta.partStyle}
-                  onChange={(e) => setMeta((m) => ({ ...m, partStyle: e.target.value }))}
-                >
-                  {PART_STYLES.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
-                </select>
               </div>
 
               <div>
@@ -540,6 +487,7 @@ export default function PaperComposingPage() {
             </div>
           </div>
 
+          {/* STEP 2: Questions */}
           <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
             <div className="flex items-center gap-2 mb-4">
               <span className="w-6 h-6 rounded-full bg-indigo-600 text-white text-xs font-bold flex items-center justify-center">2</span>
@@ -562,7 +510,6 @@ export default function PaperComposingPage() {
                   index={i}
                   isFirst={i === 0}
                   isLast={i === questions.length - 1}
-                  partStyle={meta.partStyle}
                   onUpdate={updateQuestion}
                   onRemove={removeQuestion}
                   onMove={moveQuestion}
@@ -574,6 +521,7 @@ export default function PaperComposingPage() {
               ))}
             </div>
 
+            {/* ADD QUESTION — big labels */}
             <div className="mt-5 pt-5 border-t border-slate-200">
               <p className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-3">
                 ➕ Add a question
@@ -602,19 +550,16 @@ export default function PaperComposingPage() {
           </div>
         </div>
 
-        {/* RIGHT PREVIEW */}
+        {/* ═══════════ RIGHT: LIVE PREVIEW ═══════════ */}
         <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 min-w-0 sticky top-4">
           <div className="flex items-center gap-2 mb-4">
             <Eye size={16} className="text-indigo-600" />
             <h3 className="font-bold text-slate-800">Live Preview</h3>
-            <span className="text-[11px] text-slate-400 ml-auto">
-              {meta.pageSize} · {meta.direction === 'rtl' ? 'Urdu (RTL)' : 'English (LTR)'}
-            </span>
+            <span className="text-[11px] text-slate-400 ml-auto">{meta.pageSize}</span>
           </div>
 
           <div className="rounded-xl bg-slate-100 p-6 overflow-auto" style={{ maxHeight: '85vh' }}>
             <div
-              dir={dir}
               style={{
                 width: meta.pageSize === 'A5' ? '148mm' : '210mm',
                 minHeight: meta.pageSize === 'A5' ? '210mm' : '297mm',
@@ -623,21 +568,14 @@ export default function PaperComposingPage() {
                 background: '#fff',
                 padding: '10mm',
                 boxSizing: 'border-box',
-                fontFamily: effectiveFont,
+                fontFamily: meta.font,
                 boxShadow: '0 10px 30px rgba(15,23,42,0.15)',
                 borderRadius: '2mm',
                 border: meta.showHeader ? `0.4mm solid ${meta.accent}` : 'none',
                 marginBottom: meta.pageSize === 'A5' ? '-30mm' : '-110mm',
-                textAlign,
               }}
             >
-              <PreviewContent
-                meta={meta}
-                questions={questions}
-                school={school}
-                totalMarks={totalMarks}
-                textAlign={textAlign}
-              />
+              <PreviewContent meta={meta} questions={questions} school={school} totalMarks={totalMarks} />
             </div>
           </div>
         </div>
@@ -647,18 +585,15 @@ export default function PaperComposingPage() {
 }
 
 // ─────────────────────────────────────────────
-// Question Card
+// Question Card (big, clear, one question = one card)
 // ─────────────────────────────────────────────
-function QuestionCard({
-  q, index, isFirst, isLast, partStyle,
-  onUpdate, onRemove, onMove,
-  onAddPart, onUpdatePart, onRemovePart, onUpdateOption,
-}) {
+function QuestionCard({ q, index, isFirst, isLast, onUpdate, onRemove, onMove, onAddPart, onUpdatePart, onRemovePart, onUpdateOption }) {
   const typeDef = Q_TYPES.find((t) => t.value === q.type) || Q_TYPES[0]
   const TypeIcon = typeDef.icon
 
   return (
     <div className="rounded-xl border-2 border-slate-200 bg-white overflow-hidden">
+      {/* Header */}
       <div className="flex items-center gap-2 px-3 py-2 bg-slate-50 border-b border-slate-200">
         <div className={`w-7 h-7 rounded-lg ${typeDef.color} flex items-center justify-center flex-none`}>
           <TypeIcon size={14} />
@@ -682,7 +617,9 @@ function QuestionCard({
         </button>
       </div>
 
+      {/* Body */}
       <div className="p-3 space-y-2">
+        {/* Question stem */}
         <div>
           <label className="block text-[10px] font-semibold text-slate-600 mb-1">Question Text</label>
           <textarea
@@ -694,10 +631,8 @@ function QuestionCard({
           />
         </div>
 
-        {(q.type === 'fill' || q.type === 'tick' || q.type === 'truefalse' ||
-          (Array.isArray(q.parts) && q.parts.length > 0 &&
-            (q.type === 'short' || q.type === 'long' || q.type === 'application' ||
-             q.type === 'essay' || q.type === 'story' || q.type === 'simple'))) && (
+        {/* Fill-in / Tick / True-False / Short parts */}
+        {(q.type === 'fill' || q.type === 'tick' || q.type === 'truefalse' || q.type === 'short' || q.type === 'long' || q.type === 'application' || q.type === 'essay' || q.type === 'story' || q.type === 'simple') && Array.isArray(q.parts) && (
           <>
             {q.parts.length > 0 && (
               <div className="flex items-center justify-between mt-2">
@@ -710,8 +645,8 @@ function QuestionCard({
             <div className="space-y-1.5">
               {q.parts.map((p, pi) => (
                 <div key={p.id} className="flex items-center gap-2">
-                  <span className="text-[11px] font-bold text-indigo-600 w-8 flex-none text-center">
-                    {partLabel(pi, partStyle)}
+                  <span className="text-[10px] font-bold text-indigo-600 w-8 flex-none">
+                    {q.type === 'fill' || q.type === 'tick' || q.type === 'truefalse' ? `${pi + 1}.` : `•`}
                   </span>
                   <input
                     className="flex-1 min-w-0 px-2 py-1 rounded border border-slate-200 text-xs outline-none focus:border-indigo-500"
@@ -738,6 +673,7 @@ function QuestionCard({
           </>
         )}
 
+        {/* MCQ parts with options */}
         {q.type === 'mcq' && (
           <>
             <div className="flex items-center justify-between mt-2">
@@ -750,7 +686,7 @@ function QuestionCard({
               {(q.parts || []).map((p, pi) => (
                 <div key={p.id} className="rounded-lg border border-slate-200 bg-slate-50 p-2">
                   <div className="flex items-center gap-2 mb-1.5">
-                    <span className="text-[11px] font-bold text-indigo-600 w-8 text-center">{partLabel(pi, partStyle)}</span>
+                    <span className="text-[10px] font-bold text-indigo-600 w-8">Q{pi + 1}</span>
                     <input
                       className="flex-1 min-w-0 px-2 py-1 rounded border border-slate-200 text-xs outline-none focus:border-indigo-500 bg-white"
                       value={p.text}
@@ -780,6 +716,7 @@ function QuestionCard({
           </>
         )}
 
+        {/* Match columns */}
         {q.type === 'match' && (
           <>
             <div className="flex items-center justify-between mt-2">
@@ -817,9 +754,9 @@ function QuestionCard({
 }
 
 // ─────────────────────────────────────────────
-// Preview
+// Preview content (matches print exactly)
 // ─────────────────────────────────────────────
-function PreviewContent({ meta, questions, school, totalMarks, textAlign }) {
+function PreviewContent({ meta, questions, school, totalMarks }) {
   return (
     <>
       {meta.showHeader && (
@@ -828,8 +765,8 @@ function PreviewContent({ meta, questions, school, totalMarks, textAlign }) {
             {meta.showLogo && school.logo && (
               <img src={school.logo} alt="" style={{ width: '18mm', height: '18mm', objectFit: 'contain', borderRadius: '3mm' }} />
             )}
-            <div style={{ flex: 1, textAlign }}>
-              <div style={{ fontSize: '16pt', fontWeight: 800, color: meta.accent, lineHeight: 1.1 }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: '16pt', fontWeight: 800, color: meta.accent, textTransform: 'uppercase', lineHeight: 1.1 }}>
                 {school.name || 'School Name'}
               </div>
               {school.address && (
@@ -845,12 +782,12 @@ function PreviewContent({ meta, questions, school, totalMarks, textAlign }) {
       )}
 
       <div style={{ textAlign: 'center', marginBottom: '2.5mm' }}>
-        <div style={{ display: 'inline-block', fontSize: '12pt', fontWeight: 800, padding: '1.2mm 5mm', background: `${meta.accent}1A`, borderRadius: '2mm' }}>
+        <div style={{ display: 'inline-block', fontSize: '12pt', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '1mm', padding: '1.2mm 5mm', background: `${meta.accent}1A`, borderRadius: '2mm' }}>
           {meta.term}{meta.session ? ' — ' + meta.session : ''}
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1.5mm 5mm', fontSize: '9.5pt', marginBottom: '2.5mm', textAlign }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1.5mm 5mm', fontSize: '9.5pt', marginBottom: '2.5mm' }}>
         <div><b style={{ color: meta.accent }}>Subject:</b> {meta.subject || '—'}</div>
         <div><b style={{ color: meta.accent }}>Class:</b> {meta.grade || '—'}{meta.section ? ' - ' + meta.section : ''}</div>
         <div><b style={{ color: meta.accent }}>Time:</b> {meta.timeAllowed}</div>
@@ -860,12 +797,7 @@ function PreviewContent({ meta, questions, school, totalMarks, textAlign }) {
       </div>
 
       {meta.instructions && (
-        <div style={{
-          fontSize: '8.5pt', color: '#475569', background: '#f8fafc', padding: '2mm 3mm',
-          borderLeft: textAlign === 'right' ? 'none' : `1mm solid ${meta.accent}`,
-          borderRight: textAlign === 'right' ? `1mm solid ${meta.accent}` : 'none',
-          marginBottom: '3mm', borderRadius: '1mm', textAlign,
-        }}>
+        <div style={{ fontSize: '8.5pt', color: '#475569', background: '#f8fafc', padding: '2mm 3mm', borderLeft: `1mm solid ${meta.accent}`, marginBottom: '3mm', borderRadius: '1mm' }}>
           <b style={{ color: '#0f172a' }}>Instructions:</b> {meta.instructions}
         </div>
       )}
@@ -895,37 +827,36 @@ function PreviewContent({ meta, questions, school, totalMarks, textAlign }) {
 }
 
 // ─────────────────────────────────────────────
-// HTML renderer (used in both preview & print)
+// HTML renderer for a single question (used in both preview & print)
 // ─────────────────────────────────────────────
 function renderQuestionHTML(q, i, meta) {
   const qNum = i + 1
-  const textAlign = meta.direction === 'rtl' ? 'right' : 'left'
-  const padSide = meta.direction === 'rtl' ? 'right' : 'left'
-
+  const numColor = meta.accent
   const marksStyle = `width:11mm;text-align:center;font-size:8.5pt;font-weight:700;color:${meta.accent};background:${meta.accent}14;padding:0.8mm 0;border-radius:1mm;flex:none;`
 
   const mainLine = `
-    <div style="display:flex;align-items:flex-start;gap:2mm;">
-      <span style="font-size:10.5pt;font-weight:800;color:${meta.accent};flex:none;width:10mm;text-align:${textAlign};">Q${qNum}.</span>
-      <div style="flex:1;font-size:10.5pt;line-height:1.5;text-align:${textAlign};">${esc(q.text || '').replace(/\n/g, '<br/>')}</div>
-      <span style="${marksStyle}">${q.marks}</span>
+    <div class="q-line" style="display:flex;align-items:flex-start;gap:2mm;">
+      <span class="q-num" style="font-size:10.5pt;font-weight:800;color:${numColor};flex:none;width:10mm;">Q${qNum}.</span>
+      <div class="q-text" style="flex:1;font-size:10.5pt;line-height:1.5;">${esc(q.text || '').replace(/\n/g, '<br/>')}</div>
+      <span class="q-marks" style="${marksStyle}">${q.marks}</span>
     </div>
   `
 
-  // Fill / Tick / TrueFalse / Short / Long / Simple parts
+  // Fill in the blanks / Tick / True-False / Short / Long / Simple parts
   if (
     q.type === 'fill' || q.type === 'tick' || q.type === 'truefalse' ||
-    (Array.isArray(q.parts) && q.parts.length > 0 &&
-      (q.type === 'short' || q.type === 'long' || q.type === 'application' ||
-       q.type === 'essay' || q.type === 'story' || q.type === 'simple'))
+    (Array.isArray(q.parts) && q.parts.length > 0 && (q.type === 'short' || q.type === 'long' || q.type === 'application' || q.type === 'essay' || q.type === 'story' || q.type === 'simple'))
   ) {
     const parts = (q.parts || []).map((p, pi) => `
-      <div style="display:flex;gap:2mm;font-size:10.5pt;margin-bottom:1mm;">
-        <span style="color:${meta.accent};font-weight:700;width:8mm;flex:none;text-align:${textAlign};">${partLabel(pi, meta.partStyle)}</span>
-        <span style="flex:1;text-align:${textAlign};">${esc(p.text || '')}</span>
+      <div class="part" style="display:flex;gap:2mm;font-size:10.5pt;margin-bottom:1mm;">
+        <span class="part-label" style="color:${meta.accent};font-weight:700;width:8mm;flex:none;">${pi + 1}.</span>
+        <span class="part-text" style="flex:1;">${esc(p.text || '')}</span>
       </div>
     `).join('')
-    return `<div style="padding:2mm 0;page-break-inside:avoid;">${mainLine}<div style="margin-top:1mm;padding-${padSide}:10mm;">${parts}</div></div>`
+    const extra = q.type === 'tick' || q.type === 'truefalse'
+      ? '' // tick has no options, just statements
+      : ''
+    return `<div class="q" style="padding:2mm 0;border-bottom:0.2mm dotted #cbd5e1;page-break-inside:avoid;">${mainLine}${extra}<div class="parts" style="margin-top:1mm;padding-left:10mm;">${parts}</div></div>`
   }
 
   // MCQ
@@ -933,32 +864,32 @@ function renderQuestionHTML(q, i, meta) {
     const parts = (q.parts || []).map((p, pi) => `
       <div style="margin-top:${pi === 0 ? '1mm' : '1.5mm'};">
         <div style="display:flex;gap:2mm;font-size:10.5pt;">
-          <span style="color:${meta.accent};font-weight:700;width:8mm;flex:none;text-align:${textAlign};">${partLabel(pi, meta.partStyle)}</span>
-          <span style="flex:1;text-align:${textAlign};">${esc(p.text || '')}</span>
+          <span style="color:${meta.accent};font-weight:700;width:8mm;flex:none;">${pi + 1}.</span>
+          <span style="flex:1;">${esc(p.text || '')}</span>
         </div>
-        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:0.5mm 4mm;margin-top:0.5mm;padding-${padSide}:10mm;">
+        <div class="opts" style="display:grid;grid-template-columns:repeat(4,1fr);gap:0.5mm 4mm;margin-top:0.5mm;padding-left:10mm;">
           ${(p.options || []).map((o, oi) => `
-            <div style="font-size:10.5pt;text-align:${textAlign};"><b style="color:${meta.accent};">${String.fromCharCode(65 + oi)}.</b> ${esc(o || '')}</div>
+            <div class="opt" style="font-size:10.5pt;"><b style="color:${meta.accent};">${String.fromCharCode(65 + oi)}.</b> ${esc(o || '')}</div>
           `).join('')}
         </div>
       </div>
     `).join('')
-    return `<div style="padding:2mm 0;page-break-inside:avoid;">${mainLine}<div style="padding-${padSide}:10mm;">${parts}</div></div>`
+    return `<div class="q" style="padding:2mm 0;border-bottom:0.2mm dotted #cbd5e1;page-break-inside:avoid;">${mainLine}<div style="padding-left:10mm;">${parts}</div></div>`
   }
 
   // Match columns
   if (q.type === 'match') {
     const rows = (q.parts || []).map((p, pi) => `
       <tr>
-        <td class="${meta.direction === 'rtl' ? 'colB' : 'colA'}" style="padding:1mm 2mm;font-size:10.5pt;${meta.direction === 'rtl' ? 'border-left' : 'border-right'}:0.3mm solid #cbd5e1;width:50%;text-align:${textAlign};">${partLabel(pi, meta.partStyle)} ${esc(p.colA || '')}</td>
-        <td style="padding:1mm 2mm;font-size:10.5pt;text-align:${textAlign};">${String.fromCharCode(65 + pi)}. ${esc(p.colB || '')}</td>
+        <td class="colA" style="padding:1mm 2mm;font-size:10.5pt;border-right:0.3mm solid #cbd5e1;width:50%;">${pi + 1}. ${esc(p.colA || '')}</td>
+        <td style="padding:1mm 2mm;font-size:10.5pt;">${String.fromCharCode(65 + pi)}. ${esc(p.colB || '')}</td>
       </tr>
     `).join('')
-    return `<div style="padding:2mm 0;page-break-inside:avoid;">${mainLine}
-      <table style="width:100%;border-collapse:collapse;margin-top:1mm;">
+    return `<div class="q" style="padding:2mm 0;border-bottom:0.2mm dotted #cbd5e1;page-break-inside:avoid;">${mainLine}
+      <table class="match-table" style="width:100%;border-collapse:collapse;margin-top:1mm;">
         <thead><tr>
-          <th style="text-align:${textAlign};padding:1mm 2mm;font-size:10pt;color:${meta.accent};border-bottom:0.3mm solid ${meta.accent};">Column A</th>
-          <th style="text-align:${textAlign};padding:1mm 2mm;font-size:10pt;color:${meta.accent};border-bottom:0.3mm solid ${meta.accent};">Column B</th>
+          <th style="text-align:left;padding:1mm 2mm;font-size:10pt;color:${meta.accent};border-bottom:0.3mm solid ${meta.accent};">Column A</th>
+          <th style="text-align:left;padding:1mm 2mm;font-size:10pt;color:${meta.accent};border-bottom:0.3mm solid ${meta.accent};">Column B</th>
         </tr></thead>
         <tbody>${rows}</tbody>
       </table>
@@ -966,5 +897,5 @@ function renderQuestionHTML(q, i, meta) {
   }
 
   // Simple / Short / Long / Application / Essay / Story — no parts
-  return `<div style="padding:2mm 0;page-break-inside:avoid;">${mainLine}</div>`
+  return `<div class="q" style="padding:2mm 0;border-bottom:0.2mm dotted #cbd5e1;page-break-inside:avoid;">${mainLine}</div>`
 }
