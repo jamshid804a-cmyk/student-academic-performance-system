@@ -62,6 +62,16 @@ const PATTERNS = [
     { value: 'circles', label: 'Circles' },
 ]
 
+const BG_PRESETS = [
+    { value: 'none', label: 'None' },
+    { value: 'gradient', label: 'Gradient' },
+    { value: 'waves', label: 'Waves' },
+    { value: 'geometric', label: 'Geometric' },
+    { value: 'bubbles', label: 'Bubbles' },
+    { value: 'bands', label: 'Bands' },
+    { value: 'frame', label: 'Frame' },
+]
+
 const FIELD_DEFS = [
     { key: 'father', label: 'Father name' },
     { key: 'roll', label: 'Roll no' },
@@ -69,6 +79,13 @@ const FIELD_DEFS = [
     { key: 'contact', label: 'Contact' },
     { key: 'address', label: 'Address' },
     { key: 'admDate', label: 'Admission date' },
+]
+
+const DEFAULT_RULES = [
+    'This card is the property of the school and is non-transferable.',
+    'Must be carried at all times within the school premises.',
+    'Report loss or damage to the office immediately.',
+    'Use of this card by anyone other than the holder is prohibited.',
 ]
 
 const DEFAULT_CFG = {
@@ -79,6 +96,7 @@ const DEFAULT_CFG = {
     textColor: '#0f172a',
     surface: '#ffffff',
     pattern: 'none',
+    bgPreset: 'none',
     bgImage: '',
     overlay: 0.35,
     fgImage: '',
@@ -92,6 +110,20 @@ const DEFAULT_CFG = {
     showSession: true,
     showLogo: true,
     fields: { father: true, roll: true, adm: true, contact: true, address: false, admDate: false },
+
+    // ── Back side ──
+    showBack: true,
+    backTitle: 'INFORMATION & RULES',
+    backRules: DEFAULT_RULES,
+    backEmergencyLabel: 'Emergency Contact',
+    backEmergencyNote: 'In case of emergency, please contact the school office.',
+    backValidityNote: 'Valid until end of session.',
+    backShowStudentInfo: true,
+    backShowRules: true,
+    backShowEmergency: true,
+    backShowValidity: true,
+    backShowSign: true,
+    backSignLabel: 'Principal',
 }
 
 const SAMPLE_STUDENT = {
@@ -148,6 +180,8 @@ function sortStudents(list) {
 
 const studentKey = (s) => String(s?.id ?? s?._id ?? '')
 
+const isDarkTemplate = (cfg) => cfg.template === 'modern' || cfg.template === 'elegant'
+
 function patternStyle(kind, color) {
     const svgs = {
         dots: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"><circle cx="4" cy="4" r="1.8" fill="${color}"/></svg>`,
@@ -164,10 +198,61 @@ function patternStyle(kind, color) {
     }`
 }
 
+function presetSvg(kind, P, S, SF, dark, land) {
+    const w = land ? 1000 : 630
+    const h = land ? 630 : 1000
+    const r = (n) => Math.round(n)
+    const base = dark ? P : SF
+    const a = dark ? '#ffffff' : P
+    const b = S
+    const m = Math.min(w, h)
+
+    if (kind === 'gradient') {
+        return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${P}"/><stop offset="1" stop-color="${S}"/></linearGradient></defs><rect width="${w}" height="${h}" fill="url(#g)"/></svg>`
+    }
+
+    let shapes = ''
+    if (kind === 'waves') {
+        shapes =
+            `<path d="M0 ${r(h * 0.78)} C ${r(w * 0.25)} ${r(h * 0.68)}, ${r(w * 0.5)} ${r(h * 0.9)}, ${w} ${r(h * 0.74)} L ${w} ${h} L 0 ${h} Z" fill="${b}" fill-opacity="0.85"/>` +
+            `<path d="M0 ${r(h * 0.88)} C ${r(w * 0.3)} ${r(h * 0.8)}, ${r(w * 0.6)} ${r(h * 0.98)}, ${w} ${r(h * 0.86)} L ${w} ${h} L 0 ${h} Z" fill="${a}" fill-opacity="0.9"/>` +
+            `<path d="M0 0 H ${r(w * 0.55)} C ${r(w * 0.4)} ${r(h * 0.12)}, ${r(w * 0.15)} ${r(h * 0.1)}, 0 ${r(h * 0.22)} Z" fill="${b}" fill-opacity="0.35"/>`
+    } else if (kind === 'geometric') {
+        shapes =
+            `<polygon points="0,0 ${r(w * 0.45)},0 0,${r(h * 0.5)}" fill="${a}" fill-opacity="0.16"/>` +
+            `<polygon points="${w},${h} ${r(w * 0.5)},${h} ${w},${r(h * 0.45)}" fill="${b}" fill-opacity="0.35"/>` +
+            `<polygon points="${w},0 ${r(w * 0.7)},0 ${w},${r(h * 0.3)}" fill="${b}" fill-opacity="0.22"/>` +
+            `<polygon points="0,${h} ${r(w * 0.3)},${h} 0,${r(h * 0.7)}" fill="${a}" fill-opacity="0.18"/>`
+    } else if (kind === 'bubbles') {
+        shapes =
+            `<circle cx="${r(w * 0.9)}" cy="${r(h * 0.12)}" r="${r(m * 0.3)}" fill="${b}" fill-opacity="0.3"/>` +
+            `<circle cx="${r(w * 0.08)}" cy="${r(h * 0.9)}" r="${r(m * 0.26)}" fill="${a}" fill-opacity="0.18"/>` +
+            `<circle cx="${r(w * 0.78)}" cy="${r(h * 0.85)}" r="${r(m * 0.1)}" fill="${b}" fill-opacity="0.35"/>` +
+            `<circle cx="${r(w * 0.2)}" cy="${r(h * 0.15)}" r="${r(m * 0.07)}" fill="${a}" fill-opacity="0.2"/>`
+    } else if (kind === 'bands') {
+        shapes =
+            `<polygon points="0,${r(h * 0.55)} ${w},${r(h * 0.2)} ${w},${r(h * 0.38)} 0,${r(h * 0.73)}" fill="${b}" fill-opacity="0.3"/>` +
+            `<polygon points="0,${r(h * 0.75)} ${w},${r(h * 0.42)} ${w},${r(h * 0.5)} 0,${r(h * 0.83)}" fill="${a}" fill-opacity="0.22"/>`
+    } else if (kind === 'frame') {
+        const f = m * 0.05
+        shapes =
+            `<rect x="${r(f)}" y="${r(f)}" width="${r(w - 2 * f)}" height="${r(h - 2 * f)}" rx="${r(f * 0.8)}" fill="none" stroke="${b}" stroke-width="${r(f * 0.25)}"/>` +
+            `<rect x="${r(f * 1.8)}" y="${r(f * 1.8)}" width="${r(w - 3.6 * f)}" height="${r(h - 3.6 * f)}" rx="${r(f * 0.6)}" fill="none" stroke="${a}" stroke-opacity="0.5" stroke-width="${r(f * 0.1)}"/>` +
+            `<circle cx="${r(f)}" cy="${r(f)}" r="${r(f * 0.7)}" fill="${b}"/>` +
+            `<circle cx="${r(w - f)}" cy="${r(f)}" r="${r(f * 0.7)}" fill="${b}"/>` +
+            `<circle cx="${r(f)}" cy="${r(h - f)}" r="${r(f * 0.7)}" fill="${b}"/>` +
+            `<circle cx="${r(w - f)}" cy="${r(h - f)}" r="${r(f * 0.7)}" fill="${b}"/>`
+    }
+
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none"><rect width="${w}" height="${h}" fill="${base}"/>${shapes}</svg>`
+}
+
+const presetUri = (kind, P, S, SF, dark, land) =>
+    `data:image/svg+xml,${encodeURIComponent(presetSvg(kind, P, S, SF, dark, land))}`
+
 const clamp = (n) =>
     `display:-webkit-box;-webkit-line-clamp:${n};-webkit-box-orient:vertical;overflow:hidden;`
 
-// Resize an uploaded image to Full HD max and return a data URL
 function loadImage(file, maxDim, mime) {
     return new Promise((resolve, reject) => {
         const url = URL.createObjectURL(file)
@@ -195,18 +280,9 @@ const sizeOf = (cfg) =>
     cfg.orientation === 'landscape' ? { W: 85.6, H: 54 } : { W: 54, H: 85.6 }
 
 // ─────────────────────────────────────────────
-// ONE function builds the card (used by preview AND print)
+// Theme helper (shared by front & back)
 // ─────────────────────────────────────────────
-function cardHtml(s, cfg, school) {
-    const land = cfg.orientation === 'landscape'
-    const { W, H } = sizeOf(cfg)
-    const t = cfg.template
-    const P = cfg.primary
-    const S = cfg.secondary
-    const T = cfg.textColor
-    const SF = cfg.surface
-    const dark = t === 'modern' || t === 'elegant'
-
+function getTheme(t, P, S, T, SF) {
     const themes = {
         classic: {
             cardBg: SF, headBg: P, headText: '#ffffff', body: T, name: P, panel: 'transparent',
@@ -230,17 +306,37 @@ function cardHtml(s, cfg, school) {
             stripBg: S, stripText: P, photoBorder: S, pillBg: S, pillText: P,
         },
     }
-    const th = themes[t] || themes.classic
+    return themes[t] || themes.classic
+}
 
-    // ── Background layers ──
+// ─────────────────────────────────────────────
+// FRONT card
+// ─────────────────────────────────────────────
+function cardHtml(s, cfg, school) {
+    const land = cfg.orientation === 'landscape'
+    const { W, H } = sizeOf(cfg)
+    const t = cfg.template
+    const P = cfg.primary
+    const S = cfg.secondary
+    const T = cfg.textColor
+    const SF = cfg.surface
+    const dark = isDarkTemplate(cfg)
+
+    const th = getTheme(t, P, S, T, SF)
+
     const overlayColor = dark ? '#000000' : SF
+    const fill = 'position:absolute;left:0;top:0;width:100%;height:100%;'
     let layers = ''
+
     if (cfg.bgImage) {
-        layers += `<div style="position:absolute;inset:0;background-image:url(${cfg.bgImage});background-size:cover;background-position:center;"></div>`
-        layers += `<div style="position:absolute;inset:0;background:${overlayColor};opacity:${cfg.overlay};"></div>`
+        layers += `<img src="${esc(cfg.bgImage)}" alt="" style="${fill}object-fit:cover;" />`
+        layers += `<div style="${fill}background:${overlayColor};opacity:${cfg.overlay};"></div>`
+    } else if (cfg.bgPreset && cfg.bgPreset !== 'none') {
+        layers += `<img src="${presetUri(cfg.bgPreset, P, S, SF, dark, land)}" alt="" style="${fill}object-fit:fill;" />`
     }
+
     if (cfg.pattern && cfg.pattern !== 'none') {
-        layers += `<div style="position:absolute;inset:0;opacity:0.14;${patternStyle(cfg.pattern, dark ? '#ffffff' : P)}"></div>`
+        layers += `<div style="${fill}opacity:0.14;${patternStyle(cfg.pattern, dark ? '#ffffff' : P)}"></div>`
     }
     if (t === 'modern') {
         layers += `<div style="position:absolute;right:-12mm;top:-12mm;width:36mm;height:36mm;border-radius:50%;background:rgba(255,255,255,0.1);"></div>`
@@ -251,13 +347,12 @@ function cardHtml(s, cfg, school) {
             : `<div style="position:absolute;left:0;right:0;top:0;height:2.2mm;background:${P};"></div>`
     }
     if (t === 'elegant') {
-        layers += `<div style="position:absolute;inset:1.2mm;border:0.3mm solid ${S};border-radius:2mm;"></div>`
+        layers += `<div style="position:absolute;left:1.2mm;top:1.2mm;right:1.2mm;bottom:1.2mm;border:0.3mm solid ${S};border-radius:2mm;"></div>`
     }
     if (cfg.fgImage) {
-        layers += `<img src="${esc(cfg.fgImage)}" alt="" style="position:absolute;inset:0;width:100%;height:100%;object-fit:fill;" />`
+        layers += `<img src="${esc(cfg.fgImage)}" alt="" style="${fill}object-fit:fill;" />`
     }
 
-    // ── Header ──
     const schoolName = (cfg.schoolName || '').trim() || school.name || 'School Name'
     const schoolAddr = (cfg.schoolAddress || '').trim() || school.address || ''
     const nameLen = schoolName.length
@@ -287,7 +382,6 @@ function cardHtml(s, cfg, school) {
         ? `<div style="flex:none;height:4mm;display:flex;align-items:center;justify-content:center;background:${th.stripBg};color:${th.stripText};font-size:5pt;font-weight:800;letter-spacing:0.5mm;text-transform:uppercase;">${esc(cfg.title)}</div>`
         : ''
 
-    // ── Photo ──
     const hasImg = typeof s.image === 'string' && /^(data:image|https?:|\/)/.test(s.image)
     const pw = land ? 22 : 23
     const ph = cfg.photoShape === 'circle' ? pw : 27
@@ -299,7 +393,6 @@ function cardHtml(s, cfg, school) {
             : `<span style="font-size:16pt;font-weight:800;color:${P};">${initial}</span>`}
     </div>`
 
-    // ── Details ──
     const nameText = s.name || ''
     const nSize = land
         ? (nameText.length > 22 ? 8.6 : 10.4)
@@ -344,7 +437,6 @@ function cardHtml(s, cfg, school) {
             <div style="margin-top:1.6mm;width:100%;padding:1.2mm 1.6mm;border-radius:1.5mm;background:${th.panel};box-sizing:border-box;">${rows}</div>
         </div>`
 
-    // ── Footer ──
     const sessionTxt = cfg.showSession && s.session ? `Session ${esc(s.session)}` : ''
     const sign = cfg.showSign
         ? `<div style="width:17mm;text-align:center;"><div style="border-top:0.2mm solid currentColor;padding-top:0.2mm;font-size:4.4pt;">${esc(cfg.signLabel)}</div></div>`
@@ -354,6 +446,160 @@ function cardHtml(s, cfg, school) {
             t === 'minimal' ? `border-top:0.2mm solid ${S};` : ''
         }"><span style="align-self:center;">${sessionTxt}</span>${sign}</div>`
         : `<div style="flex:none;height:2mm;"></div>`
+
+    const minimalPad = t === 'minimal' ? (land ? 'padding-left:2.4mm;' : 'padding-top:2.4mm;') : ''
+
+    return `<div class="idc" style="position:relative;width:${W}mm;height:${H}mm;overflow:hidden;border-radius:3mm;background:${th.cardBg};font-family:${cfg.font};color:${th.body};box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact;">
+        ${layers}
+        <div style="position:relative;display:flex;flex-direction:column;width:100%;height:100%;box-sizing:border-box;${minimalPad}">
+            ${header}${strip}${body}${footer}
+        </div>
+    </div>`
+}
+
+// ─────────────────────────────────────────────
+// BACK side of the card
+// ─────────────────────────────────────────────
+function cardBackHtml(s, cfg, school) {
+    const land = cfg.orientation === 'landscape'
+    const { W, H } = sizeOf(cfg)
+    const t = cfg.template
+    const P = cfg.primary
+    const S = cfg.secondary
+    const T = cfg.textColor
+    const SF = cfg.surface
+    const dark = isDarkTemplate(cfg)
+
+    const th = getTheme(t, P, S, T, SF)
+
+    const overlayColor = dark ? '#000000' : SF
+    const fill = 'position:absolute;left:0;top:0;width:100%;height:100%;'
+    let layers = ''
+
+    if (cfg.bgImage) {
+        layers += `<img src="${esc(cfg.bgImage)}" alt="" style="${fill}object-fit:cover;" />`
+        layers += `<div style="${fill}background:${overlayColor};opacity:${cfg.overlay};"></div>`
+    } else if (cfg.bgPreset && cfg.bgPreset !== 'none') {
+        layers += `<img src="${presetUri(cfg.bgPreset, P, S, SF, dark, land)}" alt="" style="${fill}object-fit:fill;" />`
+    }
+    if (cfg.pattern && cfg.pattern !== 'none') {
+        layers += `<div style="${fill}opacity:0.14;${patternStyle(cfg.pattern, dark ? '#ffffff' : P)}"></div>`
+    }
+    if (t === 'modern') {
+        layers += `<div style="position:absolute;left:-12mm;bottom:-12mm;width:36mm;height:36mm;border-radius:50%;background:rgba(255,255,255,0.1);"></div>`
+    }
+    if (t === 'minimal') {
+        layers += land
+            ? `<div style="position:absolute;left:0;top:0;bottom:0;width:2.2mm;background:${P};"></div>`
+            : `<div style="position:absolute;left:0;right:0;top:0;height:2.2mm;background:${P};"></div>`
+    }
+    if (t === 'elegant') {
+        layers += `<div style="position:absolute;left:1.2mm;top:1.2mm;right:1.2mm;bottom:1.2mm;border:0.3mm solid ${S};border-radius:2mm;"></div>`
+    }
+    if (cfg.fgImage) {
+        layers += `<img src="${esc(cfg.fgImage)}" alt="" style="${fill}object-fit:fill;" />`
+    }
+
+    const schoolName = (cfg.schoolName || '').trim() || school.name || 'School Name'
+    const schoolAddr = (cfg.schoolAddress || '').trim() || school.address || ''
+    const schoolPhone = school.phone || ''
+    const nameLen = schoolName.length
+    const hSize = (land ? 7.2 : 6.6) * (nameLen > 34 ? 0.78 : nameLen > 24 ? 0.9 : 1)
+    const logoSize = land ? 7.5 : 6.5
+    const logo = cfg.showLogo && school.logo
+        ? `<img src="${esc(school.logo)}" alt="" style="width:${logoSize}mm;height:${logoSize}mm;object-fit:contain;flex:none;border-radius:1mm;${
+            t === 'minimal' ? '' : 'background:#ffffff;padding:0.3mm;box-sizing:border-box;'
+        }" />`
+        : ''
+
+    const header = land
+        ? `<div style="display:flex;align-items:center;gap:2mm;height:11mm;padding:0 3mm;background:${th.headBg};color:${th.headText};flex:none;box-sizing:border-box;">
+            ${logo}
+            <div style="min-width:0;flex:1;">
+                <div style="font-size:${hSize}pt;font-weight:800;line-height:1.15;text-transform:uppercase;${clamp(1)}">${esc(schoolName)}</div>
+                <div style="font-size:4.2pt;opacity:0.9;line-height:1.2;margin-top:0.3mm;${clamp(1)}">
+                    ${esc(schoolAddr)}${schoolAddr && schoolPhone ? ' • ' : ''}${schoolPhone ? `Ph: ${esc(schoolPhone)}` : ''}
+                </div>
+            </div>
+        </div>`
+        : `<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0.6mm;height:15mm;padding:1mm 2.5mm;text-align:center;background:${th.headBg};color:${th.headText};flex:none;box-sizing:border-box;">
+            ${logo}
+            <div style="font-size:${hSize}pt;font-weight:800;line-height:1.1;text-transform:uppercase;${clamp(1)}">${esc(schoolName)}</div>
+            <div style="font-size:3.8pt;opacity:0.9;line-height:1.15;${clamp(1)}">
+                ${esc(schoolAddr)}${schoolAddr && schoolPhone ? ' • ' : ''}${schoolPhone ? `Ph: ${esc(schoolPhone)}` : ''}
+            </div>
+        </div>`
+
+    const strip = (cfg.backTitle || '').trim()
+        ? `<div style="flex:none;height:4mm;display:flex;align-items:center;justify-content:center;background:${th.stripBg};color:${th.stripText};font-size:5pt;font-weight:800;letter-spacing:0.5mm;text-transform:uppercase;">${esc(cfg.backTitle)}</div>`
+        : ''
+
+    const clsText = [s.grade, s.section].filter(Boolean).join(' - ')
+    const studentInfo = cfg.backShowStudentInfo
+        ? `<div style="padding:1mm 1.6mm;border-radius:1.2mm;background:${th.panel};margin-bottom:1.2mm;">
+            <div style="font-size:5.6pt;font-weight:800;color:${th.name};${clamp(1)}">${esc(s.name || '')}</div>
+            <div style="font-size:4.8pt;opacity:0.85;margin-top:0.3mm;${clamp(1)}">
+                ${clsText ? `Class ${esc(clsText)}` : ''}${clsText && s.rollNo ? ' • ' : ''}${s.rollNo ? `Roll ${esc(s.rollNo)}` : ''}${s.session ? ` • Session ${esc(s.session)}` : ''}
+            </div>
+        </div>`
+        : ''
+
+    const rules = Array.isArray(cfg.backRules) ? cfg.backRules.filter((r) => String(r || '').trim()) : []
+    const rulesHtml = cfg.backShowRules && rules.length
+        ? `<div style="margin-bottom:1.2mm;">
+            <div style="font-size:5pt;font-weight:800;color:${th.name};margin-bottom:0.6mm;letter-spacing:0.3mm;text-transform:uppercase;">Rules</div>
+            <ul style="margin:0;padding-left:3mm;font-size:4.6pt;line-height:1.35;color:${th.body};">
+                ${rules.slice(0, 5).map((r) => `<li style="margin-bottom:0.3mm;">${esc(r)}</li>`).join('')}
+            </ul>
+        </div>`
+        : ''
+
+    const emergency = cfg.backShowEmergency
+        ? `<div style="padding:1mm 1.6mm;border-radius:1.2mm;background:${th.panel};margin-bottom:1.2mm;">
+            <div style="font-size:4.8pt;font-weight:800;color:${th.name};letter-spacing:0.3mm;text-transform:uppercase;">${esc(cfg.backEmergencyLabel || 'Emergency Contact')}</div>
+            <div style="font-size:4.6pt;line-height:1.35;margin-top:0.3mm;">
+                ${esc(cfg.backEmergencyNote || '')}
+                ${schoolPhone ? `<br/><span style="font-weight:800;">${esc(schoolPhone)}</span>` : ''}
+            </div>
+        </div>`
+        : ''
+
+    const validity = cfg.backShowValidity && String(cfg.backValidityNote || '').trim()
+        ? `<div style="font-size:4.4pt;opacity:0.8;margin-bottom:0.8mm;">${esc(cfg.backValidityNote)}</div>`
+        : ''
+    const backSign = cfg.backShowSign
+        ? `<div style="text-align:right;">
+            <div style="display:inline-block;width:18mm;border-top:0.2mm solid currentColor;padding-top:0.2mm;font-size:4.4pt;text-align:center;">${esc(cfg.backSignLabel || 'Principal')}</div>
+        </div>`
+        : ''
+
+    const body = land
+        ? `<div style="flex:1;min-height:0;display:flex;gap:2.5mm;padding:1.2mm 3mm;box-sizing:border-box;">
+            <div style="flex:1.2;min-width:0;display:flex;flex-direction:column;">
+                ${studentInfo}
+                ${rulesHtml}
+            </div>
+            <div style="flex:1;min-width:0;display:flex;flex-direction:column;">
+                ${emergency}
+                <div style="margin-top:auto;">
+                    ${validity}
+                    ${backSign}
+                </div>
+            </div>
+        </div>`
+        : `<div style="flex:1;min-height:0;display:flex;flex-direction:column;padding:1.6mm 3mm;box-sizing:border-box;">
+            ${studentInfo}
+            ${rulesHtml}
+            ${emergency}
+            <div style="margin-top:auto;">
+                ${validity}
+                ${backSign}
+            </div>
+        </div>`
+
+    const footer = `<div style="flex:none;height:4.5mm;display:flex;align-items:center;justify-content:center;background:${th.footBg};color:${th.footText};font-size:4.4pt;font-weight:700;letter-spacing:0.3mm;box-sizing:border-box;${
+        t === 'minimal' ? `border-top:0.2mm solid ${S};` : ''
+    }">${esc(schoolName)}</div>`
 
     const minimalPad = t === 'minimal' ? (land ? 'padding-left:2.4mm;' : 'padding-top:2.4mm;') : ''
 
@@ -415,6 +661,7 @@ export default function IdCardSection() {
     const [cfg, setCfg] = useState(DEFAULT_CFG)
     const [loaded, setLoaded] = useState(false)
     const [scale, setScale] = useState(1.5)
+    const [previewSide, setPreviewSide] = useState('front') // 'front' | 'back'
 
     const sessionInit = useRef(false)
     const warnedStorage = useRef(false)
@@ -433,6 +680,7 @@ export default function IdCardSection() {
                     ...DEFAULT_CFG,
                     ...saved,
                     fields: { ...DEFAULT_CFG.fields, ...(saved.fields || {}) },
+                    backRules: Array.isArray(saved.backRules) ? saved.backRules : DEFAULT_RULES,
                 })
             }
         } catch {}
@@ -566,9 +814,12 @@ export default function IdCardSection() {
     const previewList = isSample ? [SAMPLE_STUDENT] : selectedStudents.slice(0, 12)
 
     const previewHtml = useMemo(
-        () => previewList.map((s) => ({ key: studentKey(s), html: cardHtml(s, cfg, school) })),
+        () => previewList.map((s) => ({
+            key: studentKey(s),
+            html: previewSide === 'back' ? cardBackHtml(s, cfg, school) : cardHtml(s, cfg, school),
+        })),
         // eslint-disable-next-line react-hooks/exhaustive-deps
-        [selectedStudents, cfg, school]
+        [previewList, cfg, school, previewSide]
     )
 
     // ── Upload handlers ──
@@ -578,7 +829,7 @@ export default function IdCardSection() {
         if (!f) return
         if (!f.type.startsWith('image/')) return toast.error('Please choose an image file')
         try {
-            set({ bgImage: await loadImage(f, 1920, 'image/jpeg') })
+            set({ bgImage: await loadImage(f, 1920, 'image/jpeg'), bgPreset: 'none' })
         } catch {
             toast.error('Could not read this image')
         }
@@ -602,7 +853,7 @@ export default function IdCardSection() {
         if (window.confirm('Reset the card design to default?')) setCfg(DEFAULT_CFG)
     }
 
-    // ── Print / Save as PDF ──
+    // ── Print / Save as PDF (front + back) ──
     const handlePrint = () => {
         if (selectedStudents.length === 0) {
             toast.error('Select at least one student first')
@@ -613,13 +864,25 @@ export default function IdCardSection() {
         const perPage = land ? 10 : 9
         const colGap = land ? 4 : 3
         const rowGap = land ? 2 : 3
+        const includeBack = !!cfg.showBack
 
         const pages = []
-        for (let i = 0; i < selectedStudents.length; i += perPage) {
-            const chunk = selectedStudents.slice(i, i + perPage)
-            pages.push(
-                `<div class="sheet">${chunk.map((s) => cardHtml(s, cfg, school)).join('')}</div>`
-            )
+
+        if (includeBack) {
+            for (let i = 0; i < selectedStudents.length; i += perPage) {
+                const chunk = selectedStudents.slice(i, i + perPage)
+                const frontCards = chunk.map((s) => cardHtml(s, cfg, school)).join('')
+                const backCards = chunk.map((s) => cardBackHtml(s, cfg, school)).join('')
+                pages.push(`<div class="sheet">${frontCards}</div>`)
+                pages.push(`<div class="sheet">${backCards}</div>`)
+            }
+        } else {
+            for (let i = 0; i < selectedStudents.length; i += perPage) {
+                const chunk = selectedStudents.slice(i, i + perPage)
+                pages.push(
+                    `<div class="sheet">${chunk.map((s) => cardHtml(s, cfg, school)).join('')}</div>`
+                )
+            }
         }
 
         const win = window.open('', '_blank', 'width=1000,height=800')
@@ -635,9 +898,13 @@ export default function IdCardSection() {
 <title>Student ID Cards</title>
 <style>
     @page { size: A4; margin: 0; }
-    * { box-sizing: border-box; }
+    * {
+        box-sizing: border-box;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+        color-adjust: exact !important;
+    }
     html, body { margin: 0; padding: 0; background: #fff; }
-    body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     .sheet {
         width: 210mm; height: 297mm; padding: 8mm;
         display: grid;
@@ -648,11 +915,12 @@ export default function IdCardSection() {
     }
     .sheet:last-child { page-break-after: auto; break-after: auto; }
     .idc { outline: 0.15mm solid #c8c8c8; }
+    img { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
 </style>
 </head>
 <body>
 ${pages.join('')}
-<script>window.onload = function () { setTimeout(function () { window.print() }, 300) }</script>
+<script>window.onload = function () { setTimeout(function () { window.print() }, 600) }</script>
 </body>
 </html>`
 
@@ -664,6 +932,8 @@ ${pages.join('')}
     // ─────────────────────────────────────────────
     // UI
     // ─────────────────────────────────────────────
+    const dark = isDarkTemplate(cfg)
+
     return (
         <div className="p-7">
             {/* Title */}
@@ -838,7 +1108,37 @@ ${pages.join('')}
                         </Section>
 
                         <Section title="Background">
-                            <label className={LABEL}>Pattern</label>
+                            <label className={LABEL}>Ready-made backgrounds (always print)</label>
+                            <div className="grid grid-cols-4 gap-2 mb-4">
+                                {BG_PRESETS.map((p) => {
+                                    const active = !cfg.bgImage && cfg.bgPreset === p.value
+                                    return (
+                                        <button
+                                            key={p.value}
+                                            onClick={() => set({ bgPreset: p.value, bgImage: '' })}
+                                            title={p.label}
+                                            className={`rounded-lg overflow-hidden border-2 text-[10px] font-bold transition ${
+                                                active ? 'border-blue-600 ring-2 ring-blue-200' : 'border-slate-200 hover:border-slate-400'
+                                            }`}
+                                        >
+                                            {p.value === 'none' ? (
+                                                <div className="h-10 flex items-center justify-center bg-slate-50 text-slate-500">None</div>
+                                            ) : (
+                                                <img
+                                                    src={presetUri(p.value, cfg.primary, cfg.secondary, cfg.surface, dark, true)}
+                                                    alt={p.label}
+                                                    className="w-full h-10 object-cover"
+                                                />
+                                            )}
+                                            {p.value !== 'none' && (
+                                                <div className="py-0.5 bg-white text-slate-600">{p.label}</div>
+                                            )}
+                                        </button>
+                                    )
+                                })}
+                            </div>
+
+                            <label className={LABEL}>Pattern on top</label>
                             <select
                                 className={INPUT + ' mb-3'}
                                 value={cfg.pattern}
@@ -847,7 +1147,7 @@ ${pages.join('')}
                                 {PATTERNS.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
                             </select>
 
-                            <label className={LABEL}>Background image (resized to Full HD)</label>
+                            <label className={LABEL}>Your own background image (resized to Full HD)</label>
                             <div className="flex items-center gap-2 mb-3">
                                 <label className="cursor-pointer inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-300 text-xs font-semibold text-slate-700 hover:bg-slate-50">
                                     <Upload size={13} /> Upload
@@ -941,7 +1241,7 @@ ${pages.join('')}
                             <input className={INPUT} value={cfg.signLabel} onChange={(e) => set({ signLabel: e.target.value })} />
                         </Section>
 
-                        <Section title="Show on card">
+                        <Section title="Show on card (front)">
                             <div className="grid grid-cols-2 gap-y-2 gap-x-3">
                                 {FIELD_DEFS.map((f) => (
                                     <label key={f.key} className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
@@ -970,6 +1270,86 @@ ${pages.join('')}
                             <p className="text-[11px] text-slate-400 mt-3">
                                 Tip: showing many fields on a small card can make the text cramped.
                             </p>
+                        </Section>
+
+                        {/* ── BACK SIDE SETTINGS ── */}
+                        <Section title="Back side">
+                            <label className="flex items-center gap-2 text-sm font-semibold text-slate-700 cursor-pointer mb-3">
+                                <input
+                                    type="checkbox"
+                                    checked={!!cfg.showBack}
+                                    onChange={(e) => set({ showBack: e.target.checked })}
+                                    className="w-4 h-4 accent-blue-600"
+                                />
+                                Print back side of the card
+                            </label>
+
+                            <label className={LABEL}>Back title</label>
+                            <input
+                                className={INPUT + ' mb-3'}
+                                value={cfg.backTitle}
+                                onChange={(e) => set({ backTitle: e.target.value })}
+                            />
+
+                            <label className={LABEL}>Rules (one per line)</label>
+                            <textarea
+                                className={INPUT + ' mb-3'}
+                                rows={5}
+                                value={(cfg.backRules || []).join('\n')}
+                                onChange={(e) => set({ backRules: e.target.value.split('\n') })}
+                            />
+
+                            <label className={LABEL}>Emergency label</label>
+                            <input
+                                className={INPUT + ' mb-3'}
+                                value={cfg.backEmergencyLabel}
+                                onChange={(e) => set({ backEmergencyLabel: e.target.value })}
+                            />
+
+                            <label className={LABEL}>Emergency note</label>
+                            <textarea
+                                className={INPUT + ' mb-3'}
+                                rows={2}
+                                value={cfg.backEmergencyNote}
+                                onChange={(e) => set({ backEmergencyNote: e.target.value })}
+                            />
+
+                            <label className={LABEL}>Validity note</label>
+                            <input
+                                className={INPUT + ' mb-3'}
+                                value={cfg.backValidityNote}
+                                onChange={(e) => set({ backValidityNote: e.target.value })}
+                            />
+
+                            <label className={LABEL}>Back signature label</label>
+                            <input
+                                className={INPUT + ' mb-3'}
+                                value={cfg.backSignLabel}
+                                onChange={(e) => set({ backSignLabel: e.target.value })}
+                            />
+
+                            <div className="grid grid-cols-2 gap-y-2 gap-x-3 mt-2">
+                                <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
+                                    <input type="checkbox" checked={!!cfg.backShowStudentInfo} onChange={(e) => set({ backShowStudentInfo: e.target.checked })} className="w-4 h-4 accent-blue-600" />
+                                    Student info
+                                </label>
+                                <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
+                                    <input type="checkbox" checked={!!cfg.backShowRules} onChange={(e) => set({ backShowRules: e.target.checked })} className="w-4 h-4 accent-blue-600" />
+                                    Rules
+                                </label>
+                                <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
+                                    <input type="checkbox" checked={!!cfg.backShowEmergency} onChange={(e) => set({ backShowEmergency: e.target.checked })} className="w-4 h-4 accent-blue-600" />
+                                    Emergency
+                                </label>
+                                <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
+                                    <input type="checkbox" checked={!!cfg.backShowValidity} onChange={(e) => set({ backShowValidity: e.target.checked })} className="w-4 h-4 accent-blue-600" />
+                                    Validity
+                                </label>
+                                <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
+                                    <input type="checkbox" checked={!!cfg.backShowSign} onChange={(e) => set({ backShowSign: e.target.checked })} className="w-4 h-4 accent-blue-600" />
+                                    Signature
+                                </label>
+                            </div>
                         </Section>
                     </div>
                 </div>
@@ -1020,10 +1400,44 @@ ${pages.join('')}
                         </div>
                     </div>
 
+                    {/* ── FRONT / BACK TOGGLE BUTTONS (big, obvious) ── */}
+                    <div className="flex items-center gap-3 mb-4">
+                        <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                            Preview side:
+                        </span>
+                        <button
+                            type="button"
+                            onClick={() => setPreviewSide('front')}
+                            className={`px-5 py-2 rounded-lg text-sm font-bold border-2 transition ${
+                                previewSide === 'front'
+                                    ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
+                                    : 'bg-white text-slate-600 border-slate-300 hover:border-blue-400 hover:text-blue-600'
+                            }`}
+                        >
+                            Front Side
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setPreviewSide('back')}
+                            className={`px-5 py-2 rounded-lg text-sm font-bold border-2 transition ${
+                                previewSide === 'back'
+                                    ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
+                                    : 'bg-white text-slate-600 border-slate-300 hover:border-blue-400 hover:text-blue-600'
+                            }`}
+                        >
+                            Back Side
+                        </button>
+                        {previewSide === 'back' && !cfg.showBack && (
+                            <span className="text-[11px] text-amber-600 font-semibold">
+                                (Back side printing is off — enable it in "Back side" settings)
+                            </span>
+                        )}
+                    </div>
+
                     <p className="text-xs text-slate-500 mb-4">
                         {isSample
-                            ? 'Sample card. Select students on the left to see their real cards.'
-                            : `Showing ${previewList.length} of ${selectedStudents.length} selected. Printing includes all ${selectedStudents.length}.`}
+                            ? `Sample ${previewSide} card. Select students on the left to see their real cards.`
+                            : `Showing ${previewList.length} of ${selectedStudents.length} selected — ${previewSide} side. Printing includes all ${selectedStudents.length}${cfg.showBack ? ' (front + back)' : ' (front only)'}.`}
                     </p>
 
                     <div className="rounded-xl bg-slate-100 p-6 overflow-auto">
@@ -1053,8 +1467,8 @@ ${pages.join('')}
                     </div>
 
                     <p className="text-[11px] text-slate-400 mt-3">
-                        Standard card size 85.6 × 54 mm. In the print window, turn on "Background graphics"
-                        if the colors do not appear.
+                        Standard card size 85.6 × 54 mm. In the print window, also turn on "Background graphics"
+                        if you ever see the background missing.
                     </p>
                 </div>
             </div>
