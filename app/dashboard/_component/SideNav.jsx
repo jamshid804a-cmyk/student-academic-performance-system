@@ -5,7 +5,7 @@ import {
   GraduationCap, Hand, LayoutIcon, BookOpen,
   ChevronDown, ChevronRight, FileText, FlaskConical, Wallet, Settings,
   LogOut, ChevronUp, User, Users, PanelLeftClose, PanelLeftOpen,
-  School, Library
+  School, Library, IdCard
 } from 'lucide-react'
 import Image from 'next/image'
 import Link from 'next/link'
@@ -107,6 +107,7 @@ function SideNav() {
     { id: 2, name: 'Students', icon: GraduationCap, path: `${base}/students` },
     { id: 3, name: 'Teachers', icon: Users, path: `${base}/teachers` },
     { id: 4, name: 'Attendance', icon: Hand, path: `${base}/attendance` },
+    { id: 5, name: 'ID Cards', icon: IdCard, path: `${base}/id-cards` },
   ]
 
   const academicItems = isAcademy
