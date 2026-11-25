@@ -279,9 +279,6 @@ function loadImage(file, maxDim, mime) {
 const sizeOf = (cfg) =>
     cfg.orientation === 'landscape' ? { W: 85.6, H: 54 } : { W: 54, H: 85.6 }
 
-// ─────────────────────────────────────────────
-// Theme helper (shared by front & back)
-// ─────────────────────────────────────────────
 function getTheme(t, P, S, T, SF) {
     const themes = {
         classic: {
@@ -383,9 +380,21 @@ function cardHtml(s, cfg, school) {
         : ''
 
     const hasImg = typeof s.image === 'string' && /^(data:image|https?:|\/)/.test(s.image)
-    const pw = land ? 22 : 23
-    const ph = cfg.photoShape === 'circle' ? pw : 27
-    const radius = cfg.photoShape === 'circle' ? '50%' : cfg.photoShape === 'rounded' ? '2.5mm' : '0.6mm'
+
+    // Photo sizing: landscape = wide row layout; portrait = compact, centered.
+    let pw, ph
+    if (land) {
+        pw = 22
+        ph = cfg.photoShape === 'circle' ? pw : 27
+    } else {
+        if (cfg.photoShape === 'circle') { pw = 18; ph = 18 }
+        else if (cfg.photoShape === 'rounded') { pw = 18; ph = 21 }
+        else { pw = 16; ph = 19 }
+    }
+    const radius =
+        cfg.photoShape === 'circle' ? '50%'
+        : cfg.photoShape === 'rounded' ? '2.5mm'
+        : '0.6mm'
     const initial = esc((s.name || '?').trim().charAt(0).toUpperCase())
     const photo = `<div style="width:${pw}mm;height:${ph}mm;flex:none;border-radius:${radius};overflow:hidden;border:0.7mm solid ${th.photoBorder};background:#e2e8f0;box-shadow:0 0.6mm 1.6mm rgba(0,0,0,0.25);display:flex;align-items:center;justify-content:center;box-sizing:border-box;">
         ${hasImg
@@ -396,7 +405,7 @@ function cardHtml(s, cfg, school) {
     const nameText = s.name || ''
     const nSize = land
         ? (nameText.length > 22 ? 8.6 : 10.4)
-        : (nameText.length > 20 ? 8.2 : 9.8)
+        : (nameText.length > 24 ? 7.2 : nameText.length > 18 ? 8.2 : 9.4)
     const nameHtml = `<div style="font-size:${nSize}pt;font-weight:800;color:${th.name};line-height:1.15;${land ? '' : 'text-align:center;'}${clamp(2)}">${esc(nameText)}</div>`
 
     const clsText = [s.grade, s.section].filter(Boolean).join(' - ')
@@ -412,13 +421,22 @@ function cardHtml(s, cfg, school) {
         ['address', 'Address', s.address],
         ['admDate', 'Adm Date', s.admissionDate],
     ]
-    const labelW = land ? 11 : 10.5
+    const labelW = land ? 11 : 9.5
+    const rowFont = land ? 5.8 : 5.4
     const rows = rowDefs
         .filter(([k, , v]) => cfg.fields?.[k] && v !== null && v !== undefined && String(v).trim() !== '')
-        .map(([k, label, v]) => `<div style="display:flex;gap:1.2mm;font-size:5.8pt;line-height:1.4;">
-            <span style="width:${labelW}mm;flex:none;opacity:0.75;font-weight:600;">${label}</span>
-            <span style="flex:1;min-width:0;font-weight:700;${k === 'address' ? clamp(2) : 'overflow:hidden;white-space:nowrap;text-overflow:ellipsis;'}">${esc(v)}</span>
-        </div>`)
+        .map(([k, label, v]) => {
+            const isAddress = k === 'address'
+            const valueStyle = isAddress
+                ? (land ? clamp(2) : clamp(3))
+                : (land
+                    ? 'overflow:hidden;white-space:nowrap;text-overflow:ellipsis;'
+                    : 'overflow:hidden;word-break:break-word;')
+            return `<div style="display:flex;gap:1mm;font-size:${rowFont}pt;line-height:${land ? 1.4 : 1.35};">
+                <span style="width:${labelW}mm;flex:none;opacity:0.75;font-weight:600;">${label}</span>
+                <span style="flex:1;min-width:0;font-weight:700;${valueStyle}">${esc(v)}</span>
+            </div>`
+        })
         .join('')
 
     const body = land
@@ -430,11 +448,11 @@ function cardHtml(s, cfg, school) {
                 <div style="margin-top:1.2mm;">${rows}</div>
             </div>
         </div>`
-        : `<div style="flex:1;min-height:0;display:flex;flex-direction:column;align-items:center;padding:2.5mm 3mm 1mm;box-sizing:border-box;">
+        : `<div style="flex:1;min-height:0;display:flex;flex-direction:column;align-items:center;padding:1.6mm 3mm 1mm;box-sizing:border-box;overflow:hidden;">
             ${photo}
-            <div style="margin-top:1.8mm;width:100%;">${nameHtml}</div>
-            ${pill}
-            <div style="margin-top:1.6mm;width:100%;padding:1.2mm 1.6mm;border-radius:1.5mm;background:${th.panel};box-sizing:border-box;">${rows}</div>
+            <div style="margin-top:1.4mm;width:100%;">${nameHtml}</div>
+            <div style="margin-top:0.8mm;min-height:0;">${pill}</div>
+            <div style="margin-top:1.2mm;width:100%;padding:1.2mm 1.6mm;border-radius:1.5mm;background:${th.panel};box-sizing:border-box;flex:1;min-height:0;overflow:hidden;">${rows}</div>
         </div>`
 
     const sessionTxt = cfg.showSession && s.session ? `Session ${esc(s.session)}` : ''
@@ -503,8 +521,6 @@ function cardBackHtml(s, cfg, school) {
     const schoolName = (cfg.schoolName || '').trim() || school.name || 'School Name'
     const schoolAddr = (cfg.schoolAddress || '').trim() || school.address || ''
     const schoolPhone = school.phone || ''
-    const nameLen = schoolName.length
-    const hSize = (land ? 7.2 : 6.6) * (nameLen > 34 ? 0.78 : nameLen > 24 ? 0.9 : 1)
     const logoSize = land ? 7.5 : 6.5
     const logo = cfg.showLogo && school.logo
         ? `<img src="${esc(school.logo)}" alt="" style="width:${logoSize}mm;height:${logoSize}mm;object-fit:contain;flex:none;border-radius:1mm;${
@@ -512,23 +528,15 @@ function cardBackHtml(s, cfg, school) {
         }" />`
         : ''
 
-    const header = land
-        ? `<div style="display:flex;align-items:center;gap:2mm;height:11mm;padding:0 3mm;background:${th.headBg};color:${th.headText};flex:none;box-sizing:border-box;">
-            ${logo}
-            <div style="min-width:0;flex:1;">
-                <div style="font-size:${hSize}pt;font-weight:800;line-height:1.15;text-transform:uppercase;${clamp(1)}">${esc(schoolName)}</div>
-                <div style="font-size:4.2pt;opacity:0.9;line-height:1.2;margin-top:0.3mm;${clamp(1)}">
-                    ${esc(schoolAddr)}${schoolAddr && schoolPhone ? ' • ' : ''}${schoolPhone ? `Ph: ${esc(schoolPhone)}` : ''}
-                </div>
-            </div>
-        </div>`
-        : `<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0.6mm;height:15mm;padding:1mm 2.5mm;text-align:center;background:${th.headBg};color:${th.headText};flex:none;box-sizing:border-box;">
-            ${logo}
-            <div style="font-size:${hSize}pt;font-weight:800;line-height:1.1;text-transform:uppercase;${clamp(1)}">${esc(schoolName)}</div>
-            <div style="font-size:3.8pt;opacity:0.9;line-height:1.15;${clamp(1)}">
+    const header = `<div style="display:flex;align-items:center;gap:2mm;height:10mm;padding:0 3mm;background:${th.headBg};color:${th.headText};flex:none;box-sizing:border-box;">
+        ${logo}
+        <div style="min-width:0;flex:1;text-align:${land ? 'left' : 'center'};">
+            <div style="font-size:${land ? 7 : 6.4}pt;font-weight:800;line-height:1.15;text-transform:uppercase;${clamp(1)}">${esc(schoolName)}</div>
+            <div style="font-size:4pt;opacity:0.9;line-height:1.2;margin-top:0.3mm;${clamp(1)}">
                 ${esc(schoolAddr)}${schoolAddr && schoolPhone ? ' • ' : ''}${schoolPhone ? `Ph: ${esc(schoolPhone)}` : ''}
             </div>
-        </div>`
+        </div>
+    </div>`
 
     const strip = (cfg.backTitle || '').trim()
         ? `<div style="flex:none;height:4mm;display:flex;align-items:center;justify-content:center;background:${th.stripBg};color:${th.stripText};font-size:5pt;font-weight:800;letter-spacing:0.5mm;text-transform:uppercase;">${esc(cfg.backTitle)}</div>`
@@ -536,9 +544,9 @@ function cardBackHtml(s, cfg, school) {
 
     const clsText = [s.grade, s.section].filter(Boolean).join(' - ')
     const studentInfo = cfg.backShowStudentInfo
-        ? `<div style="padding:1mm 1.6mm;border-radius:1.2mm;background:${th.panel};margin-bottom:1.2mm;">
-            <div style="font-size:5.6pt;font-weight:800;color:${th.name};${clamp(1)}">${esc(s.name || '')}</div>
-            <div style="font-size:4.8pt;opacity:0.85;margin-top:0.3mm;${clamp(1)}">
+        ? `<div style="padding:0.8mm 1.4mm;border-radius:1.2mm;background:${th.panel};margin-bottom:1mm;">
+            <div style="font-size:5.4pt;font-weight:800;color:${th.name};${clamp(1)}">${esc(s.name || '')}</div>
+            <div style="font-size:4.6pt;opacity:0.85;margin-top:0.2mm;${clamp(1)}">
                 ${clsText ? `Class ${esc(clsText)}` : ''}${clsText && s.rollNo ? ' • ' : ''}${s.rollNo ? `Roll ${esc(s.rollNo)}` : ''}${s.session ? ` • Session ${esc(s.session)}` : ''}
             </div>
         </div>`
@@ -546,18 +554,18 @@ function cardBackHtml(s, cfg, school) {
 
     const rules = Array.isArray(cfg.backRules) ? cfg.backRules.filter((r) => String(r || '').trim()) : []
     const rulesHtml = cfg.backShowRules && rules.length
-        ? `<div style="margin-bottom:1.2mm;">
-            <div style="font-size:5pt;font-weight:800;color:${th.name};margin-bottom:0.6mm;letter-spacing:0.3mm;text-transform:uppercase;">Rules</div>
-            <ul style="margin:0;padding-left:3mm;font-size:4.6pt;line-height:1.35;color:${th.body};">
-                ${rules.slice(0, 5).map((r) => `<li style="margin-bottom:0.3mm;">${esc(r)}</li>`).join('')}
+        ? `<div style="margin-bottom:1mm;">
+            <div style="font-size:4.8pt;font-weight:800;color:${th.name};margin-bottom:0.4mm;letter-spacing:0.3mm;text-transform:uppercase;">Rules</div>
+            <ul style="margin:0;padding-left:3mm;font-size:4.4pt;line-height:1.3;color:${th.body};">
+                ${rules.slice(0, 5).map((r) => `<li style="margin-bottom:0.2mm;">${esc(r)}</li>`).join('')}
             </ul>
         </div>`
         : ''
 
     const emergency = cfg.backShowEmergency
-        ? `<div style="padding:1mm 1.6mm;border-radius:1.2mm;background:${th.panel};margin-bottom:1.2mm;">
-            <div style="font-size:4.8pt;font-weight:800;color:${th.name};letter-spacing:0.3mm;text-transform:uppercase;">${esc(cfg.backEmergencyLabel || 'Emergency Contact')}</div>
-            <div style="font-size:4.6pt;line-height:1.35;margin-top:0.3mm;">
+        ? `<div style="padding:0.8mm 1.4mm;border-radius:1.2mm;background:${th.panel};margin-bottom:1mm;">
+            <div style="font-size:4.6pt;font-weight:800;color:${th.name};letter-spacing:0.3mm;text-transform:uppercase;">${esc(cfg.backEmergencyLabel || 'Emergency Contact')}</div>
+            <div style="font-size:4.4pt;line-height:1.3;margin-top:0.2mm;">
                 ${esc(cfg.backEmergencyNote || '')}
                 ${schoolPhone ? `<br/><span style="font-weight:800;">${esc(schoolPhone)}</span>` : ''}
             </div>
@@ -565,39 +573,25 @@ function cardBackHtml(s, cfg, school) {
         : ''
 
     const validity = cfg.backShowValidity && String(cfg.backValidityNote || '').trim()
-        ? `<div style="font-size:4.4pt;opacity:0.8;margin-bottom:0.8mm;">${esc(cfg.backValidityNote)}</div>`
+        ? `<div style="font-size:4.2pt;opacity:0.8;margin-bottom:0.6mm;">${esc(cfg.backValidityNote)}</div>`
         : ''
     const backSign = cfg.backShowSign
         ? `<div style="text-align:right;">
-            <div style="display:inline-block;width:18mm;border-top:0.2mm solid currentColor;padding-top:0.2mm;font-size:4.4pt;text-align:center;">${esc(cfg.backSignLabel || 'Principal')}</div>
+            <div style="display:inline-block;width:16mm;border-top:0.2mm solid currentColor;padding-top:0.2mm;font-size:4.2pt;text-align:center;">${esc(cfg.backSignLabel || 'Principal')}</div>
         </div>`
         : ''
 
     const body = land
-        ? `<div style="flex:1;min-height:0;display:flex;gap:2.5mm;padding:1.2mm 3mm;box-sizing:border-box;">
-            <div style="flex:1.2;min-width:0;display:flex;flex-direction:column;">
-                ${studentInfo}
-                ${rulesHtml}
-            </div>
-            <div style="flex:1;min-width:0;display:flex;flex-direction:column;">
-                ${emergency}
-                <div style="margin-top:auto;">
-                    ${validity}
-                    ${backSign}
-                </div>
-            </div>
+        ? `<div style="flex:1;min-height:0;display:flex;gap:2mm;padding:1mm 3mm;box-sizing:border-box;">
+            <div style="flex:1.2;min-width:0;display:flex;flex-direction:column;">${studentInfo}${rulesHtml}</div>
+            <div style="flex:1;min-width:0;display:flex;flex-direction:column;">${emergency}<div style="margin-top:auto;">${validity}${backSign}</div></div>
         </div>`
-        : `<div style="flex:1;min-height:0;display:flex;flex-direction:column;padding:1.6mm 3mm;box-sizing:border-box;">
-            ${studentInfo}
-            ${rulesHtml}
-            ${emergency}
-            <div style="margin-top:auto;">
-                ${validity}
-                ${backSign}
-            </div>
+        : `<div style="flex:1;min-height:0;display:flex;flex-direction:column;padding:1.4mm 3mm;box-sizing:border-box;overflow:hidden;">
+            ${studentInfo}${rulesHtml}${emergency}
+            <div style="margin-top:auto;">${validity}${backSign}</div>
         </div>`
 
-    const footer = `<div style="flex:none;height:4.5mm;display:flex;align-items:center;justify-content:center;background:${th.footBg};color:${th.footText};font-size:4.4pt;font-weight:700;letter-spacing:0.3mm;box-sizing:border-box;${
+    const footer = `<div style="flex:none;height:4mm;display:flex;align-items:center;justify-content:center;background:${th.footBg};color:${th.footText};font-size:4.2pt;font-weight:700;letter-spacing:0.3mm;box-sizing:border-box;${
         t === 'minimal' ? `border-top:0.2mm solid ${S};` : ''
     }">${esc(schoolName)}</div>`
 
@@ -853,7 +847,7 @@ export default function IdCardSection() {
         if (window.confirm('Reset the card design to default?')) setCfg(DEFAULT_CFG)
     }
 
-    // ── Print / Save as PDF (front + back) ──
+    // ── Print / Save as PDF (front + back interleaved) ──
     const handlePrint = () => {
         if (selectedStudents.length === 0) {
             toast.error('Select at least one student first')
@@ -1267,9 +1261,6 @@ ${pages.join('')}
                                     Signature line
                                 </label>
                             </div>
-                            <p className="text-[11px] text-slate-400 mt-3">
-                                Tip: showing many fields on a small card can make the text cramped.
-                            </p>
                         </Section>
 
                         {/* ── BACK SIDE SETTINGS ── */}
@@ -1400,18 +1391,18 @@ ${pages.join('')}
                         </div>
                     </div>
 
-                    {/* ── FRONT / BACK TOGGLE BUTTONS (big, obvious) ── */}
-                    <div className="flex items-center gap-3 mb-4">
-                        <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                    {/* FRONT / BACK PREVIEW BUTTONS */}
+                    <div className="flex items-center gap-2 mt-1 mb-4 pt-3 border-t border-slate-200">
+                        <span className="text-xs font-bold text-slate-500 uppercase tracking-wider mr-1">
                             Preview side:
                         </span>
                         <button
                             type="button"
                             onClick={() => setPreviewSide('front')}
-                            className={`px-5 py-2 rounded-lg text-sm font-bold border-2 transition ${
+                            className={`px-4 py-2 rounded-lg text-sm font-bold border-2 transition ${
                                 previewSide === 'front'
-                                    ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
-                                    : 'bg-white text-slate-600 border-slate-300 hover:border-blue-400 hover:text-blue-600'
+                                    ? 'bg-blue-600 text-white border-blue-600 shadow'
+                                    : 'bg-white text-slate-600 border-slate-300 hover:border-blue-400'
                             }`}
                         >
                             Front Side
@@ -1419,17 +1410,17 @@ ${pages.join('')}
                         <button
                             type="button"
                             onClick={() => setPreviewSide('back')}
-                            className={`px-5 py-2 rounded-lg text-sm font-bold border-2 transition ${
+                            className={`px-4 py-2 rounded-lg text-sm font-bold border-2 transition ${
                                 previewSide === 'back'
-                                    ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
-                                    : 'bg-white text-slate-600 border-slate-300 hover:border-blue-400 hover:text-blue-600'
+                                    ? 'bg-blue-600 text-white border-blue-600 shadow'
+                                    : 'bg-white text-slate-600 border-slate-300 hover:border-blue-400'
                             }`}
                         >
                             Back Side
                         </button>
                         {previewSide === 'back' && !cfg.showBack && (
                             <span className="text-[11px] text-amber-600 font-semibold">
-                                (Back side printing is off — enable it in "Back side" settings)
+                                (back printing off — enable it under "Back side" settings)
                             </span>
                         )}
                     </div>
@@ -1437,7 +1428,7 @@ ${pages.join('')}
                     <p className="text-xs text-slate-500 mb-4">
                         {isSample
                             ? `Sample ${previewSide} card. Select students on the left to see their real cards.`
-                            : `Showing ${previewList.length} of ${selectedStudents.length} selected — ${previewSide} side. Printing includes all ${selectedStudents.length}${cfg.showBack ? ' (front + back)' : ' (front only)'}.`}
+                            : `Showing ${previewList.length} of ${selectedStudents.length} — ${previewSide} side. Printing includes all ${selectedStudents.length}${cfg.showBack ? ' (front + back)' : ' (front only)'}.`}
                     </p>
 
                     <div className="rounded-xl bg-slate-100 p-6 overflow-auto">
@@ -1467,8 +1458,7 @@ ${pages.join('')}
                     </div>
 
                     <p className="text-[11px] text-slate-400 mt-3">
-                        Standard card size 85.6 × 54 mm. In the print window, also turn on "Background graphics"
-                        if you ever see the background missing.
+                        Standard card size 85.6 × 54 mm. In the print window, turn on "Background graphics" if backgrounds look missing.
                     </p>
                 </div>
             </div>
