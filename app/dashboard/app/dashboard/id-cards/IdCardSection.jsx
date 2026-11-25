@@ -3,7 +3,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
-import { IdCard, Printer, Search, RotateCcw, Upload, X, Loader2, Eye } from 'lucide-react'
+import { IdCard, Printer, Search, RotateCcw, Upload, X, Loader2 } from 'lucide-react'
 import GlobalApi from '@/app/_services/GlobalApi'
 import { useProgram } from '@/src/context/ProgramContext'
 
@@ -310,7 +310,7 @@ function getTheme(t, P, S, T, SF) {
 }
 
 // ─────────────────────────────────────────────
-// FRONT card (unchanged behavior)
+// FRONT card
 // ─────────────────────────────────────────────
 function cardHtml(s, cfg, school) {
     const land = cfg.orientation === 'landscape'
@@ -458,7 +458,7 @@ function cardHtml(s, cfg, school) {
 }
 
 // ─────────────────────────────────────────────
-// BACK side of the card (NEW)
+// BACK side of the card
 // ─────────────────────────────────────────────
 function cardBackHtml(s, cfg, school) {
     const land = cfg.orientation === 'landscape'
@@ -534,7 +534,6 @@ function cardBackHtml(s, cfg, school) {
         ? `<div style="flex:none;height:4mm;display:flex;align-items:center;justify-content:center;background:${th.stripBg};color:${th.stripText};font-size:5pt;font-weight:800;letter-spacing:0.5mm;text-transform:uppercase;">${esc(cfg.backTitle)}</div>`
         : ''
 
-    // ── Student summary block (small) ──
     const clsText = [s.grade, s.section].filter(Boolean).join(' - ')
     const studentInfo = cfg.backShowStudentInfo
         ? `<div style="padding:1mm 1.6mm;border-radius:1.2mm;background:${th.panel};margin-bottom:1.2mm;">
@@ -545,7 +544,6 @@ function cardBackHtml(s, cfg, school) {
         </div>`
         : ''
 
-    // ── Rules list ──
     const rules = Array.isArray(cfg.backRules) ? cfg.backRules.filter((r) => String(r || '').trim()) : []
     const rulesHtml = cfg.backShowRules && rules.length
         ? `<div style="margin-bottom:1.2mm;">
@@ -556,7 +554,6 @@ function cardBackHtml(s, cfg, school) {
         </div>`
         : ''
 
-    // ── Emergency block ──
     const emergency = cfg.backShowEmergency
         ? `<div style="padding:1mm 1.6mm;border-radius:1.2mm;background:${th.panel};margin-bottom:1.2mm;">
             <div style="font-size:4.8pt;font-weight:800;color:${th.name};letter-spacing:0.3mm;text-transform:uppercase;">${esc(cfg.backEmergencyLabel || 'Emergency Contact')}</div>
@@ -567,7 +564,6 @@ function cardBackHtml(s, cfg, school) {
         </div>`
         : ''
 
-    // ── Validity + signature ──
     const validity = cfg.backShowValidity && String(cfg.backValidityNote || '').trim()
         ? `<div style="font-size:4.4pt;opacity:0.8;margin-bottom:0.8mm;">${esc(cfg.backValidityNote)}</div>`
         : ''
@@ -873,7 +869,6 @@ export default function IdCardSection() {
         const pages = []
 
         if (includeBack) {
-            // Print in pairs: front then back for each student
             for (let i = 0; i < selectedStudents.length; i += perPage) {
                 const chunk = selectedStudents.slice(i, i + perPage)
                 const frontCards = chunk.map((s) => cardHtml(s, cfg, school)).join('')
@@ -938,7 +933,6 @@ ${pages.join('')}
     // UI
     // ─────────────────────────────────────────────
     const dark = isDarkTemplate(cfg)
-    const landscape = cfg.orientation === 'landscape'
 
     return (
         <div className="p-7">
@@ -1395,30 +1389,6 @@ ${pages.join('')}
                             ))}
                         </div>
 
-                        {/* Front/Back preview toggle */}
-                        <div className="inline-flex rounded-lg border border-slate-300 overflow-hidden">
-                            <button
-                                onClick={() => setPreviewSide('front')}
-                                className={`px-3 py-2 text-xs font-bold transition ${
-                                    previewSide === 'front'
-                                        ? 'bg-slate-800 text-white'
-                                        : 'bg-white text-slate-600 hover:bg-slate-50'
-                                }`}
-                            >
-                                Front
-                            </button>
-                            <button
-                                onClick={() => setPreviewSide('back')}
-                                className={`px-3 py-2 text-xs font-bold transition ${
-                                    previewSide === 'back'
-                                        ? 'bg-slate-800 text-white'
-                                        : 'bg-white text-slate-600 hover:bg-slate-50'
-                                }`}
-                            >
-                                Back
-                            </button>
-                        </div>
-
                         <div className="flex items-center gap-2 ml-auto">
                             <span className="text-xs font-semibold text-slate-500">Zoom</span>
                             <input
@@ -1430,10 +1400,44 @@ ${pages.join('')}
                         </div>
                     </div>
 
+                    {/* ── FRONT / BACK TOGGLE BUTTONS (big, obvious) ── */}
+                    <div className="flex items-center gap-3 mb-4">
+                        <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                            Preview side:
+                        </span>
+                        <button
+                            type="button"
+                            onClick={() => setPreviewSide('front')}
+                            className={`px-5 py-2 rounded-lg text-sm font-bold border-2 transition ${
+                                previewSide === 'front'
+                                    ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
+                                    : 'bg-white text-slate-600 border-slate-300 hover:border-blue-400 hover:text-blue-600'
+                            }`}
+                        >
+                            Front Side
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setPreviewSide('back')}
+                            className={`px-5 py-2 rounded-lg text-sm font-bold border-2 transition ${
+                                previewSide === 'back'
+                                    ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
+                                    : 'bg-white text-slate-600 border-slate-300 hover:border-blue-400 hover:text-blue-600'
+                            }`}
+                        >
+                            Back Side
+                        </button>
+                        {previewSide === 'back' && !cfg.showBack && (
+                            <span className="text-[11px] text-amber-600 font-semibold">
+                                (Back side printing is off — enable it in "Back side" settings)
+                            </span>
+                        )}
+                    </div>
+
                     <p className="text-xs text-slate-500 mb-4">
                         {isSample
                             ? `Sample ${previewSide} card. Select students on the left to see their real cards.`
-                            : `Showing ${previewList.length} of ${selectedStudents.length} selected (${previewSide}). Printing includes all ${selectedStudents.length}${cfg.showBack ? ' (front + back)' : ''}.`}
+                            : `Showing ${previewList.length} of ${selectedStudents.length} selected — ${previewSide} side. Printing includes all ${selectedStudents.length}${cfg.showBack ? ' (front + back)' : ' (front only)'}.`}
                     </p>
 
                     <div className="rounded-xl bg-slate-100 p-6 overflow-auto">
