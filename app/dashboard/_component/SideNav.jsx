@@ -5,7 +5,7 @@ import {
   GraduationCap, Hand, LayoutIcon, BookOpen,
   ChevronDown, ChevronRight, FileText, FlaskConical, Wallet, Settings,
   LogOut, ChevronUp, User, Users, PanelLeftClose, PanelLeftOpen,
-  School, Library, IdCard
+  School, Library, IdCard, CalendarDays, Award, FileEdit, ScrollText
 } from 'lucide-react'
 import Image from 'next/image'
 import Link from 'next/link'
@@ -21,6 +21,7 @@ function SideNav() {
 
   const [collapsed, setCollapsed] = useState(false)
   const [openAcademic, setOpenAcademic] = useState(false)
+  const [openExams, setOpenExams] = useState(false)
   const [openUserMenu, setOpenUserMenu] = useState(false)
   const [school, setSchool] = useState({ name: 'SAPSYSYSTEM', logo: '' })
   const [mounted, setMounted] = useState(false)
@@ -47,6 +48,23 @@ function SideNav() {
         path?.startsWith('/dashboard/academy/academic-performance')) {
       setOpenAcademic(true)
     }
+  }, [path])
+
+  // Auto-open Exams section if user is on any exam subpage
+  useEffect(() => {
+    const examPaths = [
+      '/dashboard/examinations',
+      '/dashboard/academy/examinations',
+      '/dashboard/date-sheet',
+      '/dashboard/academy/date-sheet',
+      '/dashboard/result-card',
+      '/dashboard/academy/result-card',
+      '/dashboard/paper-composing',
+      '/dashboard/academy/paper-composing',
+      '/dashboard/certificates',
+      '/dashboard/academy/certificates',
+    ]
+    if (examPaths.some((p) => path?.startsWith(p))) setOpenExams(true)
   }, [path])
 
   useEffect(() => {
@@ -124,6 +142,23 @@ function SideNav() {
     ? `${base}/academic-performance`
     : '/dashboard/academic-performance'
 
+  // ── NEW: Examinations submenu ──
+  const examItems = isAcademy
+    ? [
+        { name: 'Date Sheet',      icon: CalendarDays, path: `${base}/date-sheet` },
+        { name: 'Result Card',     icon: Award,        path: `${base}/result-card` },
+        { name: 'Paper Composing', icon: FileEdit,     path: `${base}/paper-composing` },
+        { name: 'Certificates',    icon: ScrollText,   path: `${base}/certificates` },
+      ]
+    : [
+        { name: 'Date Sheet',      icon: CalendarDays, path: '/dashboard/date-sheet' },
+        { name: 'Result Card',     icon: Award,        path: '/dashboard/result-card' },
+        { name: 'Paper Composing', icon: FileEdit,     path: '/dashboard/paper-composing' },
+        { name: 'Certificates',    icon: ScrollText,   path: '/dashboard/certificates' },
+      ]
+
+  const examBase = isAcademy ? `${base}/examinations` : '/dashboard/examinations'
+
   const feePath = isAcademy ? `${base}/fee-management` : '/dashboard/fee-management'
   const settingsPath = '/dashboard/settings'
 
@@ -153,7 +188,6 @@ function SideNav() {
   const sActive = sections?.schoolSection?.active === true
   const aActive = sections?.academySection?.active === true
 
-  // Show switcher only if BOTH sections are active and package = both
   const showSwitcher = pkg === 'both' && sActive && aActive
 
   return (
@@ -255,6 +289,7 @@ function SideNav() {
           )
         })}
 
+        {/* ───── ACADEMIC SECTION ───── */}
         <div>
           <button
             type="button"
@@ -280,6 +315,50 @@ function SideNav() {
           <div className={`overflow-hidden transition-all duration-300 ease-in-out ${openAcademic && !collapsed ? "max-h-40 opacity-100 mt-1" : "max-h-0 opacity-0"}`}>
             <div className={`ml-3 border-l-2 ${isAcademy ? "border-purple-200" : "border-blue-200"} pl-2`}>
               {academicItems.map((item) => {
+                const active = isActive(item.path)
+                return (
+                  <Link key={item.path} href={item.path}>
+                    <div className={subItemClass(active)}>
+                      <item.icon size={14} className="shrink-0" />
+                      <Label className="text-xs font-medium">{item.name}</Label>
+                    </div>
+                  </Link>
+                )
+              })}
+            </div>
+          </div>
+        </div>
+
+        {/* ───── EXAMINATIONS SECTION (NEW) ───── */}
+        <div>
+          <button
+            type="button"
+            onClick={() => {
+              if (collapsed) {
+                setCollapsed(false)
+                setTimeout(() => setOpenExams(true), 300)
+              } else {
+                setOpenExams(!openExams)
+              }
+            }}
+            title={collapsed ? "Examinations" : ""}
+            className={`${itemClass(
+              examItems.some((i) => isActive(i.path)) || path?.startsWith(examBase)
+            )} w-full text-left`}
+          >
+            {(examItems.some((i) => isActive(i.path)) || path?.startsWith(examBase)) && (
+              <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-white rounded-r-full" />
+            )}
+            <FileText size={19} className="shrink-0 transition-transform duration-300 group-hover/item:scale-110" />
+            <Label className="font-semibold text-sm flex-1">Examinations</Label>
+            <span className={`transition-all duration-300 ease-out ${collapsed ? "opacity-0 w-0 pointer-events-none" : "opacity-100 w-auto"}`}>
+              {openExams ? <ChevronDown size={15} className="text-current" /> : <ChevronRight size={15} className="text-current" />}
+            </span>
+          </button>
+
+          <div className={`overflow-hidden transition-all duration-300 ease-in-out ${openExams && !collapsed ? "max-h-60 opacity-100 mt-1" : "max-h-0 opacity-0"}`}>
+            <div className={`ml-3 border-l-2 ${isAcademy ? "border-purple-200" : "border-blue-200"} pl-2`}>
+              {examItems.map((item) => {
                 const active = isActive(item.path)
                 return (
                   <Link key={item.path} href={item.path}>
