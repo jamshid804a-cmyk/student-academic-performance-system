@@ -62,6 +62,16 @@ const PATTERNS = [
     { value: 'circles', label: 'Circles' },
 ]
 
+const BG_PRESETS = [
+    { value: 'none', label: 'None' },
+    { value: 'gradient', label: 'Gradient' },
+    { value: 'waves', label: 'Waves' },
+    { value: 'geometric', label: 'Geometric' },
+    { value: 'bubbles', label: 'Bubbles' },
+    { value: 'bands', label: 'Bands' },
+    { value: 'frame', label: 'Frame' },
+]
+
 const FIELD_DEFS = [
     { key: 'father', label: 'Father name' },
     { key: 'roll', label: 'Roll no' },
@@ -79,6 +89,7 @@ const DEFAULT_CFG = {
     textColor: '#0f172a',
     surface: '#ffffff',
     pattern: 'none',
+    bgPreset: 'none',
     bgImage: '',
     overlay: 0.35,
     fgImage: '',
@@ -148,6 +159,8 @@ function sortStudents(list) {
 
 const studentKey = (s) => String(s?.id ?? s?._id ?? '')
 
+const isDarkTemplate = (cfg) => cfg.template === 'modern' || cfg.template === 'elegant'
+
 function patternStyle(kind, color) {
     const svgs = {
         dots: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"><circle cx="4" cy="4" r="1.8" fill="${color}"/></svg>`,
@@ -163,6 +176,59 @@ function patternStyle(kind, color) {
         full ? 'background-size:100% 100%;background-repeat:no-repeat;' : 'background-repeat:repeat;'
     }`
 }
+
+// Ready-made full-card background (vector = sharp at any size, always prints)
+function presetSvg(kind, P, S, SF, dark, land) {
+    const w = land ? 1000 : 630
+    const h = land ? 630 : 1000
+    const r = (n) => Math.round(n)
+    const base = dark ? P : SF
+    const a = dark ? '#ffffff' : P
+    const b = S
+    const m = Math.min(w, h)
+
+    if (kind === 'gradient') {
+        return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${P}"/><stop offset="1" stop-color="${S}"/></linearGradient></defs><rect width="${w}" height="${h}" fill="url(#g)"/></svg>`
+    }
+
+    let shapes = ''
+    if (kind === 'waves') {
+        shapes =
+            `<path d="M0 ${r(h * 0.78)} C ${r(w * 0.25)} ${r(h * 0.68)}, ${r(w * 0.5)} ${r(h * 0.9)}, ${w} ${r(h * 0.74)} L ${w} ${h} L 0 ${h} Z" fill="${b}" fill-opacity="0.85"/>` +
+            `<path d="M0 ${r(h * 0.88)} C ${r(w * 0.3)} ${r(h * 0.8)}, ${r(w * 0.6)} ${r(h * 0.98)}, ${w} ${r(h * 0.86)} L ${w} ${h} L 0 ${h} Z" fill="${a}" fill-opacity="0.9"/>` +
+            `<path d="M0 0 H ${r(w * 0.55)} C ${r(w * 0.4)} ${r(h * 0.12)}, ${r(w * 0.15)} ${r(h * 0.1)}, 0 ${r(h * 0.22)} Z" fill="${b}" fill-opacity="0.35"/>`
+    } else if (kind === 'geometric') {
+        shapes =
+            `<polygon points="0,0 ${r(w * 0.45)},0 0,${r(h * 0.5)}" fill="${a}" fill-opacity="0.16"/>` +
+            `<polygon points="${w},${h} ${r(w * 0.5)},${h} ${w},${r(h * 0.45)}" fill="${b}" fill-opacity="0.35"/>` +
+            `<polygon points="${w},0 ${r(w * 0.7)},0 ${w},${r(h * 0.3)}" fill="${b}" fill-opacity="0.22"/>` +
+            `<polygon points="0,${h} ${r(w * 0.3)},${h} 0,${r(h * 0.7)}" fill="${a}" fill-opacity="0.18"/>`
+    } else if (kind === 'bubbles') {
+        shapes =
+            `<circle cx="${r(w * 0.9)}" cy="${r(h * 0.12)}" r="${r(m * 0.3)}" fill="${b}" fill-opacity="0.3"/>` +
+            `<circle cx="${r(w * 0.08)}" cy="${r(h * 0.9)}" r="${r(m * 0.26)}" fill="${a}" fill-opacity="0.18"/>` +
+            `<circle cx="${r(w * 0.78)}" cy="${r(h * 0.85)}" r="${r(m * 0.1)}" fill="${b}" fill-opacity="0.35"/>` +
+            `<circle cx="${r(w * 0.2)}" cy="${r(h * 0.15)}" r="${r(m * 0.07)}" fill="${a}" fill-opacity="0.2"/>`
+    } else if (kind === 'bands') {
+        shapes =
+            `<polygon points="0,${r(h * 0.55)} ${w},${r(h * 0.2)} ${w},${r(h * 0.38)} 0,${r(h * 0.73)}" fill="${b}" fill-opacity="0.3"/>` +
+            `<polygon points="0,${r(h * 0.75)} ${w},${r(h * 0.42)} ${w},${r(h * 0.5)} 0,${r(h * 0.83)}" fill="${a}" fill-opacity="0.22"/>`
+    } else if (kind === 'frame') {
+        const f = m * 0.05
+        shapes =
+            `<rect x="${r(f)}" y="${r(f)}" width="${r(w - 2 * f)}" height="${r(h - 2 * f)}" rx="${r(f * 0.8)}" fill="none" stroke="${b}" stroke-width="${r(f * 0.25)}"/>` +
+            `<rect x="${r(f * 1.8)}" y="${r(f * 1.8)}" width="${r(w - 3.6 * f)}" height="${r(h - 3.6 * f)}" rx="${r(f * 0.6)}" fill="none" stroke="${a}" stroke-opacity="0.5" stroke-width="${r(f * 0.1)}"/>` +
+            `<circle cx="${r(f)}" cy="${r(f)}" r="${r(f * 0.7)}" fill="${b}"/>` +
+            `<circle cx="${r(w - f)}" cy="${r(f)}" r="${r(f * 0.7)}" fill="${b}"/>` +
+            `<circle cx="${r(f)}" cy="${r(h - f)}" r="${r(f * 0.7)}" fill="${b}"/>` +
+            `<circle cx="${r(w - f)}" cy="${r(h - f)}" r="${r(f * 0.7)}" fill="${b}"/>`
+    }
+
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none"><rect width="${w}" height="${h}" fill="${base}"/>${shapes}</svg>`
+}
+
+const presetUri = (kind, P, S, SF, dark, land) =>
+    `data:image/svg+xml,${encodeURIComponent(presetSvg(kind, P, S, SF, dark, land))}`
 
 const clamp = (n) =>
     `display:-webkit-box;-webkit-line-clamp:${n};-webkit-box-orient:vertical;overflow:hidden;`
@@ -232,15 +298,20 @@ function cardHtml(s, cfg, school) {
     }
     const th = themes[t] || themes.classic
 
-    // ── Background layers ──
+    // ── Background layers (images are real <img> so they ALWAYS print) ──
     const overlayColor = dark ? '#000000' : SF
+    const fill = 'position:absolute;left:0;top:0;width:100%;height:100%;'
     let layers = ''
+
     if (cfg.bgImage) {
-        layers += `<div style="position:absolute;inset:0;background-image:url(${cfg.bgImage});background-size:cover;background-position:center;"></div>`
-        layers += `<div style="position:absolute;inset:0;background:${overlayColor};opacity:${cfg.overlay};"></div>`
+        layers += `<img src="${esc(cfg.bgImage)}" alt="" style="${fill}object-fit:cover;" />`
+        layers += `<div style="${fill}background:${overlayColor};opacity:${cfg.overlay};"></div>`
+    } else if (cfg.bgPreset && cfg.bgPreset !== 'none') {
+        layers += `<img src="${presetUri(cfg.bgPreset, P, S, SF, dark, land)}" alt="" style="${fill}object-fit:fill;" />`
     }
+
     if (cfg.pattern && cfg.pattern !== 'none') {
-        layers += `<div style="position:absolute;inset:0;opacity:0.14;${patternStyle(cfg.pattern, dark ? '#ffffff' : P)}"></div>`
+        layers += `<div style="${fill}opacity:0.14;${patternStyle(cfg.pattern, dark ? '#ffffff' : P)}"></div>`
     }
     if (t === 'modern') {
         layers += `<div style="position:absolute;right:-12mm;top:-12mm;width:36mm;height:36mm;border-radius:50%;background:rgba(255,255,255,0.1);"></div>`
@@ -251,10 +322,10 @@ function cardHtml(s, cfg, school) {
             : `<div style="position:absolute;left:0;right:0;top:0;height:2.2mm;background:${P};"></div>`
     }
     if (t === 'elegant') {
-        layers += `<div style="position:absolute;inset:1.2mm;border:0.3mm solid ${S};border-radius:2mm;"></div>`
+        layers += `<div style="position:absolute;left:1.2mm;top:1.2mm;right:1.2mm;bottom:1.2mm;border:0.3mm solid ${S};border-radius:2mm;"></div>`
     }
     if (cfg.fgImage) {
-        layers += `<img src="${esc(cfg.fgImage)}" alt="" style="position:absolute;inset:0;width:100%;height:100%;object-fit:fill;" />`
+        layers += `<img src="${esc(cfg.fgImage)}" alt="" style="${fill}object-fit:fill;" />`
     }
 
     // ── Header ──
@@ -578,7 +649,7 @@ export default function IdCardSection() {
         if (!f) return
         if (!f.type.startsWith('image/')) return toast.error('Please choose an image file')
         try {
-            set({ bgImage: await loadImage(f, 1920, 'image/jpeg') })
+            set({ bgImage: await loadImage(f, 1920, 'image/jpeg'), bgPreset: 'none' })
         } catch {
             toast.error('Could not read this image')
         }
@@ -635,9 +706,13 @@ export default function IdCardSection() {
 <title>Student ID Cards</title>
 <style>
     @page { size: A4; margin: 0; }
-    * { box-sizing: border-box; }
+    * {
+        box-sizing: border-box;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+        color-adjust: exact !important;
+    }
     html, body { margin: 0; padding: 0; background: #fff; }
-    body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     .sheet {
         width: 210mm; height: 297mm; padding: 8mm;
         display: grid;
@@ -648,11 +723,12 @@ export default function IdCardSection() {
     }
     .sheet:last-child { page-break-after: auto; break-after: auto; }
     .idc { outline: 0.15mm solid #c8c8c8; }
+    img { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
 </style>
 </head>
 <body>
 ${pages.join('')}
-<script>window.onload = function () { setTimeout(function () { window.print() }, 300) }</script>
+<script>window.onload = function () { setTimeout(function () { window.print() }, 600) }</script>
 </body>
 </html>`
 
@@ -664,6 +740,9 @@ ${pages.join('')}
     // ─────────────────────────────────────────────
     // UI
     // ─────────────────────────────────────────────
+    const dark = isDarkTemplate(cfg)
+    const landscape = cfg.orientation === 'landscape'
+
     return (
         <div className="p-7">
             {/* Title */}
@@ -838,7 +917,37 @@ ${pages.join('')}
                         </Section>
 
                         <Section title="Background">
-                            <label className={LABEL}>Pattern</label>
+                            <label className={LABEL}>Ready-made backgrounds (always print)</label>
+                            <div className="grid grid-cols-4 gap-2 mb-4">
+                                {BG_PRESETS.map((p) => {
+                                    const active = !cfg.bgImage && cfg.bgPreset === p.value
+                                    return (
+                                        <button
+                                            key={p.value}
+                                            onClick={() => set({ bgPreset: p.value, bgImage: '' })}
+                                            title={p.label}
+                                            className={`rounded-lg overflow-hidden border-2 text-[10px] font-bold transition ${
+                                                active ? 'border-blue-600 ring-2 ring-blue-200' : 'border-slate-200 hover:border-slate-400'
+                                            }`}
+                                        >
+                                            {p.value === 'none' ? (
+                                                <div className="h-10 flex items-center justify-center bg-slate-50 text-slate-500">None</div>
+                                            ) : (
+                                                <img
+                                                    src={presetUri(p.value, cfg.primary, cfg.secondary, cfg.surface, dark, true)}
+                                                    alt={p.label}
+                                                    className="w-full h-10 object-cover"
+                                                />
+                                            )}
+                                            {p.value !== 'none' && (
+                                                <div className="py-0.5 bg-white text-slate-600">{p.label}</div>
+                                            )}
+                                        </button>
+                                    )
+                                })}
+                            </div>
+
+                            <label className={LABEL}>Pattern on top</label>
                             <select
                                 className={INPUT + ' mb-3'}
                                 value={cfg.pattern}
@@ -847,7 +956,7 @@ ${pages.join('')}
                                 {PATTERNS.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
                             </select>
 
-                            <label className={LABEL}>Background image (resized to Full HD)</label>
+                            <label className={LABEL}>Your own background image (resized to Full HD)</label>
                             <div className="flex items-center gap-2 mb-3">
                                 <label className="cursor-pointer inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-300 text-xs font-semibold text-slate-700 hover:bg-slate-50">
                                     <Upload size={13} /> Upload
@@ -1053,8 +1162,8 @@ ${pages.join('')}
                     </div>
 
                     <p className="text-[11px] text-slate-400 mt-3">
-                        Standard card size 85.6 × 54 mm. In the print window, turn on "Background graphics"
-                        if the colors do not appear.
+                        Standard card size 85.6 × 54 mm. In the print window, also turn on "Background graphics"
+                        if you ever see the background missing.
                     </p>
                 </div>
             </div>
