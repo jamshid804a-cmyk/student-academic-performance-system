@@ -4,9 +4,9 @@ import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import {
-  ScrollText, Printer, Download, Loader2, Users, FileText,
+  ScrollText, Printer, Download, Loader2, Search,
   CheckCircle2, Award, GraduationCap, BookOpen, Sparkles,
-  ChevronDown, X, Save, RotateCcw, Search,
+  RotateCcw, Type, Palette,
 } from 'lucide-react'
 import GlobalApi from '@/app/_services/GlobalApi'
 import { useProgram } from '@/src/context/ProgramContext'
@@ -14,7 +14,7 @@ import { useProgram } from '@/src/context/ProgramContext'
 // ─────────────────────────────────────────────
 // Constants
 // ─────────────────────────────────────────────
-const STORAGE_KEY = 'certificates_v1'
+const STORAGE_KEY = 'certificates_v2_modern'
 
 const GRADES = [
   'Nursery', 'Prep',
@@ -23,26 +23,24 @@ const GRADES = [
 const SECTIONS = ['A', 'B', 'C']
 
 const INPUT =
-  'w-full px-3 py-2 rounded-lg border border-slate-300 bg-white text-sm text-slate-800 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100'
+  'w-full px-3 py-2 rounded-lg border border-slate-300 bg-white text-sm text-slate-800 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100'
 const LABEL = 'block text-xs font-semibold text-slate-600 mb-1'
 
-// Certificate types — show based on program
 const CERT_TYPES = {
   school: [
-    { id: 'character', name: 'Character Certificate', icon: CheckCircle2, color: 'from-emerald-500 to-teal-600' },
-    { id: 'leaving', name: 'Leaving Certificate', icon: GraduationCap, color: 'from-blue-500 to-indigo-600' },
-    { id: 'course', name: 'Course Completion', icon: BookOpen, color: 'from-amber-500 to-orange-600' },
-    { id: 'merit', name: 'Merit / Position', icon: Award, color: 'from-rose-500 to-pink-600' },
-    { id: 'participation', name: 'Participation', icon: Sparkles, color: 'from-purple-500 to-fuchsia-600' },
+    { id: 'character', name: 'Character Certificate', icon: CheckCircle2, color: 'from-emerald-500 to-teal-600', accent: '#059669' },
+    { id: 'leaving', name: 'Leaving Certificate', icon: GraduationCap, color: 'from-blue-500 to-indigo-600', accent: '#2563eb' },
+    { id: 'course', name: 'Course Completion', icon: BookOpen, color: 'from-amber-500 to-orange-600', accent: '#d97706' },
+    { id: 'merit', name: 'Merit / Position', icon: Award, color: 'from-rose-500 to-pink-600', accent: '#e11d48' },
+    { id: 'participation', name: 'Participation', icon: Sparkles, color: 'from-violet-500 to-purple-600', accent: '#7c3aed' },
   ],
   academy: [
-    { id: 'course', name: 'Course Completion', icon: BookOpen, color: 'from-purple-500 to-fuchsia-600' },
-    { id: 'character', name: 'Character Certificate', icon: CheckCircle2, color: 'from-emerald-500 to-teal-600' },
-    { id: 'leaving', name: 'Leaving Certificate', icon: GraduationCap, color: 'from-blue-500 to-indigo-600' },
+    { id: 'course', name: 'Course Completion', icon: BookOpen, color: 'from-violet-500 to-purple-600', accent: '#7c3aed' },
+    { id: 'character', name: 'Character Certificate', icon: CheckCircle2, color: 'from-emerald-500 to-teal-600', accent: '#059669' },
+    { id: 'leaving', name: 'Leaving Certificate', icon: GraduationCap, color: 'from-blue-500 to-indigo-600', accent: '#2563eb' },
   ],
 }
 
-// Default body text per certificate type
 const DEFAULT_BODIES = {
   character: (s, school) =>
     `This is to certify that ${s.name || 'the student'}, son/daughter of ${s.fatherName || '________'}, Roll No ${s.rollNo || '____'}, a student of Class ${s.grade || '____'}${s.section ? ' - ' + s.section : ''} at ${school.name || 'our institution'}, bears a good moral character. He/She has been a disciplined, honest and well-behaved student throughout his/her stay at this institution. We wish him/her success in all future endeavors.`,
@@ -113,21 +111,16 @@ export default function CertificatesPage() {
   const isAcademy = programValue === 'academy'
   const certTypes = CERT_TYPES[isAcademy ? 'academy' : 'school']
 
-  // School info
   const [school, setSchool] = useState({ name: '', address: '', phone: '', logo: '' })
-
-  // Students
   const [students, setStudents] = useState([])
   const [loading, setLoading] = useState(true)
 
-  // Filters
   const [grade, setGrade] = useState('')
   const [section, setSection] = useState('')
   const [session, setSession] = useState('')
   const [selectedStudentId, setSelectedStudentId] = useState('')
   const [search, setSearch] = useState('')
 
-  // Certificate settings
   const [certType, setCertType] = useState(certTypes[0].id)
   const [courseName, setCourseName] = useState('MS Word')
   const [position, setPosition] = useState('1st')
@@ -136,12 +129,11 @@ export default function CertificatesPage() {
   const [signatureLabel, setSignatureLabel] = useState('Principal')
   const [issueDate, setIssueDate] = useState(fmtDate())
   const [serial, setSerial] = useState(serialNumber())
-  const [accentColor, setAccentColor] = useState(isAcademy ? '#6d28d9' : '#1d4ed8')
-  const [goldColor, setGoldColor] = useState('#d4af37')
+  const [accentColor, setAccentColor] = useState(isAcademy ? '#7c3aed' : '#2563eb')
+  const [goldColor, setGoldColor] = useState('#f59e0b')
 
   const hydrated = useRef(false)
 
-  // ── Load saved settings ──
   useEffect(() => {
     try {
       const raw = localStorage.getItem(STORAGE_KEY)
@@ -159,7 +151,6 @@ export default function CertificatesPage() {
     hydrated.current = true
   }, [])
 
-  // ── Save settings on change ──
   useEffect(() => {
     if (!hydrated.current) return
     try {
@@ -173,7 +164,6 @@ export default function CertificatesPage() {
     } catch {}
   }, [certType, courseName, position, eventName, signatureLabel, accentColor, goldColor])
 
-  // ── School info ──
   useEffect(() => {
     let alive = true
     GlobalApi.GetSchoolInfo()
@@ -191,7 +181,6 @@ export default function CertificatesPage() {
     return () => { alive = false }
   }, [])
 
-  // ── Students ──
   useEffect(() => {
     let alive = true
     setLoading(true)
@@ -217,14 +206,12 @@ export default function CertificatesPage() {
     return () => { alive = false }
   }, [programValue])
 
-  // ── Session options ──
   const sessionOptions = useMemo(() => {
     const setS = new Set()
     students.forEach((s) => { if (s.session) setS.add(String(s.session).trim()) })
     return Array.from(setS).sort()
   }, [students])
 
-  // Auto-pick newest session
   const sessionInit = useRef(false)
   useEffect(() => {
     if (sessionInit.current || !sessionOptions.length) return
@@ -238,7 +225,6 @@ export default function CertificatesPage() {
     )
   }, [sessionOptions])
 
-  // ── Filtered students ──
   const filteredStudents = useMemo(() => {
     const q = search.trim().toLowerCase()
     return students
@@ -257,13 +243,11 @@ export default function CertificatesPage() {
       .sort((a, b) => toNum(a.rollNo) - toNum(b.rollNo))
   }, [students, grade, section, session, search])
 
-  // ── Selected student ──
   const selectedStudent = useMemo(
     () => students.find((s) => studentKey(s) === selectedStudentId) || null,
     [students, selectedStudentId]
   )
 
-  // Auto-select first student when filters change
   useEffect(() => {
     if (!selectedStudentId && filteredStudents.length) {
       setSelectedStudentId(studentKey(filteredStudents[0]))
@@ -271,7 +255,6 @@ export default function CertificatesPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filteredStudents.length])
 
-  // ── Auto-fill body text when student or cert type changes ──
   useEffect(() => {
     if (!selectedStudent) return
     const fn = DEFAULT_BODIES[certType]
@@ -285,12 +268,13 @@ export default function CertificatesPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedStudentId, certType, courseName, position, eventName, school.name])
 
-  // ── Regenerate serial when cert type changes ──
   useEffect(() => {
     setSerial(serialNumber(certType.slice(0, 4).toUpperCase()))
   }, [certType])
 
-  // ── Print / Download PDF ──
+  // ─────────────────────────────────────────────
+  // PRINT / PDF — modern clean layout
+  // ─────────────────────────────────────────────
   const handlePrint = () => {
     if (!selectedStudent) {
       toast.error('Please select a student first')
@@ -303,210 +287,325 @@ export default function CertificatesPage() {
     }
 
     const ctype = certTypes.find((c) => c.id === certType) || certTypes[0]
-    const title = ctype.name.toUpperCase()
+    const title = ctype.name
+    const s = selectedStudent
 
     const logoHtml = school.logo
-      ? `<img src="${esc(school.logo)}" alt="" style="width:22mm;height:22mm;object-fit:contain;border-radius:3mm;background:#fff;padding:1mm;box-sizing:border-box;" />`
-      : ''
+      ? `<img src="${esc(school.logo)}" alt="" style="width:20mm;height:20mm;object-fit:contain;border-radius:3mm;" />`
+      : `<div style="width:20mm;height:20mm;border-radius:3mm;background:linear-gradient(135deg,${accentColor},${goldColor});display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:22pt;font-family:'Segoe UI',sans-serif;">${esc((school.name || 'S').charAt(0))}</div>`
+
+    // Info grid rows
+    const infoItems = [
+      { label: 'Roll No', value: s.rollNo || '—' },
+      { label: 'Father Name', value: s.fatherName || '—' },
+      { label: 'Class', value: `${s.grade || '—'}${s.section ? ' - ' + s.section : ''}` },
+      { label: 'Session', value: s.session || session || '—' },
+    ]
 
     const html = `<!DOCTYPE html>
 <html><head><meta charset="utf-8" />
-<title>${esc(title)} — ${esc(selectedStudent.name)}</title>
+<title>${esc(title)} — ${esc(s.name)}</title>
 <style>
   @page { size: A4 landscape; margin: 0; }
   * { box-sizing: border-box; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-  html, body { margin: 0; padding: 0; background: #fff; }
+  html, body { margin: 0; padding: 0; background: #fff; font-family: 'Segoe UI', 'Helvetica Neue', Arial, sans-serif; color: #0f172a; }
   .cert {
     width: 297mm; height: 210mm;
-    padding: 10mm;
-    background: #ffffff;
-    display: flex;
-    flex-direction: column;
     position: relative;
-    font-family: Georgia, 'Times New Roman', serif;
-    color: #1e293b;
     overflow: hidden;
-  }
-  .cert::before {
-    content: '';
-    position: absolute;
-    inset: 6mm;
-    border: 1.2mm solid ${accentColor};
-    border-radius: 3mm;
-    pointer-events: none;
-  }
-  .cert::after {
-    content: '';
-    position: absolute;
-    inset: 8.5mm;
-    border: 0.4mm solid ${goldColor};
-    border-radius: 2mm;
-    pointer-events: none;
-  }
-  .content {
-    position: relative;
-    flex: 1;
+    background: #ffffff;
+    padding: 12mm;
     display: flex;
     flex-direction: column;
-    padding: 8mm 12mm;
   }
+  /* Corner decorations */
+  .cert .corner {
+    position: absolute;
+    width: 40mm; height: 40mm;
+    border-radius: 50%;
+    opacity: 0.08;
+  }
+  .cert .corner.tl { top: -18mm; left: -18mm; background: ${accentColor}; }
+  .cert .corner.tr { top: -18mm; right: -18mm; background: ${goldColor}; }
+  .cert .corner.bl { bottom: -18mm; left: -18mm; background: ${goldColor}; }
+  .cert .corner.br { bottom: -18mm; right: -18mm; background: ${accentColor}; }
+
+  /* Header */
   .head {
+    position: relative;
     display: flex;
     align-items: center;
-    gap: 8mm;
-    padding-bottom: 5mm;
-    border-bottom: 0.6mm solid ${accentColor};
+    gap: 6mm;
+    padding-bottom: 6mm;
+    border-bottom: 0.5mm solid #e2e8f0;
   }
-  .head .info { flex: 1; }
-  .head .name {
-    font-size: 24pt;
+  .head .school-block { flex: 1; min-width: 0; }
+  .head .school-name {
+    font-size: 22pt;
     font-weight: 800;
     color: ${accentColor};
+    line-height: 1.1;
+    letter-spacing: -0.2mm;
+    text-transform: uppercase;
+  }
+  .head .school-sub {
+    font-size: 9pt;
+    color: #64748b;
+    margin-top: 1.5mm;
+    line-height: 1.5;
+  }
+  .head .meta-block { text-align: right; }
+  .head .meta-block .meta-label {
+    font-size: 7.5pt;
+    color: #94a3b8;
     text-transform: uppercase;
     letter-spacing: 0.5mm;
-    line-height: 1.1;
-    font-family: Georgia, serif;
+    font-weight: 700;
   }
-  .head .addr { font-size: 10pt; color: #475569; margin-top: 1.5mm; font-family: 'Segoe UI', Arial, sans-serif; }
-  .head .meta { text-align: right; font-family: 'Segoe UI', Arial, sans-serif; }
-  .head .meta .label { font-size: 8pt; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.4mm; }
-  .head .meta .value { font-size: 10pt; font-weight: 700; color: #1e293b; margin-top: 0.5mm; }
+  .head .meta-block .meta-value {
+    font-size: 10pt;
+    color: #0f172a;
+    font-weight: 700;
+    margin-top: 0.5mm;
+  }
 
-  .title-wrap { text-align: center; margin: 7mm 0 5mm; }
-  .title {
+  /* Title bar */
+  .title-bar {
+    text-align: center;
+    padding: 6mm 0 5mm;
+    position: relative;
+  }
+  .title-badge {
     display: inline-block;
-    font-size: 28pt;
+    font-size: 8pt;
     font-weight: 800;
     letter-spacing: 2mm;
-    color: ${accentColor};
     text-transform: uppercase;
-    font-family: Georgia, serif;
-    padding-bottom: 3mm;
-    border-bottom: 0.7mm solid ${goldColor};
+    color: ${accentColor};
+    background: ${accentColor}14;
+    padding: 1.5mm 4mm;
+    border-radius: 10mm;
+    margin-bottom: 3mm;
   }
-  .subtitle {
-    font-size: 11pt;
-    color: #64748b;
-    letter-spacing: 1mm;
-    margin-top: 3mm;
-    font-family: 'Segoe UI', Arial, sans-serif;
+  .title-main {
+    font-size: 34pt;
+    font-weight: 900;
+    letter-spacing: 1.5mm;
+    color: #0f172a;
+    text-transform: uppercase;
+    line-height: 1;
+    margin: 0;
+    letter-spacing: 2mm;
+  }
+  .title-main .accent { color: ${accentColor}; }
+  .title-divider {
+    width: 30mm;
+    height: 1mm;
+    background: linear-gradient(90deg, ${accentColor}, ${goldColor});
+    margin: 3mm auto 0;
+    border-radius: 1mm;
   }
 
-  .body {
-    flex: 1;
-    font-size: 13pt;
-    line-height: 1.9;
-    color: #1e293b;
-    margin: 2mm 0;
-    text-align: justify;
-    font-family: Georgia, serif;
+  /* Presented-to block */
+  .presented {
+    text-align: center;
+    margin-top: 4mm;
   }
-  .body .student {
+  .presented .label {
+    font-size: 9pt;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: 1mm;
+    font-weight: 700;
+  }
+  .presented .student-name {
+    font-size: 26pt;
     font-weight: 800;
     color: ${accentColor};
-    border-bottom: 0.3mm dotted ${accentColor};
-    padding: 0 1mm;
+    margin-top: 2mm;
+    line-height: 1.15;
+    letter-spacing: 0.3mm;
+  }
+  .presented .student-name::after {
+    content: '';
+    display: block;
+    width: 80mm;
+    height: 0.6mm;
+    background: ${goldColor};
+    margin: 3mm auto 0;
+    border-radius: 1mm;
   }
 
+  /* Info grid */
+  .info-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 3mm;
+    margin-top: 6mm;
+    padding: 4mm 5mm;
+    background: #f8fafc;
+    border-radius: 3mm;
+    border: 0.3mm solid #e2e8f0;
+  }
+  .info-cell { text-align: center; }
+  .info-cell .k {
+    font-size: 7.5pt;
+    color: #94a3b8;
+    text-transform: uppercase;
+    letter-spacing: 0.4mm;
+    font-weight: 700;
+  }
+  .info-cell .v {
+    font-size: 11pt;
+    color: #0f172a;
+    font-weight: 700;
+    margin-top: 1mm;
+    word-break: break-word;
+  }
+
+  /* Body */
+  .body {
+    flex: 1;
+    margin-top: 5mm;
+    font-size: 12pt;
+    line-height: 1.8;
+    color: #334155;
+    text-align: center;
+    padding: 0 8mm;
+  }
+  .body p { margin: 0; }
+  .body strong { color: ${accentColor}; font-weight: 800; }
+
+  /* Footer */
   .foot {
     display: flex;
     align-items: flex-end;
     justify-content: space-between;
     padding-top: 4mm;
-    border-top: 0.4mm solid #cbd5e1;
-    font-family: 'Segoe UI', Arial, sans-serif;
     margin-top: 4mm;
+    border-top: 0.5mm solid #e2e8f0;
   }
-  .foot .col { text-align: center; min-width: 50mm; }
+  .foot .sig-block { text-align: center; min-width: 45mm; }
   .foot .sig-line {
-    width: 50mm;
-    border-top: 0.4mm solid #1e293b;
+    width: 45mm;
+    border-top: 0.4mm solid #0f172a;
     padding-top: 1.5mm;
     font-size: 10pt;
     font-weight: 700;
-    color: #1e293b;
+    color: #0f172a;
+    margin: 0 auto;
   }
-  .foot .small { font-size: 8pt; color: #64748b; margin-top: 1mm; }
+  .foot .sig-label {
+    font-size: 8pt;
+    color: #64748b;
+    margin-top: 1mm;
+    text-transform: uppercase;
+    letter-spacing: 0.4mm;
+  }
   .foot .seal {
-    width: 30mm;
-    height: 30mm;
-    border: 1mm dashed ${accentColor};
+    width: 28mm;
+    height: 28mm;
+    border: 0.7mm dashed ${accentColor};
     border-radius: 50%;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 7pt;
+    text-align: center;
+    font-size: 6.5pt;
     color: ${accentColor};
     font-weight: 700;
     text-transform: uppercase;
-    text-align: center;
     letter-spacing: 0.3mm;
-    opacity: 0.6;
+    line-height: 1.3;
+    opacity: 0.75;
+    padding: 3mm;
+  }
+  .foot .date-block { text-align: center; min-width: 45mm; }
+  .foot .date-value {
+    font-size: 10pt;
+    font-weight: 700;
+    color: #0f172a;
+  }
+  .foot .date-label {
+    font-size: 8pt;
+    color: #64748b;
+    margin-top: 1mm;
+    text-transform: uppercase;
+    letter-spacing: 0.4mm;
   }
 
   .serial {
     position: absolute;
-    bottom: 12mm;
-    right: 16mm;
-    font-size: 8pt;
+    bottom: 8mm;
+    right: 14mm;
+    font-size: 7pt;
     color: #94a3b8;
     font-family: 'Courier New', monospace;
-    letter-spacing: 0.5mm;
-  }
-
-  .badge {
-    position: absolute;
-    top: 12mm;
-    right: 16mm;
-    background: ${goldColor};
-    color: #1e293b;
-    padding: 1.5mm 3mm;
-    font-size: 8pt;
-    font-weight: 800;
-    letter-spacing: 0.6mm;
-    text-transform: uppercase;
-    border-radius: 2mm;
-    font-family: 'Segoe UI', Arial, sans-serif;
+    letter-spacing: 0.4mm;
+    font-weight: 600;
   }
 </style></head>
 <body>
 <div class="cert">
-  <div class="badge">${esc(title)}</div>
-  <div class="content">
-    <div class="head">
-      ${logoHtml}
-      <div class="info">
-        <div class="name">${esc(school.name || 'School Name')}</div>
-        ${school.address ? `<div class="addr">${esc(school.address)}</div>` : ''}
-        ${school.phone ? `<div class="addr">Phone: ${esc(school.phone)}</div>` : ''}
-      </div>
-      <div class="meta">
-        <div class="label">Session</div>
-        <div class="value">${esc(selectedStudent.session || session || '—')}</div>
-        <div class="label" style="margin-top:2mm;">Date of Issue</div>
-        <div class="value">${esc(issueDate)}</div>
+  <div class="corner tl"></div>
+  <div class="corner tr"></div>
+  <div class="corner bl"></div>
+  <div class="corner br"></div>
+
+  <div class="head">
+    ${logoHtml}
+    <div class="school-block">
+      <div class="school-name">${esc(school.name || 'School Name')}</div>
+      <div class="school-sub">
+        ${school.address ? esc(school.address) : ''}${school.address && school.phone ? ' &nbsp;•&nbsp; ' : ''}${school.phone ? 'Ph: ' + esc(school.phone) : ''}
       </div>
     </div>
-
-    <div class="title-wrap">
-      <div class="title">Certificate</div>
-      <div class="subtitle">${esc(ctype.name)}</div>
-    </div>
-
-    <div class="body">${esc(bodyText).replace(/\n/g, '<br/>')}</div>
-
-    <div class="foot">
-      <div class="col">
-        <div class="sig-line">${esc(signatureLabel || 'Principal')}</div>
-        <div class="small">Signature & Seal</div>
-      </div>
-      <div class="seal">${esc(school.name || 'School')}<br/>Official Seal</div>
-      <div class="col">
-        <div class="sig-line">${esc(issueDate)}</div>
-        <div class="small">Date of Issue</div>
-      </div>
+    <div class="meta-block">
+      <div class="meta-label">Serial No.</div>
+      <div class="meta-value">${esc(serial)}</div>
+      <div class="meta-label" style="margin-top:2.5mm;">Issue Date</div>
+      <div class="meta-value">${esc(issueDate)}</div>
     </div>
   </div>
+
+  <div class="title-bar">
+    <div class="title-badge">${esc(title)}</div>
+    <h1 class="title-main">Certificate <span class="accent">of</span> Achievement</h1>
+    <div class="title-divider"></div>
+  </div>
+
+  <div class="presented">
+    <div class="label">This certificate is proudly presented to</div>
+    <div class="student-name">${esc(s.name || 'Student Name')}</div>
+  </div>
+
+  <div class="info-grid">
+    ${infoItems.map((it) => `
+      <div class="info-cell">
+        <div class="k">${esc(it.label)}</div>
+        <div class="v">${esc(it.value)}</div>
+      </div>
+    `).join('')}
+  </div>
+
+  <div class="body">
+    <p>${esc(bodyText).replace(/\n/g, '<br/>')}</p>
+  </div>
+
+  <div class="foot">
+    <div class="sig-block">
+      <div class="sig-line">${esc(signatureLabel || 'Principal')}</div>
+      <div class="sig-label">Signature &amp; Seal</div>
+    </div>
+    <div class="seal">
+      ${esc(school.name || 'School')}<br/>Official Seal
+    </div>
+    <div class="date-block">
+      <div class="date-value">${esc(issueDate)}</div>
+      <div class="date-label">Date of Issue</div>
+    </div>
+  </div>
+
   <div class="serial">SERIAL: ${esc(serial)}</div>
 </div>
 <script>window.onload = function () { setTimeout(function () { window.print() }, 600) }</script>
@@ -518,11 +617,170 @@ export default function CertificatesPage() {
   }
 
   // ─────────────────────────────────────────────
+  // LIVE PREVIEW — modern layout, same as print
+  // ─────────────────────────────────────────────
+  const Preview = () => {
+    if (!selectedStudent) {
+      return (
+        <div className="rounded-xl bg-slate-50 border-2 border-dashed border-slate-200 p-16 text-center">
+          <ScrollText size={40} className="text-slate-300 mx-auto mb-3" />
+          <p className="text-sm text-slate-500">
+            Select a student on the left to preview the certificate
+          </p>
+        </div>
+      )
+    }
+
+    const s = selectedStudent
+    const ctype = certTypes.find((c) => c.id === certType) || certTypes[0]
+    const infoItems = [
+      { label: 'Roll No', value: s.rollNo || '—' },
+      { label: 'Father Name', value: s.fatherName || '—' },
+      { label: 'Class', value: `${s.grade || '—'}${s.section ? ' - ' + s.section : ''}` },
+      { label: 'Session', value: s.session || session || '—' },
+    ]
+
+    return (
+      <div
+        className="rounded-xl bg-slate-100 p-4 overflow-auto"
+        style={{ maxHeight: '80vh' }}
+      >
+        <div
+          style={{
+            width: '297mm',
+            height: '210mm',
+            transform: 'scale(0.62)',
+            transformOrigin: 'top center',
+            marginBottom: '-80mm',
+            background: '#ffffff',
+            padding: '12mm',
+            boxSizing: 'border-box',
+            position: 'relative',
+            overflow: 'hidden',
+            fontFamily: "'Segoe UI', 'Helvetica Neue', Arial, sans-serif",
+            color: '#0f172a',
+            display: 'flex',
+            flexDirection: 'column',
+            boxShadow: '0 10px 40px rgba(15,23,42,0.15)',
+            borderRadius: '2mm',
+          }}
+        >
+          {/* Corner decorations */}
+          <div style={{ position: 'absolute', top: '-18mm', left: '-18mm', width: '40mm', height: '40mm', borderRadius: '50%', background: accentColor, opacity: 0.08 }} />
+          <div style={{ position: 'absolute', top: '-18mm', right: '-18mm', width: '40mm', height: '40mm', borderRadius: '50%', background: goldColor, opacity: 0.08 }} />
+          <div style={{ position: 'absolute', bottom: '-18mm', left: '-18mm', width: '40mm', height: '40mm', borderRadius: '50%', background: goldColor, opacity: 0.08 }} />
+          <div style={{ position: 'absolute', bottom: '-18mm', right: '-18mm', width: '40mm', height: '40mm', borderRadius: '50%', background: accentColor, opacity: 0.08 }} />
+
+          {/* Header */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6mm', paddingBottom: '6mm', borderBottom: '0.5mm solid #e2e8f0', position: 'relative' }}>
+            {school.logo ? (
+              <img src={school.logo} alt="" style={{ width: '20mm', height: '20mm', objectFit: 'contain', borderRadius: '3mm' }} />
+            ) : (
+              <div style={{ width: '20mm', height: '20mm', borderRadius: '3mm', background: `linear-gradient(135deg, ${accentColor}, ${goldColor})`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 800, fontSize: '22pt' }}>
+                {(school.name || 'S').charAt(0)}
+              </div>
+            )}
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: '22pt', fontWeight: 800, color: accentColor, lineHeight: 1.1, letterSpacing: '-0.2mm', textTransform: 'uppercase' }}>
+                {school.name || 'School Name'}
+              </div>
+              <div style={{ fontSize: '9pt', color: '#64748b', marginTop: '1.5mm', lineHeight: 1.5 }}>
+                {school.address || ''}{school.address && school.phone ? '  •  ' : ''}{school.phone ? `Ph: ${school.phone}` : ''}
+              </div>
+            </div>
+            <div style={{ textAlign: 'right' }}>
+              <div style={{ fontSize: '7.5pt', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.5mm', fontWeight: 700 }}>
+                Serial No.
+              </div>
+              <div style={{ fontSize: '10pt', color: '#0f172a', fontWeight: 700, marginTop: '0.5mm' }}>
+                {serial}
+              </div>
+              <div style={{ fontSize: '7.5pt', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.5mm', fontWeight: 700, marginTop: '2.5mm' }}>
+                Issue Date
+              </div>
+              <div style={{ fontSize: '10pt', color: '#0f172a', fontWeight: 700, marginTop: '0.5mm' }}>
+                {issueDate}
+              </div>
+            </div>
+          </div>
+
+          {/* Title bar */}
+          <div style={{ textAlign: 'center', padding: '6mm 0 5mm', position: 'relative' }}>
+            <div style={{ display: 'inline-block', fontSize: '8pt', fontWeight: 800, letterSpacing: '2mm', textTransform: 'uppercase', color: accentColor, background: `${accentColor}14`, padding: '1.5mm 4mm', borderRadius: '10mm', marginBottom: '3mm' }}>
+              {ctype.name}
+            </div>
+            <h1 style={{ fontSize: '34pt', fontWeight: 900, letterSpacing: '2mm', color: '#0f172a', textTransform: 'uppercase', lineHeight: 1, margin: 0 }}>
+              Certificate <span style={{ color: accentColor }}>of</span> Achievement
+            </h1>
+            <div style={{ width: '30mm', height: '1mm', background: `linear-gradient(90deg, ${accentColor}, ${goldColor})`, margin: '3mm auto 0', borderRadius: '1mm' }} />
+          </div>
+
+          {/* Presented to */}
+          <div style={{ textAlign: 'center', marginTop: '4mm' }}>
+            <div style={{ fontSize: '9pt', color: '#64748b', textTransform: 'uppercase', letterSpacing: '1mm', fontWeight: 700 }}>
+              This certificate is proudly presented to
+            </div>
+            <div style={{ fontSize: '26pt', fontWeight: 800, color: accentColor, marginTop: '2mm', lineHeight: 1.15, letterSpacing: '0.3mm' }}>
+              {s.name || 'Student Name'}
+            </div>
+            <div style={{ width: '80mm', height: '0.6mm', background: goldColor, margin: '3mm auto 0', borderRadius: '1mm' }} />
+          </div>
+
+          {/* Info grid */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '3mm', marginTop: '6mm', padding: '4mm 5mm', background: '#f8fafc', borderRadius: '3mm', border: '0.3mm solid #e2e8f0' }}>
+            {infoItems.map((it) => (
+              <div key={it.label} style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: '7.5pt', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.4mm', fontWeight: 700 }}>
+                  {it.label}
+                </div>
+                <div style={{ fontSize: '11pt', color: '#0f172a', fontWeight: 700, marginTop: '1mm', wordBreak: 'break-word' }}>
+                  {it.value}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Body */}
+          <div style={{ flex: 1, marginTop: '5mm', fontSize: '12pt', lineHeight: 1.8, color: '#334155', textAlign: 'center', padding: '0 8mm' }}>
+            {bodyText}
+          </div>
+
+          {/* Footer */}
+          <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', paddingTop: '4mm', marginTop: '4mm', borderTop: '0.5mm solid #e2e8f0' }}>
+            <div style={{ textAlign: 'center', minWidth: '45mm' }}>
+              <div style={{ width: '45mm', borderTop: '0.4mm solid #0f172a', paddingTop: '1.5mm', fontSize: '10pt', fontWeight: 700, color: '#0f172a', margin: '0 auto' }}>
+                {signatureLabel || 'Principal'}
+              </div>
+              <div style={{ fontSize: '8pt', color: '#64748b', marginTop: '1mm', textTransform: 'uppercase', letterSpacing: '0.4mm' }}>
+                Signature &amp; Seal
+              </div>
+            </div>
+            <div style={{ width: '28mm', height: '28mm', border: `0.7mm dashed ${accentColor}`, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center', fontSize: '6.5pt', color: accentColor, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.3mm', lineHeight: 1.3, opacity: 0.75, padding: '3mm', boxSizing: 'border-box' }}>
+              {school.name || 'School'}<br />Official Seal
+            </div>
+            <div style={{ textAlign: 'center', minWidth: '45mm' }}>
+              <div style={{ fontSize: '10pt', fontWeight: 700, color: '#0f172a' }}>{issueDate}</div>
+              <div style={{ fontSize: '8pt', color: '#64748b', marginTop: '1mm', textTransform: 'uppercase', letterSpacing: '0.4mm' }}>
+                Date of Issue
+              </div>
+            </div>
+          </div>
+
+          {/* Serial */}
+          <div style={{ position: 'absolute', bottom: '8mm', right: '14mm', fontSize: '7pt', color: '#94a3b8', fontFamily: "'Courier New', monospace", letterSpacing: '0.4mm', fontWeight: 600 }}>
+            SERIAL: {serial}
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // ─────────────────────────────────────────────
   // UI
   // ─────────────────────────────────────────────
   const accent = isAcademy
-    ? 'from-purple-500 to-fuchsia-600'
-    : 'from-rose-500 to-pink-600'
+    ? 'from-violet-500 to-purple-600'
+    : 'from-indigo-500 to-blue-600'
 
   return (
     <div className="p-7">
@@ -535,7 +793,7 @@ export default function CertificatesPage() {
           <div>
             <h2 className="font-bold text-2xl leading-tight">Certificates</h2>
             <p className="text-xs text-slate-500">
-              Generate professional certificates for students — print or download PDF
+              Generate modern, professional certificates — print or save as PDF
             </p>
           </div>
         </div>
@@ -543,7 +801,7 @@ export default function CertificatesPage() {
         <Button
           onClick={handlePrint}
           disabled={!selectedStudent}
-          className="bg-rose-600 hover:bg-rose-700 text-white gap-2"
+          className="bg-indigo-600 hover:bg-indigo-700 text-white gap-2"
         >
           <Printer size={16} /> Print / Save PDF
         </Button>
@@ -618,7 +876,7 @@ export default function CertificatesPage() {
             <label className={LABEL}>Select student</label>
             {loading ? (
               <div className="py-6 text-center text-sm text-slate-500">
-                <Loader2 className="w-5 h-5 animate-spin text-rose-600 mx-auto" />
+                <Loader2 className="w-5 h-5 animate-spin text-indigo-600 mx-auto" />
               </div>
             ) : filteredStudents.length === 0 ? (
               <p className="py-4 text-center text-sm text-slate-400">
@@ -671,11 +929,9 @@ export default function CertificatesPage() {
               <div className="mb-3">
                 <label className={LABEL}>Position</label>
                 <select className={INPUT} value={position} onChange={(e) => setPosition(e.target.value)}>
-                  <option value="1st">1st</option>
-                  <option value="2nd">2nd</option>
-                  <option value="3rd">3rd</option>
-                  <option value="4th">4th</option>
-                  <option value="5th">5th</option>
+                  {['1st', '2nd', '3rd', '4th', '5th'].map((p) => (
+                    <option key={p} value={p}>{p}</option>
+                  ))}
                 </select>
               </div>
             )}
@@ -692,10 +948,10 @@ export default function CertificatesPage() {
               </div>
             )}
 
-            <label className={LABEL}>Certificate body (auto-generated, edit as needed)</label>
+            <label className={LABEL}>Certificate body</label>
             <textarea
               className={INPUT + ' mb-3'}
-              rows={6}
+              rows={5}
               value={bodyText}
               onChange={(e) => setBodyText(e.target.value)}
             />
@@ -778,181 +1034,17 @@ export default function CertificatesPage() {
             <div className="text-[11px] text-slate-400 font-mono">#{serial}</div>
           </div>
 
-          {!selectedStudent ? (
-            <div className="rounded-xl bg-slate-50 border-2 border-dashed border-slate-200 p-16 text-center">
-              <ScrollText size={40} className="text-slate-300 mx-auto mb-3" />
-              <p className="text-sm text-slate-500">
-                Select a student on the left to preview the certificate
-              </p>
-            </div>
-          ) : (
-            <div className="rounded-xl bg-slate-100 p-4 overflow-auto" style={{ maxHeight: '80vh' }}>
-              <div
-                className="mx-auto bg-white shadow-xl"
-                style={{
-                  width: '297mm',
-                  height: '210mm',
-                  transform: 'scale(0.62)',
-                  transformOrigin: 'top center',
-                  marginBottom: '-80mm',
-                  border: `1.2mm solid ${accentColor}`,
-                  borderRadius: '3mm',
-                  position: 'relative',
-                  overflow: 'hidden',
-                  fontFamily: "Georgia, 'Times New Roman', serif",
-                  padding: '10mm',
-                  boxSizing: 'border-box',
-                }}
-              >
-                <div
-                  style={{
-                    position: 'absolute',
-                    inset: '2.5mm',
-                    border: `0.4mm solid ${goldColor}`,
-                    borderRadius: '2mm',
-                    pointerEvents: 'none',
-                  }}
-                />
-
-                {/* Badge */}
-                <div
-                  style={{
-                    position: 'absolute',
-                    top: '10mm',
-                    right: '14mm',
-                    background: goldColor,
-                    color: '#1e293b',
-                    padding: '1.5mm 3mm',
-                    fontSize: '8pt',
-                    fontWeight: 800,
-                    letterSpacing: '0.6mm',
-                    textTransform: 'uppercase',
-                    borderRadius: '2mm',
-                    fontFamily: "'Segoe UI', Arial, sans-serif",
-                  }}
-                >
-                  {certTypes.find((c) => c.id === certType)?.name}
-                </div>
-
-                <div style={{ display: 'flex', flexDirection: 'column', height: '100%', padding: '4mm 8mm', position: 'relative' }}>
-                  {/* Head */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '5mm', paddingBottom: '3mm', borderBottom: `0.6mm solid ${accentColor}` }}>
-                    {school.logo && (
-                      <img
-                        src={school.logo}
-                        alt=""
-                        style={{ width: '20mm', height: '20mm', objectFit: 'contain', borderRadius: '3mm' }}
-                      />
-                    )}
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: '18pt', fontWeight: 800, color: accentColor, textTransform: 'uppercase', lineHeight: 1.1 }}>
-                        {school.name || 'School Name'}
-                      </div>
-                      {school.address && (
-                        <div style={{ fontSize: '9pt', color: '#475569', marginTop: '1mm', fontFamily: "'Segoe UI', Arial, sans-serif" }}>
-                          {school.address}
-                        </div>
-                      )}
-                      {school.phone && (
-                        <div style={{ fontSize: '9pt', color: '#64748b', fontFamily: "'Segoe UI', Arial, sans-serif" }}>
-                          Phone: {school.phone}
-                        </div>
-                      )}
-                    </div>
-                    <div style={{ textAlign: 'right', fontFamily: "'Segoe UI', Arial, sans-serif" }}>
-                      <div style={{ fontSize: '7.5pt', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.4mm' }}>Session</div>
-                      <div style={{ fontSize: '9pt', fontWeight: 700, color: '#1e293b' }}>{selectedStudent.session || session || '—'}</div>
-                      <div style={{ fontSize: '7.5pt', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.4mm', marginTop: '1.5mm' }}>Date</div>
-                      <div style={{ fontSize: '9pt', fontWeight: 700, color: '#1e293b' }}>{issueDate}</div>
-                    </div>
-                  </div>
-
-                  {/* Title */}
-                  <div style={{ textAlign: 'center', margin: '4mm 0 3mm' }}>
-                    <div style={{ display: 'inline-block', fontSize: '22pt', fontWeight: 800, letterSpacing: '2mm', color: accentColor, textTransform: 'uppercase', paddingBottom: '2mm', borderBottom: `0.7mm solid ${goldColor}` }}>
-                      Certificate
-                    </div>
-                    <div style={{ fontSize: '9pt', color: '#64748b', letterSpacing: '1mm', marginTop: '2mm', fontFamily: "'Segoe UI', Arial, sans-serif", textTransform: 'uppercase' }}>
-                      {certTypes.find((c) => c.id === certType)?.name}
-                    </div>
-                  </div>
-
-                  {/* Body */}
-                  <div
-                    style={{
-                      flex: 1,
-                      fontSize: '11pt',
-                      lineHeight: 1.85,
-                      color: '#1e293b',
-                      textAlign: 'justify',
-                    }}
-                    dangerouslySetInnerHTML={{ __html: esc(bodyText).replace(/\n/g, '<br/>') }}
-                  />
-
-                  {/* Footer */}
-                  <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', paddingTop: '3mm', borderTop: '0.4mm solid #cbd5e1', marginTop: '3mm', fontFamily: "'Segoe UI', Arial, sans-serif" }}>
-                    <div style={{ textAlign: 'center', minWidth: '45mm' }}>
-                      <div style={{ width: '45mm', borderTop: '0.4mm solid #1e293b', paddingTop: '1.2mm', fontSize: '9pt', fontWeight: 700, color: '#1e293b' }}>
-                        {signatureLabel || 'Principal'}
-                      </div>
-                      <div style={{ fontSize: '7.5pt', color: '#64748b', marginTop: '1mm' }}>Signature &amp; Seal</div>
-                    </div>
-
-                    <div
-                      style={{
-                        width: '26mm',
-                        height: '26mm',
-                        border: `0.9mm dashed ${accentColor}`,
-                        borderRadius: '50%',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        fontSize: '6.5pt',
-                        color: accentColor,
-                        fontWeight: 700,
-                        textTransform: 'uppercase',
-                        textAlign: 'center',
-                        letterSpacing: '0.3mm',
-                        opacity: 0.65,
-                        padding: '2mm',
-                        boxSizing: 'border-box',
-                        lineHeight: 1.3,
-                      }}
-                    >
-                      {school.name || 'School'}<br />Official Seal
-                    </div>
-
-                    <div style={{ textAlign: 'center', minWidth: '45mm' }}>
-                      <div style={{ width: '45mm', borderTop: '0.4mm solid #1e293b', paddingTop: '1.2mm', fontSize: '9pt', fontWeight: 700, color: '#1e293b' }}>
-                        {issueDate}
-                      </div>
-                      <div style={{ fontSize: '7.5pt', color: '#64748b', marginTop: '1mm' }}>Date of Issue</div>
-                    </div>
-                  </div>
-                </div>
-
-                <div
-                  style={{
-                    position: 'absolute',
-                    bottom: '10mm',
-                    right: '14mm',
-                    fontSize: '7pt',
-                    color: '#94a3b8',
-                    fontFamily: "'Courier New', monospace",
-                    letterSpacing: '0.5mm',
-                  }}
-                >
-                  SERIAL: {serial}
-                </div>
-              </div>
-            </div>
-          )}
+          <Preview />
 
           <div className="flex items-center justify-between mt-3">
             <p className="text-[11px] text-slate-400">
-              In the print window, turn on "Background graphics" to keep borders and colors.
+              In the print window, enable "Background graphics" to keep all colors and borders.
             </p>
-            <Button onClick={handlePrint} disabled={!selectedStudent} className="gap-2 bg-rose-600 hover:bg-rose-700 text-white">
+            <Button
+              onClick={handlePrint}
+              disabled={!selectedStudent}
+              className="gap-2 bg-indigo-600 hover:bg-indigo-700 text-white"
+            >
               <Download size={15} /> Print / Save PDF
             </Button>
           </div>
