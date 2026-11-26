@@ -7,6 +7,7 @@ import {
   FileEdit, Plus, Trash2, Printer, RotateCcw, Loader2,
   FileText, CheckSquare, SquareCheck, AlignLeft, ListOrdered,
   BookOpen, PenLine, BookMarked, GitCompare, ToggleLeft, Eye,
+  Languages,
 } from 'lucide-react'
 import GlobalApi from '@/app/_services/GlobalApi'
 import { useProgram } from '@/src/context/ProgramContext'
@@ -14,7 +15,7 @@ import { useProgram } from '@/src/context/ProgramContext'
 // ─────────────────────────────────────────────
 // Constants
 // ─────────────────────────────────────────────
-const STORAGE_KEY = 'paper_simple_v1'
+const STORAGE_KEY = 'paper_simple_v2'
 
 const GRADES = [
   'Nursery', 'Prep',
@@ -22,24 +23,32 @@ const GRADES = [
 ]
 const SECTIONS = ['A', 'B', 'C']
 const TERMS = ['1st Term', '2nd Term', 'Mid Term', 'Final Term', 'Monthly Test', 'Annual Exam', 'Pre-Board']
+const TERMS_UR = {
+  '1st Term': 'پہلی جماعت',
+  '2nd Term': 'دوسری جماعت',
+  'Mid Term': 'درمیانی امتحان',
+  'Final Term': 'سالانہ امتحان',
+  'Monthly Test': 'ماہانہ ٹیسٹ',
+  'Annual Exam': 'سالانہ امتحان',
+  'Pre-Board': 'پری بورڈ',
+}
 
 const INPUT =
   'w-full px-3 py-2 rounded-lg border border-slate-300 bg-white text-sm text-slate-800 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100'
 const LABEL = 'block text-xs font-semibold text-slate-600 mb-1'
 
-// Question types — every type you asked for
 const Q_TYPES = [
-  { value: 'simple',   label: 'Simple Question',     icon: FileText,    color: 'bg-slate-100 text-slate-700',     hint: 'A plain question with an answer line' },
-  { value: 'fill',     label: 'Fill in the Blanks',  icon: AlignLeft,   color: 'bg-blue-100 text-blue-700',       hint: 'Statements with a blank _____' },
-  { value: 'mcq',      label: 'Choose Correct Option', icon: CheckSquare, color: 'bg-emerald-100 text-emerald-700', hint: 'A question with 2–4 options' },
-  { value: 'tick',     label: 'Tick the Correct',    icon: SquareCheck, color: 'bg-amber-100 text-amber-700',     hint: 'Tick ✓ or ✗ next to each statement' },
-  { value: 'short',    label: 'Short Question',      icon: ListOrdered, color: 'bg-violet-100 text-violet-700',   hint: 'Answer in 2–3 lines' },
-  { value: 'long',     label: 'Long Question',       icon: BookOpen,    color: 'bg-indigo-100 text-indigo-700',   hint: 'Detailed answer question' },
-  { value: 'application', label: 'Application Question', icon: PenLine, color: 'bg-orange-100 text-orange-700',   hint: 'Apply the concept to a situation' },
-  { value: 'essay',    label: 'Essay',               icon: BookMarked,  color: 'bg-rose-100 text-rose-700',       hint: 'Write an essay on the topic' },
-  { value: 'match',    label: 'Match the Columns',   icon: GitCompare,  color: 'bg-teal-100 text-teal-700',       hint: 'Column A → Column B' },
-  { value: 'story',    label: 'Story / Paragraph',   icon: BookOpen,    color: 'bg-pink-100 text-pink-700',       hint: 'Write a story from the given clues' },
-  { value: 'truefalse', label: 'True / False',       icon: ToggleLeft,  color: 'bg-cyan-100 text-cyan-700',       hint: 'Mark each statement True or False' },
+  { value: 'simple',   label: 'Simple Question',     labelUr: 'سادہ سوال',              icon: FileText,    color: 'bg-slate-100 text-slate-700',     hint: 'A plain question with an answer line' },
+  { value: 'fill',     label: 'Fill in the Blanks',  labelUr: 'خالی جگہ پر کریں',        icon: AlignLeft,   color: 'bg-blue-100 text-blue-700',       hint: 'Statements with a blank _____' },
+  { value: 'mcq',      label: 'Choose Correct Option', labelUr: 'صحیح جواب چنیں',       icon: CheckSquare, color: 'bg-emerald-100 text-emerald-700', hint: 'A question with 2–4 options' },
+  { value: 'tick',     label: 'Tick the Correct',    labelUr: 'صحیح پر نشان لگائیں',     icon: SquareCheck, color: 'bg-amber-100 text-amber-700',     hint: 'Tick ✓ or ✗ next to each statement' },
+  { value: 'short',    label: 'Short Question',      labelUr: 'مختصر سوال',             icon: ListOrdered, color: 'bg-violet-100 text-violet-700',   hint: 'Answer in 2–3 lines' },
+  { value: 'long',     label: 'Long Question',       labelUr: 'تفصیلی سوال',            icon: BookOpen,    color: 'bg-indigo-100 text-indigo-700',   hint: 'Detailed answer question' },
+  { value: 'application', label: 'Application Question', labelUr: 'اطلاقی سوال',       icon: PenLine,     color: 'bg-orange-100 text-orange-700',   hint: 'Apply the concept to a situation' },
+  { value: 'essay',    label: 'Essay',               labelUr: 'مضمون',                  icon: BookMarked,  color: 'bg-rose-100 text-rose-700',       hint: 'Write an essay on the topic' },
+  { value: 'match',    label: 'Match the Columns',   labelUr: 'کالم ملائیں',            icon: GitCompare,  color: 'bg-teal-100 text-teal-700',       hint: 'Column A → Column B' },
+  { value: 'story',    label: 'Story / Paragraph',   labelUr: 'کہانی / پیراگراف',       icon: BookOpen,    color: 'bg-pink-100 text-pink-700',       hint: 'Write a story from the given clues' },
+  { value: 'truefalse', label: 'True / False',       labelUr: 'صحیح / غلط',             icon: ToggleLeft,  color: 'bg-cyan-100 text-cyan-700',       hint: 'Mark each statement True or False' },
 ]
 
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7)
@@ -51,7 +60,6 @@ const esc = (v) =>
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;').replace(/'/g, '&#39;')
 
-// Create a fresh question of the given type
 const newQuestion = (type, marks = 5) => {
   const q = { id: uid(), type, text: '', marks, parts: [] }
   if (type === 'fill') {
@@ -72,6 +80,20 @@ const newQuestion = (type, marks = 5) => {
   return q
 }
 
+// Localized labels for the paper
+const L = {
+  en: {
+    subject: 'Subject', class: 'Class', time: 'Time', totalMarks: 'Total Marks',
+    date: 'Date', session: 'Session', instructions: 'Instructions',
+    principal: 'Principal', teacher: 'Teacher', columnA: 'Column A', columnB: 'Column B',
+  },
+  ur: {
+    subject: 'مضمون', class: 'کلاس', time: 'وقت', totalMarks: 'کل نمبرات',
+    date: 'تاریخ', session: 'سیشن', instructions: 'ہدایات',
+    principal: 'پرنسپل', teacher: 'استاد', columnA: 'کالم الف', columnB: 'کالم ب',
+  },
+}
+
 // ─────────────────────────────────────────────
 // Component
 // ─────────────────────────────────────────────
@@ -83,7 +105,6 @@ export default function PaperComposingPage() {
   const [school, setSchool] = useState({ name: '', address: '', phone: '', logo: '' })
   const [sessionOptions, setSessionOptions] = useState([])
 
-  // Paper meta
   const [meta, setMeta] = useState({
     pageSize: 'A4',
     term: 'Mid Term',
@@ -98,13 +119,14 @@ export default function PaperComposingPage() {
     font: "'Segoe UI', Arial, sans-serif",
     showLogo: true,
     showHeader: true,
+    language: 'en', // 'en' | 'ur'
   })
 
-  // Questions array (flat — one list, no sections)
   const [questions, setQuestions] = useState([])
-
   const hydrated = useRef(false)
   const [busy, setBusy] = useState(false)
+
+  const isRTL = meta.language === 'ur'
 
   // ── Persist ──
   useEffect(() => {
@@ -171,7 +193,6 @@ export default function PaperComposingPage() {
   // ── Question ops ──
   const addQuestion = (type) => {
     setQuestions((prev) => [...prev, newQuestion(type)])
-    // scroll down
     setTimeout(() => {
       window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' })
     }, 50)
@@ -282,45 +303,50 @@ export default function PaperComposingPage() {
 
     const questionsHtml = questions.map((q, i) => renderQuestionHTML(q, i, meta)).join('')
 
+    const labels = L[meta.language] || L.en
+    const dir = isRTL ? 'rtl' : 'ltr'
+    const align = isRTL ? 'right' : 'left'
+    const flexDir = isRTL ? 'row-reverse' : 'row'
+    const fontFamily = isRTL
+      ? "'Noto Nastaliq Urdu', 'Jameel Noori Nastaleeq', 'Segoe UI', Arial, sans-serif"
+      : meta.font
+
     const html = `<!DOCTYPE html>
-<html><head><meta charset="utf-8" />
+<html dir="${dir}" lang="${meta.language}"><head><meta charset="utf-8" />
 <title>${esc(meta.subject || 'Paper')} — ${esc(meta.grade || '')}</title>
 <style>
   ${pageCSS}
   * { box-sizing: border-box; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-  html, body { margin: 0; padding: 0; background: #fff; font-family: ${meta.font}; color: #0f172a; }
+  html, body { margin: 0; padding: 0; background: #fff; font-family: ${fontFamily}; color: #0f172a; direction: ${dir}; }
   .paper { width: 100%; ${meta.showHeader ? `border: 0.4mm solid ${meta.accent}; padding: 6mm; border-radius: 2mm;` : ''} }
-  .head { display: flex; align-items: center; gap: 5mm; padding-bottom: 3mm; }
-  .head-info { flex: 1; }
+  .head { display: flex; flex-direction: ${flexDir}; align-items: center; gap: 5mm; padding-bottom: 3mm; }
+  .head-info { flex: 1; text-align: ${align}; }
   .school-name { font-size: 16pt; font-weight: 800; color: ${meta.accent}; text-transform: uppercase; line-height: 1.1; }
   .school-addr { font-size: 8.5pt; color: #475569; margin-top: 0.6mm; }
   .sep { height: 0.5mm; background: ${meta.accent}; margin: 1.5mm 0 2.5mm; border-radius: 1mm; }
   .title { text-align: center; margin-bottom: 2.5mm; }
-  .title > div { display: inline-block; font-size: 12pt; font-weight: 800; text-transform: uppercase; letter-spacing: 1mm; padding: 1.2mm 5mm; background: ${meta.accent}1A; border-radius: 2mm; }
-  .meta { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.5mm 5mm; font-size: 9.5pt; margin-bottom: 2.5mm; }
+  .title > div { display: inline-block; font-size: 12pt; font-weight: 800; text-transform: uppercase; letter-spacing: ${isRTL ? '0' : '1mm'}; padding: 1.2mm 5mm; background: ${meta.accent}1A; border-radius: 2mm; }
+  .meta { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.5mm 5mm; font-size: 9.5pt; margin-bottom: 2.5mm; text-align: ${align}; }
   .meta b { color: ${meta.accent}; }
-  .instr { font-size: 8.5pt; color: #475569; background: #f8fafc; padding: 2mm 3mm; border-left: 1mm solid ${meta.accent}; margin-bottom: 3mm; border-radius: 1mm; }
+  .instr { font-size: 8.5pt; color: #475569; background: #f8fafc; padding: 2mm 3mm; border-${isRTL ? 'right' : 'left'}: 1mm solid ${meta.accent}; margin-bottom: 3mm; border-radius: 1mm; text-align: ${align}; }
   .instr b { color: #0f172a; }
   .q { padding: 2mm 0; border-bottom: 0.2mm dotted #cbd5e1; page-break-inside: avoid; break-inside: avoid; }
   .q:last-child { border-bottom: none; }
-  .q-line { display: flex; align-items: flex-start; gap: 2mm; }
-  .q-num { font-size: 10.5pt; font-weight: 800; color: ${meta.accent}; flex: none; width: 10mm; }
-  .q-text { flex: 1; font-size: 10.5pt; line-height: 1.5; }
+  .q-line { display: flex; flex-direction: ${flexDir}; align-items: flex-start; gap: 2mm; }
+  .q-num { font-size: 10.5pt; font-weight: 800; color: ${meta.accent}; flex: none; width: 10mm; text-align: ${align}; }
+  .q-text { flex: 1; font-size: 10.5pt; line-height: 1.5; text-align: ${align}; }
   .q-marks { flex: none; width: 11mm; text-align: center; font-size: 8.5pt; font-weight: 700; color: ${meta.accent}; background: ${meta.accent}14; padding: 0.8mm 0; border-radius: 1mm; }
-  /* Sub parts */
-  .parts { margin-top: 1mm; padding-left: 10mm; }
-  .part { display: flex; gap: 2mm; font-size: 10.5pt; margin-bottom: 1mm; }
-  .part-label { color: ${meta.accent}; font-weight: 700; width: 8mm; flex: none; }
-  .part-text { flex: 1; }
-  .opts { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.5mm 4mm; margin-top: 0.5mm; padding-left: 10mm; }
-  .opt { font-size: 10.5pt; }
+  .parts { margin-top: 1mm; padding-${isRTL ? 'right' : 'left'}: 10mm; }
+  .part { display: flex; flex-direction: ${flexDir}; gap: 2mm; font-size: 10.5pt; margin-bottom: 1mm; }
+  .part-label { color: ${meta.accent}; font-weight: 700; width: 8mm; flex: none; text-align: ${align}; }
+  .part-text { flex: 1; text-align: ${align}; }
+  .opts { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.5mm 4mm; margin-top: 0.5mm; padding-${isRTL ? 'right' : 'left'}: 10mm; }
+  .opt { font-size: 10.5pt; text-align: ${align}; }
   .opt b { color: ${meta.accent}; }
-  /* Match columns */
   .match-table { width: 100%; border-collapse: collapse; margin-top: 1mm; }
-  .match-table td { padding: 1mm 2mm; font-size: 10.5pt; }
-  .match-table .colA { border-right: 0.3mm solid #cbd5e1; }
-  /* Footer */
-  .foot { margin-top: 4mm; padding-top: 2.5mm; border-top: 0.3mm solid #cbd5e1; display: flex; align-items: center; justify-content: space-between; }
+  .match-table td { padding: 1mm 2mm; font-size: 10.5pt; text-align: ${align}; }
+  .match-table .colA { border-${isRTL ? 'left' : 'right'}: 0.3mm solid #cbd5e1; }
+  .foot { margin-top: 4mm; padding-top: 2.5mm; border-top: 0.3mm solid #cbd5e1; display: flex; flex-direction: ${flexDir}; align-items: center; justify-content: space-between; }
   .foot .sig { min-width: 45mm; text-align: center; }
   .foot .sig-line { width: 40mm; border-top: 0.3mm solid #0f172a; margin: 0 auto; }
   .foot .sig-label { font-size: 8.5pt; color: #475569; margin-top: 1mm; }
@@ -340,25 +366,25 @@ export default function PaperComposingPage() {
   </div>
   <div class="sep"></div>
   ` : ''}
-  <div class="title"><div>${esc(meta.term)}${meta.session ? ' — ' + esc(meta.session) : ''}</div></div>
+  <div class="title"><div>${esc(isRTL ? (TERMS_UR[meta.term] || meta.term) : meta.term)}${meta.session ? ' — ' + esc(meta.session) : ''}</div></div>
   <div class="meta">
-    <div><b>Subject:</b> ${esc(meta.subject)}</div>
-    <div><b>Class:</b> ${esc(meta.grade)}${meta.section ? ' - ' + esc(meta.section) : ''}</div>
-    <div><b>Time:</b> ${esc(meta.timeAllowed)}</div>
-    <div><b>Total Marks:</b> ${totalMarks}</div>
-    <div><b>Date:</b> ${fmtDate()}</div>
-    <div><b>Session:</b> ${esc(meta.session || '—')}</div>
+    <div><b>${labels.subject}:</b> ${esc(meta.subject)}</div>
+    <div><b>${labels.class}:</b> ${esc(meta.grade)}${meta.section ? ' - ' + esc(meta.section) : ''}</div>
+    <div><b>${labels.time}:</b> ${esc(meta.timeAllowed)}</div>
+    <div><b>${labels.totalMarks}:</b> ${totalMarks}</div>
+    <div><b>${labels.date}:</b> ${fmtDate()}</div>
+    <div><b>${labels.session}:</b> ${esc(meta.session || '—')}</div>
   </div>
-  ${meta.instructions ? `<div class="instr"><b>Instructions:</b> ${esc(meta.instructions)}</div>` : ''}
+  ${meta.instructions ? `<div class="instr"><b>${labels.instructions}:</b> ${esc(meta.instructions)}</div>` : ''}
 
   ${questionsHtml}
 
   <div class="foot">
     <div class="sig">
       <div class="sig-line"></div>
-      <div class="sig-label">${esc(meta.signatureLabel)}</div>
+      <div class="sig-label">${esc(isRTL ? labels.principal : meta.signatureLabel)}</div>
     </div>
-    <div class="total"><b>Total Marks:</b> ${totalMarks}</div>
+    <div class="total"><b>${labels.totalMarks}:</b> ${totalMarks}</div>
     <div style="width: 45mm;"></div>
   </div>
 </div>
@@ -370,9 +396,6 @@ export default function PaperComposingPage() {
     win.document.close()
   }
 
-  // ─────────────────────────────────────────────
-  // UI
-  // ─────────────────────────────────────────────
   const accent = isAcademy ? 'from-violet-500 to-purple-600' : 'from-indigo-500 to-blue-600'
 
   return (
@@ -389,6 +412,26 @@ export default function PaperComposingPage() {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          {/* Language toggle */}
+          <div className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white p-1">
+            <Languages size={15} className="text-slate-400 mx-1" />
+            {[
+              { v: 'en', t: 'English', d: 'ltr' },
+              { v: 'ur', t: 'اردو', d: 'rtl' },
+            ].map((opt) => (
+              <button
+                key={opt.v}
+                onClick={() => setMeta((m) => ({ ...m, language: opt.v }))}
+                className={`px-3 py-1.5 rounded text-xs font-bold transition ${
+                  meta.language === opt.v
+                    ? 'bg-indigo-600 text-white'
+                    : 'text-slate-600 hover:bg-slate-50'
+                }`}
+              >
+                {opt.t}
+              </button>
+            ))}
+          </div>
           <Button onClick={resetPaper} variant="outline" className="gap-2 text-red-600 border-red-200 hover:bg-red-50">
             <RotateCcw size={15} /> Clear Paper
           </Button>
@@ -399,8 +442,8 @@ export default function PaperComposingPage() {
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-[1fr_1fr] gap-6 items-start">
-        {/* ═══════════ LEFT: FORM ═══════════ */}
-        <div className="space-y-4">
+        {/* LEFT: FORM */}
+        <div className="space-y-4" dir={isRTL ? 'rtl' : 'ltr'}>
           {/* STEP 1: Paper details */}
           <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
             <div className="flex items-center gap-2 mb-4">
@@ -521,7 +564,6 @@ export default function PaperComposingPage() {
               ))}
             </div>
 
-            {/* ADD QUESTION — big labels */}
             <div className="mt-5 pt-5 border-t border-slate-200">
               <p className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-3">
                 ➕ Add a question
@@ -539,7 +581,9 @@ export default function PaperComposingPage() {
                         <Icon size={14} />
                       </div>
                       <div className="min-w-0">
-                        <div className="text-xs font-bold text-slate-800 leading-tight">{qt.label}</div>
+                        <div className="text-xs font-bold text-slate-800 leading-tight">
+                          {isRTL ? qt.labelUr : qt.label}
+                        </div>
                         <div className="text-[10px] text-slate-500 leading-tight mt-0.5">{qt.hint}</div>
                       </div>
                     </button>
@@ -550,25 +594,28 @@ export default function PaperComposingPage() {
           </div>
         </div>
 
-        {/* ═══════════ RIGHT: LIVE PREVIEW ═══════════ */}
+        {/* RIGHT: LIVE PREVIEW */}
         <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 min-w-0 sticky top-4">
           <div className="flex items-center gap-2 mb-4">
             <Eye size={16} className="text-indigo-600" />
             <h3 className="font-bold text-slate-800">Live Preview</h3>
-            <span className="text-[11px] text-slate-400 ml-auto">{meta.pageSize}</span>
+            <span className="text-[11px] text-slate-400 ml-auto">{meta.pageSize} · {isRTL ? 'RTL' : 'LTR'}</span>
           </div>
 
           <div className="rounded-xl bg-slate-100 p-6 overflow-auto" style={{ maxHeight: '85vh' }}>
             <div
+              dir={isRTL ? 'rtl' : 'ltr'}
               style={{
                 width: meta.pageSize === 'A5' ? '148mm' : '210mm',
                 minHeight: meta.pageSize === 'A5' ? '210mm' : '297mm',
                 transform: `scale(${meta.pageSize === 'A5' ? 0.85 : 0.62})`,
-                transformOrigin: 'top left',
+                transformOrigin: isRTL ? 'top right' : 'top left',
                 background: '#fff',
                 padding: '10mm',
                 boxSizing: 'border-box',
-                fontFamily: meta.font,
+                fontFamily: isRTL
+                  ? "'Noto Nastaliq Urdu', 'Jameel Noori Nastaleeq', 'Segoe UI', Arial, sans-serif"
+                  : meta.font,
                 boxShadow: '0 10px 30px rgba(15,23,42,0.15)',
                 borderRadius: '2mm',
                 border: meta.showHeader ? `0.4mm solid ${meta.accent}` : 'none',
@@ -585,7 +632,7 @@ export default function PaperComposingPage() {
 }
 
 // ─────────────────────────────────────────────
-// Question Card (big, clear, one question = one card)
+// Question Card
 // ─────────────────────────────────────────────
 function QuestionCard({ q, index, isFirst, isLast, onUpdate, onRemove, onMove, onAddPart, onUpdatePart, onRemovePart, onUpdateOption }) {
   const typeDef = Q_TYPES.find((t) => t.value === q.type) || Q_TYPES[0]
@@ -593,7 +640,6 @@ function QuestionCard({ q, index, isFirst, isLast, onUpdate, onRemove, onMove, o
 
   return (
     <div className="rounded-xl border-2 border-slate-200 bg-white overflow-hidden">
-      {/* Header */}
       <div className="flex items-center gap-2 px-3 py-2 bg-slate-50 border-b border-slate-200">
         <div className={`w-7 h-7 rounded-lg ${typeDef.color} flex items-center justify-center flex-none`}>
           <TypeIcon size={14} />
@@ -617,9 +663,7 @@ function QuestionCard({ q, index, isFirst, isLast, onUpdate, onRemove, onMove, o
         </button>
       </div>
 
-      {/* Body */}
       <div className="p-3 space-y-2">
-        {/* Question stem */}
         <div>
           <label className="block text-[10px] font-semibold text-slate-600 mb-1">Question Text</label>
           <textarea
@@ -631,7 +675,6 @@ function QuestionCard({ q, index, isFirst, isLast, onUpdate, onRemove, onMove, o
           />
         </div>
 
-        {/* Fill-in / Tick / True-False / Short parts */}
         {(q.type === 'fill' || q.type === 'tick' || q.type === 'truefalse' || q.type === 'short' || q.type === 'long' || q.type === 'application' || q.type === 'essay' || q.type === 'story' || q.type === 'simple') && Array.isArray(q.parts) && (
           <>
             {q.parts.length > 0 && (
@@ -673,7 +716,6 @@ function QuestionCard({ q, index, isFirst, isLast, onUpdate, onRemove, onMove, o
           </>
         )}
 
-        {/* MCQ parts with options */}
         {q.type === 'mcq' && (
           <>
             <div className="flex items-center justify-between mt-2">
@@ -690,7 +732,7 @@ function QuestionCard({ q, index, isFirst, isLast, onUpdate, onRemove, onMove, o
                     <input
                       className="flex-1 min-w-0 px-2 py-1 rounded border border-slate-200 text-xs outline-none focus:border-indigo-500 bg-white"
                       value={p.text}
-                      placeholder="Question stem (e.g. What is the name of the fruit?)"
+                      placeholder="Question stem"
                       onChange={(e) => onUpdatePart(q.id, p.id, { text: e.target.value })}
                     />
                     <button onClick={() => onRemovePart(q.id, p.id)} className="p-1 rounded hover:bg-red-50 text-red-500">
@@ -716,7 +758,6 @@ function QuestionCard({ q, index, isFirst, isLast, onUpdate, onRemove, onMove, o
           </>
         )}
 
-        {/* Match columns */}
         {q.type === 'match' && (
           <>
             <div className="flex items-center justify-between mt-2">
@@ -754,18 +795,27 @@ function QuestionCard({ q, index, isFirst, isLast, onUpdate, onRemove, onMove, o
 }
 
 // ─────────────────────────────────────────────
-// Preview content (matches print exactly)
+// Preview content (mirrors print exactly)
 // ─────────────────────────────────────────────
 function PreviewContent({ meta, questions, school, totalMarks }) {
+  const isRTL = meta.language === 'ur'
+  const labels = L[meta.language] || L.en
+  const dir = isRTL ? 'rtl' : 'ltr'
+  const align = isRTL ? 'right' : 'left'
+  const flexDir = isRTL ? 'row-reverse' : 'row'
+  const fontFamily = isRTL
+    ? "'Noto Nastaliq Urdu', 'Jameel Noori Nastaleeq', 'Segoe UI', Arial, sans-serif"
+    : meta.font
+
   return (
-    <>
+    <div dir={dir} style={{ fontFamily }}>
       {meta.showHeader && (
         <>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '4mm', paddingBottom: '2mm' }}>
+          <div style={{ display: 'flex', flexDirection: flexDir, alignItems: 'center', gap: '4mm', paddingBottom: '2mm' }}>
             {meta.showLogo && school.logo && (
               <img src={school.logo} alt="" style={{ width: '18mm', height: '18mm', objectFit: 'contain', borderRadius: '3mm' }} />
             )}
-            <div style={{ flex: 1 }}>
+            <div style={{ flex: 1, textAlign: align }}>
               <div style={{ fontSize: '16pt', fontWeight: 800, color: meta.accent, textTransform: 'uppercase', lineHeight: 1.1 }}>
                 {school.name || 'School Name'}
               </div>
@@ -782,29 +832,30 @@ function PreviewContent({ meta, questions, school, totalMarks }) {
       )}
 
       <div style={{ textAlign: 'center', marginBottom: '2.5mm' }}>
-        <div style={{ display: 'inline-block', fontSize: '12pt', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '1mm', padding: '1.2mm 5mm', background: `${meta.accent}1A`, borderRadius: '2mm' }}>
-          {meta.term}{meta.session ? ' — ' + meta.session : ''}
+        <div style={{ display: 'inline-block', fontSize: '12pt', fontWeight: 800, textTransform: 'uppercase', letterSpacing: isRTL ? '0' : '1mm', padding: '1.2mm 5mm', background: `${meta.accent}1A`, borderRadius: '2mm' }}>
+          {isRTL ? (TERMS_UR[meta.term] || meta.term) : meta.term}
+          {meta.session ? ' — ' + meta.session : ''}
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1.5mm 5mm', fontSize: '9.5pt', marginBottom: '2.5mm' }}>
-        <div><b style={{ color: meta.accent }}>Subject:</b> {meta.subject || '—'}</div>
-        <div><b style={{ color: meta.accent }}>Class:</b> {meta.grade || '—'}{meta.section ? ' - ' + meta.section : ''}</div>
-        <div><b style={{ color: meta.accent }}>Time:</b> {meta.timeAllowed}</div>
-        <div><b style={{ color: meta.accent }}>Total Marks:</b> {totalMarks}</div>
-        <div><b style={{ color: meta.accent }}>Date:</b> {fmtDate()}</div>
-        <div><b style={{ color: meta.accent }}>Session:</b> {meta.session || '—'}</div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1.5mm 5mm', fontSize: '9.5pt', marginBottom: '2.5mm', textAlign: align }}>
+        <div><b style={{ color: meta.accent }}>{labels.subject}:</b> {meta.subject || '—'}</div>
+        <div><b style={{ color: meta.accent }}>{labels.class}:</b> {meta.grade || '—'}{meta.section ? ' - ' + meta.section : ''}</div>
+        <div><b style={{ color: meta.accent }}>{labels.time}:</b> {meta.timeAllowed}</div>
+        <div><b style={{ color: meta.accent }}>{labels.totalMarks}:</b> {totalMarks}</div>
+        <div><b style={{ color: meta.accent }}>{labels.date}:</b> {fmtDate()}</div>
+        <div><b style={{ color: meta.accent }}>{labels.session}:</b> {meta.session || '—'}</div>
       </div>
 
       {meta.instructions && (
-        <div style={{ fontSize: '8.5pt', color: '#475569', background: '#f8fafc', padding: '2mm 3mm', borderLeft: `1mm solid ${meta.accent}`, marginBottom: '3mm', borderRadius: '1mm' }}>
-          <b style={{ color: '#0f172a' }}>Instructions:</b> {meta.instructions}
+        <div style={{ fontSize: '8.5pt', color: '#475569', background: '#f8fafc', padding: '2mm 3mm', borderRight: isRTL ? `1mm solid ${meta.accent}` : 'none', borderLeft: isRTL ? 'none' : `1mm solid ${meta.accent}`, marginBottom: '3mm', borderRadius: '1mm', textAlign: align }}>
+          <b style={{ color: '#0f172a' }}>{labels.instructions}:</b> {meta.instructions}
         </div>
       )}
 
       {questions.length === 0 ? (
         <div style={{ textAlign: 'center', padding: '20mm 0', color: '#94a3b8', fontSize: '11pt', fontStyle: 'italic' }}>
-          Add questions on the left to see them here
+          {isRTL ? 'سوالات شامل کریں' : 'Add questions on the left to see them here'}
         </div>
       ) : (
         questions.map((q, i) => (
@@ -812,90 +863,91 @@ function PreviewContent({ meta, questions, school, totalMarks }) {
         ))
       )}
 
-      <div style={{ marginTop: '4mm', paddingTop: '2.5mm', borderTop: '0.3mm solid #cbd5e1', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      <div style={{ marginTop: '4mm', paddingTop: '2.5mm', borderTop: '0.3mm solid #cbd5e1', display: 'flex', flexDirection: flexDir, alignItems: 'center', justifyContent: 'space-between' }}>
         <div style={{ minWidth: '45mm', textAlign: 'center' }}>
           <div style={{ width: '40mm', borderTop: '0.3mm solid #0f172a', margin: '0 auto' }} />
-          <div style={{ fontSize: '8.5pt', color: '#475569', marginTop: '1mm' }}>{meta.signatureLabel}</div>
+          <div style={{ fontSize: '8.5pt', color: '#475569', marginTop: '1mm' }}>
+            {isRTL ? labels.principal : meta.signatureLabel}
+          </div>
         </div>
         <div style={{ flex: 1, textAlign: 'center', fontSize: '9pt' }}>
-          <b style={{ color: meta.accent }}>Total Marks:</b> {totalMarks}
+          <b style={{ color: meta.accent }}>{labels.totalMarks}:</b> {totalMarks}
         </div>
         <div style={{ width: '45mm' }} />
       </div>
-    </>
+    </div>
   )
 }
 
 // ─────────────────────────────────────────────
-// HTML renderer for a single question (used in both preview & print)
+// HTML renderer (shared by preview & print)
 // ─────────────────────────────────────────────
 function renderQuestionHTML(q, i, meta) {
+  const isRTL = meta.language === 'ur'
+  const labels = L[meta.language] || L.en
+  const align = isRTL ? 'right' : 'left'
+  const flexDir = isRTL ? 'row-reverse' : 'row'
+  const padSide = isRTL ? 'right' : 'left'
+
   const qNum = i + 1
   const numColor = meta.accent
   const marksStyle = `width:11mm;text-align:center;font-size:8.5pt;font-weight:700;color:${meta.accent};background:${meta.accent}14;padding:0.8mm 0;border-radius:1mm;flex:none;`
 
   const mainLine = `
-    <div class="q-line" style="display:flex;align-items:flex-start;gap:2mm;">
-      <span class="q-num" style="font-size:10.5pt;font-weight:800;color:${numColor};flex:none;width:10mm;">Q${qNum}.</span>
-      <div class="q-text" style="flex:1;font-size:10.5pt;line-height:1.5;">${esc(q.text || '').replace(/\n/g, '<br/>')}</div>
+    <div class="q-line" style="display:flex;flex-direction:${flexDir};align-items:flex-start;gap:2mm;">
+      <span class="q-num" style="font-size:10.5pt;font-weight:800;color:${numColor};flex:none;width:10mm;text-align:${align};">Q${qNum}.</span>
+      <div class="q-text" style="flex:1;font-size:10.5pt;line-height:1.5;text-align:${align};">${esc(q.text || '').replace(/\n/g, '<br/>')}</div>
       <span class="q-marks" style="${marksStyle}">${q.marks}</span>
     </div>
   `
 
-  // Fill in the blanks / Tick / True-False / Short / Long / Simple parts
   if (
     q.type === 'fill' || q.type === 'tick' || q.type === 'truefalse' ||
     (Array.isArray(q.parts) && q.parts.length > 0 && (q.type === 'short' || q.type === 'long' || q.type === 'application' || q.type === 'essay' || q.type === 'story' || q.type === 'simple'))
   ) {
     const parts = (q.parts || []).map((p, pi) => `
-      <div class="part" style="display:flex;gap:2mm;font-size:10.5pt;margin-bottom:1mm;">
-        <span class="part-label" style="color:${meta.accent};font-weight:700;width:8mm;flex:none;">${pi + 1}.</span>
-        <span class="part-text" style="flex:1;">${esc(p.text || '')}</span>
+      <div class="part" style="display:flex;flex-direction:${flexDir};gap:2mm;font-size:10.5pt;margin-bottom:1mm;">
+        <span class="part-label" style="color:${meta.accent};font-weight:700;width:8mm;flex:none;text-align:${align};">${pi + 1}.</span>
+        <span class="part-text" style="flex:1;text-align:${align};">${esc(p.text || '')}</span>
       </div>
     `).join('')
-    const extra = q.type === 'tick' || q.type === 'truefalse'
-      ? '' // tick has no options, just statements
-      : ''
-    return `<div class="q" style="padding:2mm 0;border-bottom:0.2mm dotted #cbd5e1;page-break-inside:avoid;">${mainLine}${extra}<div class="parts" style="margin-top:1mm;padding-left:10mm;">${parts}</div></div>`
+    return `<div class="q" style="padding:2mm 0;border-bottom:0.2mm dotted #cbd5e1;page-break-inside:avoid;">${mainLine}<div class="parts" style="margin-top:1mm;padding-${padSide}:10mm;">${parts}</div></div>`
   }
 
-  // MCQ
   if (q.type === 'mcq') {
     const parts = (q.parts || []).map((p, pi) => `
       <div style="margin-top:${pi === 0 ? '1mm' : '1.5mm'};">
-        <div style="display:flex;gap:2mm;font-size:10.5pt;">
-          <span style="color:${meta.accent};font-weight:700;width:8mm;flex:none;">${pi + 1}.</span>
-          <span style="flex:1;">${esc(p.text || '')}</span>
+        <div style="display:flex;flex-direction:${flexDir};gap:2mm;font-size:10.5pt;">
+          <span style="color:${meta.accent};font-weight:700;width:8mm;flex:none;text-align:${align};">${pi + 1}.</span>
+          <span style="flex:1;text-align:${align};">${esc(p.text || '')}</span>
         </div>
-        <div class="opts" style="display:grid;grid-template-columns:repeat(4,1fr);gap:0.5mm 4mm;margin-top:0.5mm;padding-left:10mm;">
+        <div class="opts" style="display:grid;grid-template-columns:repeat(4,1fr);gap:0.5mm 4mm;margin-top:0.5mm;padding-${padSide}:10mm;">
           ${(p.options || []).map((o, oi) => `
-            <div class="opt" style="font-size:10.5pt;"><b style="color:${meta.accent};">${String.fromCharCode(65 + oi)}.</b> ${esc(o || '')}</div>
+            <div class="opt" style="font-size:10.5pt;text-align:${align};"><b style="color:${meta.accent};">${String.fromCharCode(65 + oi)}.</b> ${esc(o || '')}</div>
           `).join('')}
         </div>
       </div>
     `).join('')
-    return `<div class="q" style="padding:2mm 0;border-bottom:0.2mm dotted #cbd5e1;page-break-inside:avoid;">${mainLine}<div style="padding-left:10mm;">${parts}</div></div>`
+    return `<div class="q" style="padding:2mm 0;border-bottom:0.2mm dotted #cbd5e1;page-break-inside:avoid;">${mainLine}<div style="padding-${padSide}:10mm;">${parts}</div></div>`
   }
 
-  // Match columns
   if (q.type === 'match') {
     const rows = (q.parts || []).map((p, pi) => `
       <tr>
-        <td class="colA" style="padding:1mm 2mm;font-size:10.5pt;border-right:0.3mm solid #cbd5e1;width:50%;">${pi + 1}. ${esc(p.colA || '')}</td>
-        <td style="padding:1mm 2mm;font-size:10.5pt;">${String.fromCharCode(65 + pi)}. ${esc(p.colB || '')}</td>
+        <td class="colA" style="padding:1mm 2mm;font-size:10.5pt;border-${isRTL ? 'left' : 'right'}:0.3mm solid #cbd5e1;width:50%;text-align:${align};">${pi + 1}. ${esc(p.colA || '')}</td>
+        <td style="padding:1mm 2mm;font-size:10.5pt;text-align:${align};">${String.fromCharCode(65 + pi)}. ${esc(p.colB || '')}</td>
       </tr>
     `).join('')
     return `<div class="q" style="padding:2mm 0;border-bottom:0.2mm dotted #cbd5e1;page-break-inside:avoid;">${mainLine}
       <table class="match-table" style="width:100%;border-collapse:collapse;margin-top:1mm;">
         <thead><tr>
-          <th style="text-align:left;padding:1mm 2mm;font-size:10pt;color:${meta.accent};border-bottom:0.3mm solid ${meta.accent};">Column A</th>
-          <th style="text-align:left;padding:1mm 2mm;font-size:10pt;color:${meta.accent};border-bottom:0.3mm solid ${meta.accent};">Column B</th>
+          <th style="text-align:${align};padding:1mm 2mm;font-size:10pt;color:${meta.accent};border-bottom:0.3mm solid ${meta.accent};">${labels.columnA}</th>
+          <th style="text-align:${align};padding:1mm 2mm;font-size:10pt;color:${meta.accent};border-bottom:0.3mm solid ${meta.accent};">${labels.columnB}</th>
         </tr></thead>
         <tbody>${rows}</tbody>
       </table>
     </div>`
   }
 
-  // Simple / Short / Long / Application / Essay / Story — no parts
   return `<div class="q" style="padding:2mm 0;border-bottom:0.2mm dotted #cbd5e1;page-break-inside:avoid;">${mainLine}</div>`
 }
