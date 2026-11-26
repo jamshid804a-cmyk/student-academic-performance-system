@@ -15,7 +15,7 @@ import { useProgram } from '@/src/context/ProgramContext'
 // ─────────────────────────────────────────────
 // Constants
 // ─────────────────────────────────────────────
-const STORAGE_KEY = 'paper_simple_v3'
+const STORAGE_KEY = 'paper_simple_v4'
 
 const GRADES = [
   'Nursery', 'Prep',
@@ -102,7 +102,6 @@ export default function PaperComposingPage() {
   const programValue = ctx.program || 'school'
   const isAcademy = programValue === 'academy'
 
-  // School info (English + Urdu variants, both editable)
   const [school, setSchool] = useState({
     name: '', address: '', phone: '', logo: '',
     nameUr: '', addressUr: '', phoneUr: '',
@@ -126,7 +125,7 @@ export default function PaperComposingPage() {
     font: "'Segoe UI', Arial, sans-serif",
     showLogo: true,
     showHeader: true,
-    language: 'en', // 'en' | 'ur'
+    language: 'en',
   })
 
   const [questions, setQuestions] = useState([])
@@ -156,7 +155,7 @@ export default function PaperComposingPage() {
     } catch {}
   }, [meta, questions, school])
 
-  // ── School info (auto-fill English; Urdu stays user-editable) ──
+  // ── School info ──
   useEffect(() => {
     let alive = true
     GlobalApi.GetSchoolInfo()
@@ -165,7 +164,6 @@ export default function PaperComposingPage() {
         if (!alive || !d) return
         setSchool((s) => ({
           ...s,
-          // don't overwrite anything the user already typed
           name: s.name || d.schoolName || d.name || '',
           address: s.address || d.address || '',
           phone: s.phone || d.phone || d.contact || '',
@@ -350,8 +348,8 @@ export default function PaperComposingPage() {
   .meta b { color: ${meta.accent}; }
   .instr { font-size: 8.5pt; color: #475569; background: #f8fafc; padding: 2mm 3mm; border-${isRTL ? 'right' : 'left'}: 1mm solid ${meta.accent}; margin-bottom: 3mm; border-radius: 1mm; text-align: ${align}; }
   .instr b { color: #0f172a; }
-  .q { padding: 2mm 0; border-bottom: 0.2mm dotted #cbd5e1; page-break-inside: avoid; break-inside: avoid; }
-  .q:last-child { border-bottom: none; }
+  /* FIX 1: no bottom border on questions */
+  .q { padding: 2mm 0; page-break-inside: avoid; break-inside: avoid; }
   .q-line { display: flex; flex-direction: ${flexDir}; align-items: flex-start; gap: 2mm; }
   .q-num { font-size: 10.5pt; font-weight: 800; color: ${meta.accent}; flex: none; width: 10mm; text-align: ${align}; }
   .q-text { flex: 1; font-size: 10.5pt; line-height: 1.5; text-align: ${align}; }
@@ -360,9 +358,9 @@ export default function PaperComposingPage() {
   .part { display: flex; flex-direction: ${flexDir}; gap: 2mm; font-size: 10.5pt; margin-bottom: 1mm; }
   .part-label { color: ${meta.accent}; font-weight: 700; width: 8mm; flex: none; text-align: ${align}; }
   .part-text { flex: 1; text-align: ${align}; }
-  .opts { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.5mm 4mm; margin-top: 0.5mm; padding-${isRTL ? 'right' : 'left'}: 10mm; }
-  .opt { font-size: 10.5pt; text-align: ${align}; }
-  .opt b { color: ${meta.accent}; }
+  /* FIX 2: options render exactly as typed, 4 per row, wrap to next row */
+  .opts { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1mm 4mm; margin-top: 1mm; padding-${isRTL ? 'right' : 'left'}: 10mm; }
+  .opt { font-size: 10.5pt; text-align: ${align}; line-height: 1.4; }
   .match-table { width: 100%; border-collapse: collapse; margin-top: 1mm; }
   .match-table td { padding: 1mm 2mm; font-size: 10.5pt; text-align: ${align}; }
   .match-table .colA { border-${isRTL ? 'left' : 'right'}: 0.3mm solid #cbd5e1; }
@@ -432,7 +430,6 @@ export default function PaperComposingPage() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          {/* Language toggle */}
           <div className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white p-1">
             <Languages size={15} className="text-slate-400 mx-1" />
             {[
@@ -464,7 +461,7 @@ export default function PaperComposingPage() {
       <div className="grid grid-cols-1 xl:grid-cols-[1fr_1fr] gap-6 items-start">
         {/* LEFT: FORM */}
         <div className="space-y-4" dir={isRTL ? 'rtl' : 'ltr'}>
-          {/* STEP 0: School / Header info (editable per language) */}
+          {/* STEP 0: School / Header info */}
           <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
             <div className="flex items-center gap-2 mb-4">
               <span className="w-6 h-6 rounded-full bg-indigo-600 text-white text-xs font-bold flex items-center justify-center">0</span>
@@ -820,17 +817,16 @@ function QuestionCard({ q, index, isFirst, isLast, onUpdate, onRemove, onMove, o
                       <Trash2 size={11} />
                     </button>
                   </div>
+                  {/* FIX 2 in editor: type options freely (e.g. "(i) Apple", "1. Orange", "• Mango", "A. Banana") */}
                   <div className="grid grid-cols-2 gap-1.5 pl-8">
                     {(p.options || []).map((opt, oi) => (
-                      <div key={oi} className="flex items-center gap-1.5">
-                        <span className="text-[10px] font-bold text-indigo-600 w-3 flex-none">{String.fromCharCode(65 + oi)}</span>
-                        <input
-                          className="flex-1 min-w-0 px-2 py-1 rounded border border-slate-200 text-xs outline-none focus:border-indigo-500 bg-white"
-                          value={opt}
-                          placeholder={`Option ${String.fromCharCode(65 + oi)}`}
-                          onChange={(e) => onUpdateOption(q.id, p.id, oi, e.target.value)}
-                        />
-                      </div>
+                      <input
+                        key={oi}
+                        className="w-full px-2 py-1 rounded border border-slate-200 text-xs outline-none focus:border-indigo-500 bg-white"
+                        value={opt}
+                        placeholder={`Option ${oi + 1}  e.g. (i) Apple`}
+                        onChange={(e) => onUpdateOption(q.id, p.id, oi, e.target.value)}
+                      />
                     ))}
                   </div>
                 </div>
@@ -976,6 +972,7 @@ function renderQuestionHTML(q, i, meta) {
   const numColor = meta.accent
   const marksStyle = `width:11mm;text-align:center;font-size:8.5pt;font-weight:700;color:${meta.accent};background:${meta.accent}14;padding:0.8mm 0;border-radius:1mm;flex:none;`
 
+  // FIX 1: removed `border-bottom:0.2mm dotted #cbd5e1` from all `.q` wrappers
   const mainLine = `
     <div class="q-line" style="display:flex;flex-direction:${flexDir};align-items:flex-start;gap:2mm;">
       <span class="q-num" style="font-size:10.5pt;font-weight:800;color:${numColor};flex:none;width:10mm;text-align:${align};">Q${qNum}.</span>
@@ -994,24 +991,25 @@ function renderQuestionHTML(q, i, meta) {
         <span class="part-text" style="flex:1;text-align:${align};">${esc(p.text || '')}</span>
       </div>
     `).join('')
-    return `<div class="q" style="padding:2mm 0;border-bottom:0.2mm dotted #cbd5e1;page-break-inside:avoid;">${mainLine}<div class="parts" style="margin-top:1mm;padding-${padSide}:10mm;">${parts}</div></div>`
+    return `<div class="q" style="padding:2mm 0;page-break-inside:avoid;">${mainLine}<div class="parts" style="margin-top:1mm;padding-${padSide}:10mm;">${parts}</div></div>`
   }
 
   if (q.type === 'mcq') {
+    // FIX 2: print options exactly as typed — no auto A./B./C. prefix
     const parts = (q.parts || []).map((p, pi) => `
       <div style="margin-top:${pi === 0 ? '1mm' : '1.5mm'};">
         <div style="display:flex;flex-direction:${flexDir};gap:2mm;font-size:10.5pt;">
           <span style="color:${meta.accent};font-weight:700;width:8mm;flex:none;text-align:${align};">${pi + 1}.</span>
           <span style="flex:1;text-align:${align};">${esc(p.text || '')}</span>
         </div>
-        <div class="opts" style="display:grid;grid-template-columns:repeat(4,1fr);gap:0.5mm 4mm;margin-top:0.5mm;padding-${padSide}:10mm;">
-          ${(p.options || []).map((o, oi) => `
-            <div class="opt" style="font-size:10.5pt;text-align:${align};"><b style="color:${meta.accent};">${String.fromCharCode(65 + oi)}.</b> ${esc(o || '')}</div>
+        <div class="opts" style="display:grid;grid-template-columns:repeat(4,1fr);gap:1mm 4mm;margin-top:1mm;padding-${padSide}:10mm;">
+          ${(p.options || []).map((o) => `
+            <div class="opt" style="font-size:10.5pt;text-align:${align};line-height:1.4;">${esc(o || '')}</div>
           `).join('')}
         </div>
       </div>
     `).join('')
-    return `<div class="q" style="padding:2mm 0;border-bottom:0.2mm dotted #cbd5e1;page-break-inside:avoid;">${mainLine}<div style="padding-${padSide}:10mm;">${parts}</div></div>`
+    return `<div class="q" style="padding:2mm 0;page-break-inside:avoid;">${mainLine}<div style="padding-${padSide}:10mm;">${parts}</div></div>`
   }
 
   if (q.type === 'match') {
@@ -1021,7 +1019,7 @@ function renderQuestionHTML(q, i, meta) {
         <td style="padding:1mm 2mm;font-size:10.5pt;text-align:${align};">${String.fromCharCode(65 + pi)}. ${esc(p.colB || '')}</td>
       </tr>
     `).join('')
-    return `<div class="q" style="padding:2mm 0;border-bottom:0.2mm dotted #cbd5e1;page-break-inside:avoid;">${mainLine}
+    return `<div class="q" style="padding:2mm 0;page-break-inside:avoid;">${mainLine}
       <table class="match-table" style="width:100%;border-collapse:collapse;margin-top:1mm;">
         <thead><tr>
           <th style="text-align:${align};padding:1mm 2mm;font-size:10pt;color:${meta.accent};border-bottom:0.3mm solid ${meta.accent};">${labels.columnA}</th>
@@ -1032,5 +1030,5 @@ function renderQuestionHTML(q, i, meta) {
     </div>`
   }
 
-  return `<div class="q" style="padding:2mm 0;border-bottom:0.2mm dotted #cbd5e1;page-break-inside:avoid;">${mainLine}</div>`
+  return `<div class="q" style="padding:2mm 0;page-break-inside:avoid;">${mainLine}</div>`
 }
