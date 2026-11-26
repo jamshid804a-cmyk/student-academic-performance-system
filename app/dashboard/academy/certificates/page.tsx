@@ -7,7 +7,7 @@ import {
   ScrollText, Printer, Download, Loader2, Search,
   CheckCircle2, Award, GraduationCap, BookOpen, Sparkles,
   RotateCcw, Type, Palette, Image as ImageIcon, Upload, X,
-  Crown, Minimize2, LayoutTemplate,
+  Crown, Minimize2, LayoutTemplate, Droplets,
 } from 'lucide-react'
 import GlobalApi from '@/app/_services/GlobalApi'
 import { useProgram } from '@/src/context/ProgramContext'
@@ -15,7 +15,7 @@ import { useProgram } from '@/src/context/ProgramContext'
 // ─────────────────────────────────────────────
 // Constants
 // ─────────────────────────────────────────────
-const STORAGE_KEY = 'certificates_v3_templates'
+const STORAGE_KEY = 'certificates_v4_final'
 
 const GRADES = [
   'Nursery', 'Prep',
@@ -42,7 +42,6 @@ const CERT_TYPES = {
   ],
 }
 
-// 4 totally different templates
 const TEMPLATES = [
   { id: 'modern',  name: 'Modern',  desc: 'Clean, corporate',        icon: LayoutTemplate, preview: 'linear-gradient(135deg,#2563eb,#f59e0b)' },
   { id: 'classic', name: 'Classic', desc: 'Ornate, traditional',     icon: BookOpen,        preview: 'linear-gradient(135deg,#7c2d12,#f59e0b)' },
@@ -112,14 +111,14 @@ const fmtDate = (d = new Date()) =>
   })
 
 // ─────────────────────────────────────────────
-// Template style builders (used by print & preview)
+// Template style builders
 // ─────────────────────────────────────────────
-function getTemplateStyles(templateId, accentColor, goldColor, bgImage) {
+function getTemplateStyles(templateId, accentColor, goldColor, bgImage, bgOpacity) {
   const bgLayer = bgImage
-    ? `<div class="bg-image" style="position:absolute;inset:0;background-image:url('${bgImage}');background-size:cover;background-position:center;background-repeat:no-repeat;opacity:1;z-index:0;pointer-events:none;"></div>`
+    ? `<div class="bg-image" style="position:absolute;inset:0;background-image:url('${bgImage}');background-size:cover;background-position:center;background-repeat:no-repeat;opacity:${bgOpacity};z-index:0;pointer-events:none;"></div>`
     : ''
 
-  const contentWrap = `<div class="content" style="position:relative;z-index:1;width:100%;height:100%;display:flex;flex-direction:column;">`
+  const contentWrap = `<div class="content" style="position:relative;z-index:2;width:100%;height:100%;display:flex;flex-direction:column;">`
 
   if (templateId === 'classic') {
     return {
@@ -132,7 +131,7 @@ function getTemplateStyles(templateId, accentColor, goldColor, bgImage) {
           border: 1.2mm double ${goldColor};
           border-radius: 2mm;
           pointer-events: none;
-          z-index: 2;
+          z-index: 3;
         }
         .cert::after {
           content: '';
@@ -140,7 +139,7 @@ function getTemplateStyles(templateId, accentColor, goldColor, bgImage) {
           border: 0.3mm solid ${accentColor};
           border-radius: 1mm;
           pointer-events: none;
-          z-index: 2;
+          z-index: 3;
         }
         .corner-ornament {
           position: absolute; width: 18mm; height: 18mm;
@@ -175,19 +174,19 @@ function getTemplateStyles(templateId, accentColor, goldColor, bgImage) {
           position: absolute; inset: 5mm;
           border: 0.8mm solid ${goldColor};
           border-radius: 1mm;
-          pointer-events: none; z-index: 2;
+          pointer-events: none; z-index: 3;
         }
         .cert::after {
           content: '';
           position: absolute; inset: 7mm;
           border: 0.2mm solid ${goldColor}80;
           border-radius: 1mm;
-          pointer-events: none; z-index: 2;
+          pointer-events: none; z-index: 3;
         }
         .royal-glow {
           position: absolute; width: 80mm; height: 80mm;
           border-radius: 50%; filter: blur(60mm);
-          opacity: 0.35; z-index: 0; pointer-events: none;
+          opacity: 0.35; z-index: 1; pointer-events: none;
         }
         .royal-glow.tl { top: -30mm; left: -30mm; background: ${goldColor}; }
         .royal-glow.br { bottom: -30mm; right: -30mm; background: ${accentColor}; }
@@ -232,7 +231,7 @@ function getTemplateStyles(templateId, accentColor, goldColor, bgImage) {
           content: '';
           position: absolute; inset: 8mm;
           border: 0.3mm solid ${accentColor}40;
-          pointer-events: none; z-index: 2;
+          pointer-events: none; z-index: 3;
         }
         .head { border-bottom: 0.2mm solid ${accentColor}30 !important; }
         .foot { border-top: 0.2mm solid ${accentColor}30 !important; }
@@ -249,7 +248,6 @@ function getTemplateStyles(templateId, accentColor, goldColor, bgImage) {
     }
   }
 
-  // modern (default)
   return {
     bgLayer,
     contentWrap,
@@ -261,6 +259,138 @@ function getTemplateStyles(templateId, accentColor, goldColor, bgImage) {
       <div class="corner br"></div>
     `,
   }
+}
+
+// Build watermark markup for both preview & print
+function buildWatermark({ watermarkText, watermarkMode, watermarkOpacity, accentColor }) {
+  if (!watermarkText) return { printHTML: '', previewNode: null }
+
+  const color = accentColor || '#2563eb'
+
+  if (watermarkMode === 'diagonal') {
+    const printHTML = `
+      <div class="watermark" style="
+        position:absolute; inset:0; z-index:1;
+        display:flex; align-items:center; justify-content:center;
+        pointer-events:none; overflow:hidden;
+      ">
+        <div style="
+          transform: rotate(-30deg);
+          font-size: 90pt;
+          font-weight: 900;
+          color: ${color};
+          opacity: ${watermarkOpacity};
+          letter-spacing: 6mm;
+          text-transform: uppercase;
+          white-space: nowrap;
+          text-align: center;
+        ">${esc(watermarkText)}</div>
+      </div>`
+    const previewNode = (
+      <div style={{ position: 'absolute', inset: 0, zIndex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none', overflow: 'hidden' }}>
+        <div style={{
+          transform: 'rotate(-30deg)',
+          fontSize: '90pt',
+          fontWeight: 900,
+          color,
+          opacity: watermarkOpacity,
+          letterSpacing: '6mm',
+          textTransform: 'uppercase',
+          whiteSpace: 'nowrap',
+          textAlign: 'center',
+        }}>{watermarkText}</div>
+      </div>
+    )
+    return { printHTML, previewNode }
+  }
+
+  if (watermarkMode === 'tiled') {
+    const printHTML = `
+      <div class="watermark" style="
+        position:absolute; inset:0; z-index:1;
+        pointer-events:none; overflow:hidden;
+      ">
+        <div style="
+          position:absolute; inset:-20%;
+          display:grid;
+          grid-template-columns: repeat(4, 1fr);
+          grid-template-rows: repeat(3, 1fr);
+          gap: 6mm;
+          transform: rotate(-25deg);
+        ">
+          ${Array.from({ length: 12 }).map(() => `
+            <div style="
+              display:flex; align-items:center; justify-content:center;
+              font-size: 22pt; font-weight: 800;
+              color: ${color};
+              opacity: ${watermarkOpacity};
+              letter-spacing: 2mm;
+              text-transform: uppercase;
+              white-space: nowrap;
+            ">${esc(watermarkText)}</div>
+          `).join('')}
+        </div>
+      </div>`
+    const previewNode = (
+      <div style={{ position: 'absolute', inset: 0, zIndex: 1, pointerEvents: 'none', overflow: 'hidden' }}>
+        <div style={{
+          position: 'absolute', inset: '-20%',
+          display: 'grid',
+          gridTemplateColumns: 'repeat(4, 1fr)',
+          gridTemplateRows: 'repeat(3, 1fr)',
+          gap: '6mm',
+          transform: 'rotate(-25deg)',
+        }}>
+          {Array.from({ length: 12 }).map((_, i) => (
+            <div key={i} style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: '22pt', fontWeight: 800,
+              color,
+              opacity: watermarkOpacity,
+              letterSpacing: '2mm',
+              textTransform: 'uppercase',
+              whiteSpace: 'nowrap',
+            }}>{watermarkText}</div>
+          ))}
+        </div>
+      </div>
+    )
+    return { printHTML, previewNode }
+  }
+
+  // center (default)
+  const printHTML = `
+    <div class="watermark" style="
+      position:absolute; inset:0; z-index:1;
+      display:flex; align-items:center; justify-content:center;
+      pointer-events:none; overflow:hidden;
+    ">
+      <div style="
+        font-size: 120pt;
+        font-weight: 900;
+        color: ${color};
+        opacity: ${watermarkOpacity};
+        letter-spacing: 8mm;
+        text-transform: uppercase;
+        white-space: nowrap;
+        text-align: center;
+      ">${esc(watermarkText)}</div>
+    </div>`
+  const previewNode = (
+    <div style={{ position: 'absolute', inset: 0, zIndex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none', overflow: 'hidden' }}>
+      <div style={{
+        fontSize: '120pt',
+        fontWeight: 900,
+        color,
+        opacity: watermarkOpacity,
+        letterSpacing: '8mm',
+        textTransform: 'uppercase',
+        whiteSpace: 'nowrap',
+        textAlign: 'center',
+      }}>{watermarkText}</div>
+    </div>
+  )
+  return { printHTML, previewNode }
 }
 
 // ─────────────────────────────────────────────
@@ -293,8 +423,15 @@ export default function CertificatesPage() {
   const [accentColor, setAccentColor] = useState(isAcademy ? '#7c3aed' : '#2563eb')
   const [goldColor, setGoldColor] = useState('#f59e0b')
   const [template, setTemplate] = useState('modern')
+
+  // Background image
   const [bgImage, setBgImage] = useState('')
   const [bgOpacity, setBgOpacity] = useState(1)
+
+  // Watermark text
+  const [watermarkText, setWatermarkText] = useState('')
+  const [watermarkMode, setWatermarkMode] = useState('diagonal') // center | diagonal | tiled
+  const [watermarkOpacity, setWatermarkOpacity] = useState(0.08)
 
   const fileInputRef = useRef(null)
   const hydrated = useRef(false)
@@ -314,6 +451,9 @@ export default function CertificatesPage() {
         if (d.template) setTemplate(d.template)
         if (d.bgImage) setBgImage(d.bgImage)
         if (typeof d.bgOpacity === 'number') setBgOpacity(d.bgOpacity)
+        if (typeof d.watermarkText === 'string') setWatermarkText(d.watermarkText)
+        if (d.watermarkMode) setWatermarkMode(d.watermarkMode)
+        if (typeof d.watermarkOpacity === 'number') setWatermarkOpacity(d.watermarkOpacity)
       }
     } catch {}
     hydrated.current = true
@@ -328,12 +468,11 @@ export default function CertificatesPage() {
           certType, courseName, position, eventName,
           signatureLabel, accentColor, goldColor,
           template, bgImage, bgOpacity,
+          watermarkText, watermarkMode, watermarkOpacity,
         })
       )
-    } catch {
-      // storage may be full if image is huge — ignore
-    }
-  }, [certType, courseName, position, eventName, signatureLabel, accentColor, goldColor, template, bgImage, bgOpacity])
+    } catch {}
+  }, [certType, courseName, position, eventName, signatureLabel, accentColor, goldColor, template, bgImage, bgOpacity, watermarkText, watermarkMode, watermarkOpacity])
 
   useEffect(() => {
     let alive = true
@@ -443,7 +582,6 @@ export default function CertificatesPage() {
     setSerial(serialNumber(certType.slice(0, 4).toUpperCase()))
   }, [certType])
 
-  // ── Background image upload ──
   const handleBgUpload = (e) => {
     const file = e.target.files?.[0]
     if (!file) return
@@ -451,7 +589,6 @@ export default function CertificatesPage() {
       toast.error('Please select an image file')
       return
     }
-    // Limit to ~3MB to keep localStorage happy
     if (file.size > 3 * 1024 * 1024) {
       toast.error('Image too large — please use under 3 MB')
       return
@@ -473,7 +610,7 @@ export default function CertificatesPage() {
   }
 
   // ─────────────────────────────────────────────
-  // PRINT / PDF
+  // PRINT / PDF — A4 landscape exactly, no overflow
   // ─────────────────────────────────────────────
   const handlePrint = () => {
     if (!selectedStudent) {
@@ -491,8 +628,8 @@ export default function CertificatesPage() {
     const s = selectedStudent
 
     const logoHtml = school.logo
-      ? `<img src="${esc(school.logo)}" alt="" style="width:20mm;height:20mm;object-fit:contain;border-radius:3mm;position:relative;z-index:1;" />`
-      : `<div style="width:20mm;height:20mm;border-radius:3mm;background:linear-gradient(135deg,${accentColor},${goldColor});display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:22pt;font-family:'Segoe UI',sans-serif;position:relative;z-index:1;">${esc((school.name || 'S').charAt(0))}</div>`
+      ? `<img src="${esc(school.logo)}" alt="" style="width:20mm;height:20mm;object-fit:contain;border-radius:3mm;position:relative;z-index:2;" />`
+      : `<div style="width:20mm;height:20mm;border-radius:3mm;background:linear-gradient(135deg,${accentColor},${goldColor});display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:22pt;font-family:'Segoe UI',sans-serif;position:relative;z-index:2;">${esc((school.name || 'S').charAt(0))}</div>`
 
     const infoItems = [
       { label: 'Roll No', value: s.rollNo || '—' },
@@ -501,23 +638,41 @@ export default function CertificatesPage() {
       { label: 'Session', value: s.session || session || '—' },
     ]
 
-    const tpl = getTemplateStyles(template, accentColor, goldColor, bgImage)
+    const tpl = getTemplateStyles(template, accentColor, goldColor, bgImage, bgOpacity)
+    const wm = buildWatermark({ watermarkText, watermarkMode, watermarkOpacity, accentColor })
 
     const html = `<!DOCTYPE html>
 <html><head><meta charset="utf-8" />
 <title>${esc(title)} — ${esc(s.name)}</title>
 <style>
-  @page { size: A4 landscape; margin: 0; }
-  * { box-sizing: border-box; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-  html, body { margin: 0; padding: 0; background: #fff; font-family: 'Segoe UI', 'Helvetica Neue', Arial, sans-serif; color: #0f172a; }
+  /* ── Exact A4 landscape page, no margin, no overflow ── */
+  @page {
+    size: 297mm 210mm;
+    margin: 0;
+  }
+  * { box-sizing: border-box; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; color-adjust: exact !important; }
+  html, body {
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 297mm;
+    height: 210mm;
+    background: #fff;
+    overflow: hidden;
+    font-family: 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+    color: #0f172a;
+  }
+  /* The cert fills exactly one A4 landscape page */
   .cert {
-    width: 297mm; height: 210mm;
+    width: 297mm;
+    height: 210mm;
     position: relative;
     overflow: hidden;
     background: #ffffff;
     padding: 12mm;
     display: flex;
     flex-direction: column;
+    page-break-after: avoid;
+    break-after: avoid;
   }
   .bg-image { opacity: ${bgOpacity} !important; }
   .cert .corner {
@@ -539,7 +694,7 @@ export default function CertificatesPage() {
     gap: 6mm;
     padding-bottom: 6mm;
     border-bottom: 0.5mm solid #e2e8f0;
-    z-index: 1;
+    z-index: 2;
   }
   .head .school-block { flex: 1; min-width: 0; }
   .head .school-name {
@@ -571,7 +726,7 @@ export default function CertificatesPage() {
     margin-top: 0.5mm;
   }
 
-  .title-bar { text-align: center; padding: 6mm 0 5mm; position: relative; z-index: 1; }
+  .title-bar { text-align: center; padding: 6mm 0 5mm; position: relative; z-index: 2; }
   .title-badge {
     display: inline-block;
     font-size: 8pt;
@@ -602,7 +757,7 @@ export default function CertificatesPage() {
     border-radius: 1mm;
   }
 
-  .presented { text-align: center; margin-top: 4mm; position: relative; z-index: 1; }
+  .presented { text-align: center; margin-top: 4mm; position: relative; z-index: 2; }
   .presented .label {
     font-size: 9pt;
     color: #64748b;
@@ -637,7 +792,7 @@ export default function CertificatesPage() {
     background: #f8fafc;
     border-radius: 3mm;
     border: 0.3mm solid #e2e8f0;
-    position: relative; z-index: 1;
+    position: relative; z-index: 2;
   }
   .info-cell { text-align: center; }
   .info-cell .k {
@@ -663,7 +818,8 @@ export default function CertificatesPage() {
     color: #334155;
     text-align: center;
     padding: 0 8mm;
-    position: relative; z-index: 1;
+    position: relative; z-index: 2;
+    overflow: hidden;
   }
   .body p { margin: 0; }
   .body strong { color: ${accentColor}; font-weight: 800; }
@@ -675,7 +831,7 @@ export default function CertificatesPage() {
     padding-top: 4mm;
     margin-top: 4mm;
     border-top: 0.5mm solid #e2e8f0;
-    position: relative; z-index: 1;
+    position: relative; z-index: 2;
   }
   .foot .sig-block { text-align: center; min-width: 45mm; }
   .foot .sig-line {
@@ -731,7 +887,7 @@ export default function CertificatesPage() {
     font-family: 'Courier New', monospace;
     letter-spacing: 0.4mm;
     font-weight: 600;
-    z-index: 2;
+    z-index: 3;
   }
 
   ${tpl.extraCSS}
@@ -739,6 +895,7 @@ export default function CertificatesPage() {
 <body>
 <div class="cert">
   ${tpl.bgLayer}
+  ${wm.printHTML}
   ${tpl.cornerOrnaments}
   ${tpl.contentWrap}
     <div class="head">
@@ -807,7 +964,7 @@ export default function CertificatesPage() {
   }
 
   // ─────────────────────────────────────────────
-  // LIVE PREVIEW — mirrors print output
+  // LIVE PREVIEW — mirrors print, exact A4 landscape
   // ─────────────────────────────────────────────
   const Preview = () => {
     if (!selectedStudent) {
@@ -830,8 +987,9 @@ export default function CertificatesPage() {
       { label: 'Session', value: s.session || session || '—' },
     ]
 
-    const tpl = getTemplateStyles(template, accentColor, goldColor, bgImage)
+    const wm = buildWatermark({ watermarkText, watermarkMode, watermarkOpacity, accentColor })
 
+    // Template style overrides for preview
     const styleOverrides = (() => {
       const base = {
         width: '297mm',
@@ -870,7 +1028,7 @@ export default function CertificatesPage() {
     const schoolNameColor = royalStyle ? goldColor : accentColor
     const schoolSubColor = royalStyle ? '#94a3b8' : '#64748b'
     const headBorder = royalStyle ? `${goldColor}60` : `${accentColor}30`
-    const metaLabelColor = royalStyle ? '#94a3b8' : '#94a3b8'
+    const metaLabelColor = '#94a3b8'
     const metaValueColor = royalStyle ? '#f8fafc' : '#0f172a'
     const titleColor = royalStyle ? '#f8fafc' : '#0f172a'
     const titleAccent = royalStyle ? goldColor : accentColor
@@ -879,7 +1037,7 @@ export default function CertificatesPage() {
     const underlineColor = royalStyle ? accentColor : goldColor
     const infoBg = royalStyle ? '#1e293b' : '#f8fafc'
     const infoBorder = royalStyle ? `${goldColor}50` : '#e2e8f0'
-    const infoK = royalStyle ? '#94a3b8' : '#94a3b8'
+    const infoK = '#94a3b8'
     const infoV = royalStyle ? '#f8fafc' : '#0f172a'
     const bodyColor = royalStyle ? '#cbd5e1' : '#334155'
     const footBorder = royalStyle ? `${goldColor}60` : '#e2e8f0'
@@ -907,11 +1065,14 @@ export default function CertificatesPage() {
             />
           )}
 
-          {/* Template-specific decorations */}
+          {/* Watermark text layer */}
+          {wm.previewNode}
+
+          {/* Template decorations */}
           {classicStyle && (
             <>
-              <div style={{ position: 'absolute', inset: '6mm', border: `1.2mm double ${goldColor}`, borderRadius: '2mm', zIndex: 2, pointerEvents: 'none' }} />
-              <div style={{ position: 'absolute', inset: '9mm', border: `0.3mm solid ${accentColor}`, borderRadius: '1mm', zIndex: 2, pointerEvents: 'none' }} />
+              <div style={{ position: 'absolute', inset: '6mm', border: `1.2mm double ${goldColor}`, borderRadius: '2mm', zIndex: 3, pointerEvents: 'none' }} />
+              <div style={{ position: 'absolute', inset: '9mm', border: `0.3mm solid ${accentColor}`, borderRadius: '1mm', zIndex: 3, pointerEvents: 'none' }} />
               <div style={{ position: 'absolute', top: '10mm', left: '10mm', width: '18mm', height: '18mm', borderTop: `0.8mm solid ${goldColor}`, borderLeft: `0.8mm solid ${goldColor}`, borderTopLeftRadius: '3mm', zIndex: 3, pointerEvents: 'none' }} />
               <div style={{ position: 'absolute', top: '10mm', right: '10mm', width: '18mm', height: '18mm', borderTop: `0.8mm solid ${goldColor}`, borderRight: `0.8mm solid ${goldColor}`, borderTopRightRadius: '3mm', zIndex: 3, pointerEvents: 'none' }} />
               <div style={{ position: 'absolute', bottom: '10mm', left: '10mm', width: '18mm', height: '18mm', borderBottom: `0.8mm solid ${goldColor}`, borderLeft: `0.8mm solid ${goldColor}`, borderBottomLeftRadius: '3mm', zIndex: 3, pointerEvents: 'none' }} />
@@ -921,15 +1082,15 @@ export default function CertificatesPage() {
 
           {royalStyle && (
             <>
-              <div style={{ position: 'absolute', inset: '5mm', border: `0.8mm solid ${goldColor}`, borderRadius: '1mm', zIndex: 2, pointerEvents: 'none' }} />
-              <div style={{ position: 'absolute', inset: '7mm', border: `0.2mm solid ${goldColor}80`, borderRadius: '1mm', zIndex: 2, pointerEvents: 'none' }} />
-              <div style={{ position: 'absolute', top: '-30mm', left: '-30mm', width: '80mm', height: '80mm', borderRadius: '50%', background: goldColor, filter: 'blur(60mm)', opacity: 0.35, zIndex: 0, pointerEvents: 'none' }} />
-              <div style={{ position: 'absolute', bottom: '-30mm', right: '-30mm', width: '80mm', height: '80mm', borderRadius: '50%', background: accentColor, filter: 'blur(60mm)', opacity: 0.35, zIndex: 0, pointerEvents: 'none' }} />
+              <div style={{ position: 'absolute', inset: '5mm', border: `0.8mm solid ${goldColor}`, borderRadius: '1mm', zIndex: 3, pointerEvents: 'none' }} />
+              <div style={{ position: 'absolute', inset: '7mm', border: `0.2mm solid ${goldColor}80`, borderRadius: '1mm', zIndex: 3, pointerEvents: 'none' }} />
+              <div style={{ position: 'absolute', top: '-30mm', left: '-30mm', width: '80mm', height: '80mm', borderRadius: '50%', background: goldColor, filter: 'blur(60mm)', opacity: 0.35, zIndex: 1, pointerEvents: 'none' }} />
+              <div style={{ position: 'absolute', bottom: '-30mm', right: '-30mm', width: '80mm', height: '80mm', borderRadius: '50%', background: accentColor, filter: 'blur(60mm)', opacity: 0.35, zIndex: 1, pointerEvents: 'none' }} />
             </>
           )}
 
           {minimalStyle && (
-            <div style={{ position: 'absolute', inset: '8mm', border: `0.3mm solid ${accentColor}40`, zIndex: 2, pointerEvents: 'none' }} />
+            <div style={{ position: 'absolute', inset: '8mm', border: `0.3mm solid ${accentColor}40`, zIndex: 3, pointerEvents: 'none' }} />
           )}
 
           {template === 'modern' && (
@@ -942,13 +1103,12 @@ export default function CertificatesPage() {
           )}
 
           {/* Content */}
-          <div style={{ position: 'relative', zIndex: 1, width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>
-            {/* Header */}
+          <div style={{ position: 'relative', zIndex: 2, width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '6mm', paddingBottom: '6mm', borderBottom: `0.5mm solid ${headBorder}`, position: 'relative' }}>
               {school.logo ? (
-                <img src={school.logo} alt="" style={{ width: '20mm', height: '20mm', objectFit: 'contain', borderRadius: '3mm', position: 'relative', zIndex: 1 }} />
+                <img src={school.logo} alt="" style={{ width: '20mm', height: '20mm', objectFit: 'contain', borderRadius: '3mm', position: 'relative', zIndex: 2 }} />
               ) : (
-                <div style={{ width: '20mm', height: '20mm', borderRadius: '3mm', background: `linear-gradient(135deg, ${accentColor}, ${goldColor})`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 800, fontSize: '22pt', position: 'relative', zIndex: 1 }}>
+                <div style={{ width: '20mm', height: '20mm', borderRadius: '3mm', background: `linear-gradient(135deg, ${accentColor}, ${goldColor})`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 800, fontSize: '22pt', position: 'relative', zIndex: 2 }}>
                   {(school.name || 'S').charAt(0)}
                 </div>
               )}
@@ -968,7 +1128,6 @@ export default function CertificatesPage() {
               </div>
             </div>
 
-            {/* Title */}
             <div style={{ textAlign: 'center', padding: '6mm 0 5mm', position: 'relative' }}>
               <div style={{
                 display: 'inline-block',
@@ -998,7 +1157,6 @@ export default function CertificatesPage() {
               <div style={{ width: minimalStyle ? '20mm' : '30mm', height: minimalStyle ? '0.3mm' : '1mm', background: `linear-gradient(90deg, ${accentColor}, ${goldColor})`, margin: '3mm auto 0', borderRadius: '1mm' }} />
             </div>
 
-            {/* Presented */}
             <div style={{ textAlign: 'center', marginTop: '4mm' }}>
               <div style={{ fontSize: '9pt', color: presentedLabel, textTransform: 'uppercase', letterSpacing: '1mm', fontWeight: 700 }}>
                 This certificate is proudly presented to
@@ -1009,7 +1167,6 @@ export default function CertificatesPage() {
               <div style={{ width: '80mm', height: '0.6mm', background: underlineColor, margin: '3mm auto 0', borderRadius: '1mm' }} />
             </div>
 
-            {/* Info */}
             <div style={{
               display: 'grid',
               gridTemplateColumns: 'repeat(4, 1fr)',
@@ -1028,12 +1185,10 @@ export default function CertificatesPage() {
               ))}
             </div>
 
-            {/* Body */}
-            <div style={{ flex: 1, marginTop: '5mm', fontSize: '12pt', lineHeight: 1.8, color: bodyColor, textAlign: 'center', padding: '0 8mm' }}>
+            <div style={{ flex: 1, marginTop: '5mm', fontSize: '12pt', lineHeight: 1.8, color: bodyColor, textAlign: 'center', padding: '0 8mm', overflow: 'hidden' }}>
               {bodyText}
             </div>
 
-            {/* Footer */}
             <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', paddingTop: '4mm', marginTop: '4mm', borderTop: `0.5mm solid ${footBorder}` }}>
               <div style={{ textAlign: 'center', minWidth: '45mm' }}>
                 <div style={{ width: '45mm', borderTop: `0.4mm solid ${sigLineColor}`, paddingTop: '1.5mm', fontSize: '10pt', fontWeight: 700, color: sigLineColor, margin: '0 auto' }}>
@@ -1050,8 +1205,7 @@ export default function CertificatesPage() {
               </div>
             </div>
 
-            {/* Serial */}
-            <div style={{ position: 'absolute', bottom: '8mm', right: '14mm', fontSize: '7pt', color: royalStyle ? `${goldColor}80` : '#94a3b8', fontFamily: "'Courier New', monospace", letterSpacing: '0.4mm', fontWeight: 600, zIndex: 2 }}>
+            <div style={{ position: 'absolute', bottom: '8mm', right: '14mm', fontSize: '7pt', color: royalStyle ? `${goldColor}80` : '#94a3b8', fontFamily: "'Courier New', monospace", letterSpacing: '0.4mm', fontWeight: 600, zIndex: 3 }}>
               SERIAL: {serial}
             </div>
           </div>
@@ -1132,7 +1286,7 @@ export default function CertificatesPage() {
           {/* 3. Background image */}
           <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
             <h3 className="font-bold text-slate-800 mb-3 flex items-center gap-2">
-              <ImageIcon size={16} /> 3. Background / Watermark
+              <ImageIcon size={16} /> 3. Background image
             </h3>
 
             <div className="border-2 border-dashed border-slate-300 rounded-xl p-4 text-center mb-3">
@@ -1149,13 +1303,7 @@ export default function CertificatesPage() {
               )}
             </div>
 
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*"
-              onChange={handleBgUpload}
-              className="hidden"
-            />
+            <input ref={fileInputRef} type="file" accept="image/*" onChange={handleBgUpload} className="hidden" />
 
             <div className="grid grid-cols-2 gap-2">
               <Button onClick={() => fileInputRef.current?.click()} variant="outline" className="gap-2">
@@ -1167,23 +1315,61 @@ export default function CertificatesPage() {
             </div>
 
             <div className="mt-3">
-              <label className={LABEL}>Opacity: {Math.round(bgOpacity * 100)}%</label>
-              <input
-                type="range"
-                min="0" max="1" step="0.05"
-                value={bgOpacity}
-                onChange={(e) => setBgOpacity(Number(e.target.value))}
-                className="w-full accent-indigo-600"
-              />
-              <p className="text-[10px] text-slate-500 mt-1">
-                Lower opacity makes it a watermark. Use 100% for a full template background.
-              </p>
+              <label className={LABEL}>Background opacity: {Math.round(bgOpacity * 100)}%</label>
+              <input type="range" min="0" max="1" step="0.05" value={bgOpacity} onChange={(e) => setBgOpacity(Number(e.target.value))} className="w-full accent-indigo-600" />
             </div>
           </div>
 
-          {/* 4. Student filter */}
+          {/* 4. Watermark text */}
           <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
-            <h3 className="font-bold text-slate-800 mb-3">4. Choose student</h3>
+            <h3 className="font-bold text-slate-800 mb-3 flex items-center gap-2">
+              <Droplets size={16} /> 4. Watermark text
+            </h3>
+
+            <label className={LABEL}>Watermark text</label>
+            <input
+              className={INPUT + ' mb-3'}
+              value={watermarkText}
+              onChange={(e) => setWatermarkText(e.target.value)}
+              placeholder="e.g. ORIGINAL · SAMPLE · NOT VALID WITHOUT SEAL"
+            />
+
+            <label className={LABEL}>Position</label>
+            <div className="grid grid-cols-3 gap-2 mb-3">
+              {[
+                { v: 'center', t: 'Center' },
+                { v: 'diagonal', t: 'Diagonal' },
+                { v: 'tiled', t: 'Tiled' },
+              ].map((opt) => (
+                <button
+                  key={opt.v}
+                  onClick={() => setWatermarkMode(opt.v)}
+                  className={`px-2 py-1.5 rounded-lg text-xs font-bold border-2 transition ${
+                    watermarkMode === opt.v
+                      ? 'bg-indigo-600 text-white border-indigo-600'
+                      : 'bg-white text-slate-600 border-slate-200 hover:border-indigo-400'
+                  }`}
+                >
+                  {opt.t}
+                </button>
+              ))}
+            </div>
+
+            <label className={LABEL}>Watermark opacity: {Math.round(watermarkOpacity * 100)}%</label>
+            <input
+              type="range" min="0.02" max="0.6" step="0.01"
+              value={watermarkOpacity}
+              onChange={(e) => setWatermarkOpacity(Number(e.target.value))}
+              className="w-full accent-indigo-600"
+            />
+            <p className="text-[10px] text-slate-500 mt-1">
+              Low values (5–10%) look like a subtle watermark. Use higher for bold stamps.
+            </p>
+          </div>
+
+          {/* 5. Student filter */}
+          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
+            <h3 className="font-bold text-slate-800 mb-3">5. Choose student</h3>
 
             <div className="grid grid-cols-3 gap-2 mb-3">
               <div>
@@ -1243,9 +1429,9 @@ export default function CertificatesPage() {
             )}
           </div>
 
-          {/* 5. Customize */}
+          {/* 6. Customize */}
           <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
-            <h3 className="font-bold text-slate-800 mb-3">5. Customize certificate</h3>
+            <h3 className="font-bold text-slate-800 mb-3">6. Customize certificate</h3>
 
             {certType === 'course' && (
               <div className="mb-3">
@@ -1310,7 +1496,7 @@ export default function CertificatesPage() {
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
               <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Live Preview</span>
-              <span className="text-[11px] text-slate-400">— {certTypes.find((c) => c.id === certType)?.name} · {template}</span>
+              <span className="text-[11px] text-slate-400">— {certTypes.find((c) => c.id === certType)?.name} · {template} · A4 landscape</span>
             </div>
             <div className="text-[11px] text-slate-400 font-mono">#{serial}</div>
           </div>
@@ -1319,7 +1505,7 @@ export default function CertificatesPage() {
 
           <div className="flex items-center justify-between mt-3">
             <p className="text-[11px] text-slate-400">
-              Enable "Background graphics" in the print dialog to keep all colors, borders, and the uploaded background.
+              Enable "Background graphics" in the print dialog to keep colors, borders, background image, and watermark.
             </p>
             <Button onClick={handlePrint} disabled={!selectedStudent} className="gap-2 bg-indigo-600 hover:bg-indigo-700 text-white">
               <Download size={15} /> Print / Save PDF
