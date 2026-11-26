@@ -15,7 +15,7 @@ import { useProgram } from '@/src/context/ProgramContext'
 // ─────────────────────────────────────────────
 // Constants
 // ─────────────────────────────────────────────
-const STORAGE_KEY = 'paper_simple_v2'
+const STORAGE_KEY = 'paper_simple_v3'
 
 const GRADES = [
   'Nursery', 'Prep',
@@ -102,19 +102,26 @@ export default function PaperComposingPage() {
   const programValue = ctx.program || 'school'
   const isAcademy = programValue === 'academy'
 
-  const [school, setSchool] = useState({ name: '', address: '', phone: '', logo: '' })
+  // School info (English + Urdu variants, both editable)
+  const [school, setSchool] = useState({
+    name: '', address: '', phone: '', logo: '',
+    nameUr: '', addressUr: '', phoneUr: '',
+  })
   const [sessionOptions, setSessionOptions] = useState([])
 
   const [meta, setMeta] = useState({
     pageSize: 'A4',
     term: 'Mid Term',
     subject: '',
+    subjectUr: '',
     grade: '',
     section: '',
     session: '',
     timeAllowed: '2 hours',
     instructions: 'Attempt all questions.',
+    instructionsUr: '',
     signatureLabel: 'Principal',
+    signatureLabelUr: '',
     accent: '#1e40af',
     font: "'Segoe UI', Arial, sans-serif",
     showLogo: true,
@@ -136,6 +143,7 @@ export default function PaperComposingPage() {
         const d = JSON.parse(raw)
         if (d.meta) setMeta((m) => ({ ...m, ...d.meta }))
         if (Array.isArray(d.questions)) setQuestions(d.questions)
+        if (d.school) setSchool((s) => ({ ...s, ...d.school }))
       }
     } catch {}
     hydrated.current = true
@@ -144,23 +152,25 @@ export default function PaperComposingPage() {
   useEffect(() => {
     if (!hydrated.current) return
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({ meta, questions }))
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ meta, questions, school }))
     } catch {}
-  }, [meta, questions])
+  }, [meta, questions, school])
 
-  // ── School info ──
+  // ── School info (auto-fill English; Urdu stays user-editable) ──
   useEffect(() => {
     let alive = true
     GlobalApi.GetSchoolInfo()
       .then((res) => {
         const d = res?.data
         if (!alive || !d) return
-        setSchool({
-          name: d.schoolName || d.name || '',
-          address: d.address || '',
-          phone: d.phone || d.contact || '',
-          logo: d.logo || '',
-        })
+        setSchool((s) => ({
+          ...s,
+          // don't overwrite anything the user already typed
+          name: s.name || d.schoolName || d.name || '',
+          address: s.address || d.address || '',
+          phone: s.phone || d.phone || d.contact || '',
+          logo: s.logo || d.logo || '',
+        }))
       })
       .catch(() => {})
     return () => { alive = false }
@@ -189,6 +199,16 @@ export default function PaperComposingPage() {
     return () => { alive = false }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [programValue])
+
+  // ── Resolved values (fallback to English if Urdu blank) ──
+  const resolved = {
+    schoolName:  isRTL ? (school.nameUr || school.name || 'School Name') : (school.name || 'School Name'),
+    schoolAddr:  isRTL ? (school.addressUr || school.address) : school.address,
+    schoolPhone: isRTL ? (school.phoneUr || school.phone) : school.phone,
+    subject:     isRTL ? (meta.subjectUr || meta.subject) : meta.subject,
+    instructions: isRTL ? (meta.instructionsUr || meta.instructions) : meta.instructions,
+    signature:   isRTL ? (meta.signatureLabelUr || L.ur.principal) : (meta.signatureLabel || L.en.principal),
+  }
 
   // ── Question ops ──
   const addQuestion = (type) => {
@@ -282,7 +302,7 @@ export default function PaperComposingPage() {
       toast.error('Please add at least one question')
       return
     }
-    if (!meta.subject || !meta.grade) {
+    if (!resolved.subject || !meta.grade) {
       toast.error('Please fill Subject and Class')
       return
     }
@@ -313,7 +333,7 @@ export default function PaperComposingPage() {
 
     const html = `<!DOCTYPE html>
 <html dir="${dir}" lang="${meta.language}"><head><meta charset="utf-8" />
-<title>${esc(meta.subject || 'Paper')} — ${esc(meta.grade || '')}</title>
+<title>${esc(resolved.subject || 'Paper')} — ${esc(meta.grade || '')}</title>
 <style>
   ${pageCSS}
   * { box-sizing: border-box; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
@@ -359,30 +379,30 @@ export default function PaperComposingPage() {
   <div class="head">
     ${logo}
     <div class="head-info">
-      <div class="school-name">${esc(school.name || 'School Name')}</div>
-      ${school.address ? `<div class="school-addr">${esc(school.address)}</div>` : ''}
-      ${school.phone ? `<div class="school-addr">Phone: ${esc(school.phone)}</div>` : ''}
+      <div class="school-name">${esc(resolved.schoolName)}</div>
+      ${resolved.schoolAddr ? `<div class="school-addr">${esc(resolved.schoolAddr)}</div>` : ''}
+      ${resolved.schoolPhone ? `<div class="school-addr">${isRTL ? 'فون' : 'Phone'}: ${esc(resolved.schoolPhone)}</div>` : ''}
     </div>
   </div>
   <div class="sep"></div>
   ` : ''}
   <div class="title"><div>${esc(isRTL ? (TERMS_UR[meta.term] || meta.term) : meta.term)}${meta.session ? ' — ' + esc(meta.session) : ''}</div></div>
   <div class="meta">
-    <div><b>${labels.subject}:</b> ${esc(meta.subject)}</div>
+    <div><b>${labels.subject}:</b> ${esc(resolved.subject)}</div>
     <div><b>${labels.class}:</b> ${esc(meta.grade)}${meta.section ? ' - ' + esc(meta.section) : ''}</div>
     <div><b>${labels.time}:</b> ${esc(meta.timeAllowed)}</div>
     <div><b>${labels.totalMarks}:</b> ${totalMarks}</div>
     <div><b>${labels.date}:</b> ${fmtDate()}</div>
     <div><b>${labels.session}:</b> ${esc(meta.session || '—')}</div>
   </div>
-  ${meta.instructions ? `<div class="instr"><b>${labels.instructions}:</b> ${esc(meta.instructions)}</div>` : ''}
+  ${resolved.instructions ? `<div class="instr"><b>${labels.instructions}:</b> ${esc(resolved.instructions)}</div>` : ''}
 
   ${questionsHtml}
 
   <div class="foot">
     <div class="sig">
       <div class="sig-line"></div>
-      <div class="sig-label">${esc(isRTL ? labels.principal : meta.signatureLabel)}</div>
+      <div class="sig-label">${esc(resolved.signature)}</div>
     </div>
     <div class="total"><b>${labels.totalMarks}:</b> ${totalMarks}</div>
     <div style="width: 45mm;"></div>
@@ -416,8 +436,8 @@ export default function PaperComposingPage() {
           <div className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white p-1">
             <Languages size={15} className="text-slate-400 mx-1" />
             {[
-              { v: 'en', t: 'English', d: 'ltr' },
-              { v: 'ur', t: 'اردو', d: 'rtl' },
+              { v: 'en', t: 'English' },
+              { v: 'ur', t: 'اردو' },
             ].map((opt) => (
               <button
                 key={opt.v}
@@ -444,6 +464,54 @@ export default function PaperComposingPage() {
       <div className="grid grid-cols-1 xl:grid-cols-[1fr_1fr] gap-6 items-start">
         {/* LEFT: FORM */}
         <div className="space-y-4" dir={isRTL ? 'rtl' : 'ltr'}>
+          {/* STEP 0: School / Header info (editable per language) */}
+          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
+            <div className="flex items-center gap-2 mb-4">
+              <span className="w-6 h-6 rounded-full bg-indigo-600 text-white text-xs font-bold flex items-center justify-center">0</span>
+              <h3 className="font-bold text-slate-800">School / Header Info</h3>
+              <span className="ml-auto text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-indigo-50 text-indigo-700">
+                {isRTL ? 'اردو' : 'English'}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 gap-3">
+              <div>
+                <label className={LABEL}>School name</label>
+                <input
+                  className={INPUT}
+                  value={isRTL ? school.nameUr : school.name}
+                  onChange={(e) => setSchool((s) => ({ ...s, [isRTL ? 'nameUr' : 'name']: e.target.value }))}
+                  placeholder={isRTL ? 'مثال: گرین ووڈ انٹرنیشنل اسکول' : 'e.g. Greenwood International School'}
+                  dir={isRTL ? 'rtl' : 'ltr'}
+                />
+              </div>
+              <div>
+                <label className={LABEL}>Address</label>
+                <input
+                  className={INPUT}
+                  value={isRTL ? school.addressUr : school.address}
+                  onChange={(e) => setSchool((s) => ({ ...s, [isRTL ? 'addressUr' : 'address']: e.target.value }))}
+                  placeholder={isRTL ? 'مثال: ۱۲۳ تعلیم لین، لاہور' : 'e.g. 123 Education Lane, Lahore'}
+                  dir={isRTL ? 'rtl' : 'ltr'}
+                />
+              </div>
+              <div>
+                <label className={LABEL}>Phone</label>
+                <input
+                  className={INPUT}
+                  value={isRTL ? school.phoneUr : school.phone}
+                  onChange={(e) => setSchool((s) => ({ ...s, [isRTL ? 'phoneUr' : 'phone']: e.target.value }))}
+                  placeholder="e.g. 0300-1234567"
+                />
+              </div>
+              <div className="text-[11px] text-slate-500 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                {isRTL
+                  ? 'اگر اردو نام خالی ہو تو انگریزی نام استعمال ہوگا۔'
+                  : 'If the Urdu field is empty, the English value is used as fallback.'}
+              </div>
+            </div>
+          </div>
+
           {/* STEP 1: Paper details */}
           <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
             <div className="flex items-center gap-2 mb-4">
@@ -475,15 +543,16 @@ export default function PaperComposingPage() {
                 <label className={LABEL}>Subject *</label>
                 <input
                   className={INPUT}
-                  value={meta.subject}
-                  onChange={(e) => setMeta((m) => ({ ...m, subject: e.target.value }))}
-                  placeholder="Mathematics"
+                  value={isRTL ? meta.subjectUr : meta.subject}
+                  onChange={(e) => setMeta((m) => ({ ...m, [isRTL ? 'subjectUr' : 'subject']: e.target.value }))}
+                  placeholder={isRTL ? 'مثال: ریاضی' : 'Mathematics'}
+                  dir={isRTL ? 'rtl' : 'ltr'}
                 />
               </div>
               <div>
                 <label className={LABEL}>Term</label>
                 <select className={INPUT} value={meta.term} onChange={(e) => setMeta((m) => ({ ...m, term: e.target.value }))}>
-                  {TERMS.map((t) => <option key={t} value={t}>{t}</option>)}
+                  {TERMS.map((t) => <option key={t} value={t}>{isRTL ? (TERMS_UR[t] || t) : t}</option>)}
                 </select>
               </div>
               <div>
@@ -515,16 +584,28 @@ export default function PaperComposingPage() {
                   onChange={(e) => setMeta((m) => ({ ...m, timeAllowed: e.target.value }))}
                 />
               </div>
+              <div>
+                <label className={LABEL}>Signature label</label>
+                <input
+                  className={INPUT}
+                  value={isRTL ? meta.signatureLabelUr : meta.signatureLabel}
+                  onChange={(e) => setMeta((m) => ({ ...m, [isRTL ? 'signatureLabelUr' : 'signatureLabel']: e.target.value }))}
+                  placeholder={isRTL ? 'پرنسپل' : 'Principal'}
+                  dir={isRTL ? 'rtl' : 'ltr'}
+                />
+              </div>
               <div className="col-span-2">
                 <label className={LABEL}>Instructions</label>
                 <input
                   className={INPUT}
-                  value={meta.instructions}
-                  onChange={(e) => setMeta((m) => ({ ...m, instructions: e.target.value }))}
+                  value={isRTL ? meta.instructionsUr : meta.instructions}
+                  onChange={(e) => setMeta((m) => ({ ...m, [isRTL ? 'instructionsUr' : 'instructions']: e.target.value }))}
+                  placeholder={isRTL ? 'تمام سوالات حل کریں۔' : 'Attempt all questions.'}
+                  dir={isRTL ? 'rtl' : 'ltr'}
                 />
               </div>
               <div className="col-span-2 flex items-center justify-between bg-indigo-50 border border-indigo-200 rounded-lg px-3 py-2">
-                <span className="text-xs font-semibold text-indigo-800">Total Marks</span>
+                <span className="text-xs font-semibold text-indigo-800">{isRTL ? 'کل نمبرات' : 'Total Marks'}</span>
                 <span className="text-lg font-extrabold text-indigo-700">{totalMarks}</span>
               </div>
             </div>
@@ -622,7 +703,7 @@ export default function PaperComposingPage() {
                 marginBottom: meta.pageSize === 'A5' ? '-30mm' : '-110mm',
               }}
             >
-              <PreviewContent meta={meta} questions={questions} school={school} totalMarks={totalMarks} />
+              <PreviewContent meta={meta} questions={questions} school={school} totalMarks={totalMarks} resolved={resolved} />
             </div>
           </div>
         </div>
@@ -797,7 +878,7 @@ function QuestionCard({ q, index, isFirst, isLast, onUpdate, onRemove, onMove, o
 // ─────────────────────────────────────────────
 // Preview content (mirrors print exactly)
 // ─────────────────────────────────────────────
-function PreviewContent({ meta, questions, school, totalMarks }) {
+function PreviewContent({ meta, questions, school, totalMarks, resolved }) {
   const isRTL = meta.language === 'ur'
   const labels = L[meta.language] || L.en
   const dir = isRTL ? 'rtl' : 'ltr'
@@ -817,13 +898,15 @@ function PreviewContent({ meta, questions, school, totalMarks }) {
             )}
             <div style={{ flex: 1, textAlign: align }}>
               <div style={{ fontSize: '16pt', fontWeight: 800, color: meta.accent, textTransform: 'uppercase', lineHeight: 1.1 }}>
-                {school.name || 'School Name'}
+                {resolved.schoolName}
               </div>
-              {school.address && (
-                <div style={{ fontSize: '8.5pt', color: '#475569', marginTop: '0.6mm' }}>{school.address}</div>
+              {resolved.schoolAddr && (
+                <div style={{ fontSize: '8.5pt', color: '#475569', marginTop: '0.6mm' }}>{resolved.schoolAddr}</div>
               )}
-              {school.phone && (
-                <div style={{ fontSize: '8.5pt', color: '#475569' }}>Phone: {school.phone}</div>
+              {resolved.schoolPhone && (
+                <div style={{ fontSize: '8.5pt', color: '#475569' }}>
+                  {isRTL ? 'فون' : 'Phone'}: {resolved.schoolPhone}
+                </div>
               )}
             </div>
           </div>
@@ -839,7 +922,7 @@ function PreviewContent({ meta, questions, school, totalMarks }) {
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1.5mm 5mm', fontSize: '9.5pt', marginBottom: '2.5mm', textAlign: align }}>
-        <div><b style={{ color: meta.accent }}>{labels.subject}:</b> {meta.subject || '—'}</div>
+        <div><b style={{ color: meta.accent }}>{labels.subject}:</b> {resolved.subject || '—'}</div>
         <div><b style={{ color: meta.accent }}>{labels.class}:</b> {meta.grade || '—'}{meta.section ? ' - ' + meta.section : ''}</div>
         <div><b style={{ color: meta.accent }}>{labels.time}:</b> {meta.timeAllowed}</div>
         <div><b style={{ color: meta.accent }}>{labels.totalMarks}:</b> {totalMarks}</div>
@@ -847,9 +930,9 @@ function PreviewContent({ meta, questions, school, totalMarks }) {
         <div><b style={{ color: meta.accent }}>{labels.session}:</b> {meta.session || '—'}</div>
       </div>
 
-      {meta.instructions && (
+      {resolved.instructions && (
         <div style={{ fontSize: '8.5pt', color: '#475569', background: '#f8fafc', padding: '2mm 3mm', borderRight: isRTL ? `1mm solid ${meta.accent}` : 'none', borderLeft: isRTL ? 'none' : `1mm solid ${meta.accent}`, marginBottom: '3mm', borderRadius: '1mm', textAlign: align }}>
-          <b style={{ color: '#0f172a' }}>{labels.instructions}:</b> {meta.instructions}
+          <b style={{ color: '#0f172a' }}>{labels.instructions}:</b> {resolved.instructions}
         </div>
       )}
 
@@ -867,7 +950,7 @@ function PreviewContent({ meta, questions, school, totalMarks }) {
         <div style={{ minWidth: '45mm', textAlign: 'center' }}>
           <div style={{ width: '40mm', borderTop: '0.3mm solid #0f172a', margin: '0 auto' }} />
           <div style={{ fontSize: '8.5pt', color: '#475569', marginTop: '1mm' }}>
-            {isRTL ? labels.principal : meta.signatureLabel}
+            {resolved.signature}
           </div>
         </div>
         <div style={{ flex: 1, textAlign: 'center', fontSize: '9pt' }}>
