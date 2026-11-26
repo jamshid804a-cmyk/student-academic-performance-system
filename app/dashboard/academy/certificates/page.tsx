@@ -6,7 +6,8 @@ import { Button } from '@/components/ui/button'
 import {
   ScrollText, Printer, Download, Loader2, Search,
   CheckCircle2, Award, GraduationCap, BookOpen, Sparkles,
-  RotateCcw, Type, Palette,
+  RotateCcw, Type, Palette, Image as ImageIcon, Upload, X,
+  Crown, Minimize2, LayoutTemplate,
 } from 'lucide-react'
 import GlobalApi from '@/app/_services/GlobalApi'
 import { useProgram } from '@/src/context/ProgramContext'
@@ -14,7 +15,7 @@ import { useProgram } from '@/src/context/ProgramContext'
 // ─────────────────────────────────────────────
 // Constants
 // ─────────────────────────────────────────────
-const STORAGE_KEY = 'certificates_v2_modern'
+const STORAGE_KEY = 'certificates_v3_templates'
 
 const GRADES = [
   'Nursery', 'Prep',
@@ -40,6 +41,14 @@ const CERT_TYPES = {
     { id: 'leaving', name: 'Leaving Certificate', icon: GraduationCap, color: 'from-blue-500 to-indigo-600', accent: '#2563eb' },
   ],
 }
+
+// 4 totally different templates
+const TEMPLATES = [
+  { id: 'modern',  name: 'Modern',  desc: 'Clean, corporate',        icon: LayoutTemplate, preview: 'linear-gradient(135deg,#2563eb,#f59e0b)' },
+  { id: 'classic', name: 'Classic', desc: 'Ornate, traditional',     icon: BookOpen,        preview: 'linear-gradient(135deg,#7c2d12,#f59e0b)' },
+  { id: 'royal',   name: 'Royal',   desc: 'Dark navy + gold',        icon: Crown,           preview: 'linear-gradient(135deg,#0f172a,#d4af37)' },
+  { id: 'minimal', name: 'Minimal', desc: 'Thin border, airy',       icon: Minimize2,       preview: 'linear-gradient(135deg,#f1f5f9,#94a3b8)' },
+]
 
 const DEFAULT_BODIES = {
   character: (s, school) =>
@@ -103,6 +112,158 @@ const fmtDate = (d = new Date()) =>
   })
 
 // ─────────────────────────────────────────────
+// Template style builders (used by print & preview)
+// ─────────────────────────────────────────────
+function getTemplateStyles(templateId, accentColor, goldColor, bgImage) {
+  const bgLayer = bgImage
+    ? `<div class="bg-image" style="position:absolute;inset:0;background-image:url('${bgImage}');background-size:cover;background-position:center;background-repeat:no-repeat;opacity:1;z-index:0;pointer-events:none;"></div>`
+    : ''
+
+  const contentWrap = `<div class="content" style="position:relative;z-index:1;width:100%;height:100%;display:flex;flex-direction:column;">`
+
+  if (templateId === 'classic') {
+    return {
+      bgLayer,
+      contentWrap,
+      extraCSS: `
+        .cert::before {
+          content: '';
+          position: absolute; inset: 6mm;
+          border: 1.2mm double ${goldColor};
+          border-radius: 2mm;
+          pointer-events: none;
+          z-index: 2;
+        }
+        .cert::after {
+          content: '';
+          position: absolute; inset: 9mm;
+          border: 0.3mm solid ${accentColor};
+          border-radius: 1mm;
+          pointer-events: none;
+          z-index: 2;
+        }
+        .corner-ornament {
+          position: absolute; width: 18mm; height: 18mm;
+          z-index: 3; pointer-events: none;
+        }
+        .corner-ornament.tl { top: 10mm; left: 10mm; border-top: 0.8mm solid ${goldColor}; border-left: 0.8mm solid ${goldColor}; border-top-left-radius: 3mm; }
+        .corner-ornament.tr { top: 10mm; right: 10mm; border-top: 0.8mm solid ${goldColor}; border-right: 0.8mm solid ${goldColor}; border-top-right-radius: 3mm; }
+        .corner-ornament.bl { bottom: 10mm; left: 10mm; border-bottom: 0.8mm solid ${goldColor}; border-left: 0.8mm solid ${goldColor}; border-bottom-left-radius: 3mm; }
+        .corner-ornament.br { bottom: 10mm; right: 10mm; border-bottom: 0.8mm solid ${goldColor}; border-right: 0.8mm solid ${goldColor}; border-bottom-right-radius: 3mm; }
+        .cert { padding: 16mm !important; }
+      `,
+      cornerOrnaments: `
+        <div class="corner-ornament tl"></div>
+        <div class="corner-ornament tr"></div>
+        <div class="corner-ornament bl"></div>
+        <div class="corner-ornament br"></div>
+      `,
+    }
+  }
+
+  if (templateId === 'royal') {
+    return {
+      bgLayer,
+      contentWrap,
+      extraCSS: `
+        .cert {
+          background: linear-gradient(135deg, #0f172a 0%, #1e293b 60%, #0f172a 100%) !important;
+          color: #f8fafc !important;
+        }
+        .cert::before {
+          content: '';
+          position: absolute; inset: 5mm;
+          border: 0.8mm solid ${goldColor};
+          border-radius: 1mm;
+          pointer-events: none; z-index: 2;
+        }
+        .cert::after {
+          content: '';
+          position: absolute; inset: 7mm;
+          border: 0.2mm solid ${goldColor}80;
+          border-radius: 1mm;
+          pointer-events: none; z-index: 2;
+        }
+        .royal-glow {
+          position: absolute; width: 80mm; height: 80mm;
+          border-radius: 50%; filter: blur(60mm);
+          opacity: 0.35; z-index: 0; pointer-events: none;
+        }
+        .royal-glow.tl { top: -30mm; left: -30mm; background: ${goldColor}; }
+        .royal-glow.br { bottom: -30mm; right: -30mm; background: ${accentColor}; }
+        .head .school-name { color: ${goldColor} !important; }
+        .head .school-sub { color: #94a3b8 !important; }
+        .head { border-bottom: 0.5mm solid ${goldColor}60 !important; }
+        .head .meta-block .meta-label { color: #94a3b8 !important; }
+        .head .meta-block .meta-value { color: #f8fafc !important; }
+        .title-badge { color: ${goldColor} !important; background: ${goldColor}20 !important; }
+        .title-main { color: #f8fafc !important; }
+        .title-main .accent { color: ${goldColor} !important; }
+        .presented .label { color: #94a3b8 !important; }
+        .presented .student-name { color: ${goldColor} !important; }
+        .presented .student-name::after { background: ${accentColor} !important; }
+        .info-grid { background: #1e293b !important; border: 0.3mm solid ${goldColor}50 !important; }
+        .info-cell .k { color: #94a3b8 !important; }
+        .info-cell .v { color: #f8fafc !important; }
+        .body { color: #cbd5e1 !important; }
+        .body strong { color: ${goldColor} !important; }
+        .foot { border-top: 0.5mm solid ${goldColor}60 !important; }
+        .foot .sig-line { border-top: 0.4mm solid ${goldColor} !important; color: ${goldColor} !important; }
+        .foot .sig-label { color: #94a3b8 !important; }
+        .foot .date-value { color: #f8fafc !important; }
+        .foot .date-label { color: #94a3b8 !important; }
+        .foot .seal { border-color: ${goldColor} !important; color: ${goldColor} !important; }
+        .serial { color: ${goldColor}80 !important; }
+        .cert { padding: 14mm !important; }
+      `,
+      cornerOrnaments: `
+        <div class="royal-glow tl"></div>
+        <div class="royal-glow br"></div>
+      `,
+    }
+  }
+
+  if (templateId === 'minimal') {
+    return {
+      bgLayer,
+      contentWrap,
+      extraCSS: `
+        .cert::before {
+          content: '';
+          position: absolute; inset: 8mm;
+          border: 0.3mm solid ${accentColor}40;
+          pointer-events: none; z-index: 2;
+        }
+        .head { border-bottom: 0.2mm solid ${accentColor}30 !important; }
+        .foot { border-top: 0.2mm solid ${accentColor}30 !important; }
+        .title-badge { background: transparent !important; padding: 0 !important; letter-spacing: 3mm !important; }
+        .title-main { font-weight: 300 !important; letter-spacing: 3mm !important; font-size: 30pt !important; }
+        .title-main .accent { font-weight: 800 !important; color: ${accentColor} !important; }
+        .title-divider { width: 20mm !important; height: 0.3mm !important; }
+        .info-grid { background: transparent !important; border: none !important; padding: 0 !important; }
+        .info-cell { border-left: 0.2mm solid ${accentColor}30; }
+        .info-cell:first-child { border-left: none; }
+        .cert { padding: 18mm !important; }
+      `,
+      cornerOrnaments: '',
+    }
+  }
+
+  // modern (default)
+  return {
+    bgLayer,
+    contentWrap,
+    extraCSS: '',
+    cornerOrnaments: `
+      <div class="corner tl"></div>
+      <div class="corner tr"></div>
+      <div class="corner bl"></div>
+      <div class="corner br"></div>
+    `,
+  }
+}
+
+// ─────────────────────────────────────────────
 // Component
 // ─────────────────────────────────────────────
 export default function CertificatesPage() {
@@ -131,7 +292,11 @@ export default function CertificatesPage() {
   const [serial, setSerial] = useState(serialNumber())
   const [accentColor, setAccentColor] = useState(isAcademy ? '#7c3aed' : '#2563eb')
   const [goldColor, setGoldColor] = useState('#f59e0b')
+  const [template, setTemplate] = useState('modern')
+  const [bgImage, setBgImage] = useState('')
+  const [bgOpacity, setBgOpacity] = useState(1)
 
+  const fileInputRef = useRef(null)
   const hydrated = useRef(false)
 
   useEffect(() => {
@@ -146,6 +311,9 @@ export default function CertificatesPage() {
         if (d.signatureLabel) setSignatureLabel(d.signatureLabel)
         if (d.accentColor) setAccentColor(d.accentColor)
         if (d.goldColor) setGoldColor(d.goldColor)
+        if (d.template) setTemplate(d.template)
+        if (d.bgImage) setBgImage(d.bgImage)
+        if (typeof d.bgOpacity === 'number') setBgOpacity(d.bgOpacity)
       }
     } catch {}
     hydrated.current = true
@@ -159,10 +327,13 @@ export default function CertificatesPage() {
         JSON.stringify({
           certType, courseName, position, eventName,
           signatureLabel, accentColor, goldColor,
+          template, bgImage, bgOpacity,
         })
       )
-    } catch {}
-  }, [certType, courseName, position, eventName, signatureLabel, accentColor, goldColor])
+    } catch {
+      // storage may be full if image is huge — ignore
+    }
+  }, [certType, courseName, position, eventName, signatureLabel, accentColor, goldColor, template, bgImage, bgOpacity])
 
   useEffect(() => {
     let alive = true
@@ -272,8 +443,37 @@ export default function CertificatesPage() {
     setSerial(serialNumber(certType.slice(0, 4).toUpperCase()))
   }, [certType])
 
+  // ── Background image upload ──
+  const handleBgUpload = (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    if (!file.type.startsWith('image/')) {
+      toast.error('Please select an image file')
+      return
+    }
+    // Limit to ~3MB to keep localStorage happy
+    if (file.size > 3 * 1024 * 1024) {
+      toast.error('Image too large — please use under 3 MB')
+      return
+    }
+    const reader = new FileReader()
+    reader.onload = () => {
+      setBgImage(String(reader.result || ''))
+      toast.success('Background uploaded')
+    }
+    reader.onerror = () => toast.error('Could not read image')
+    reader.readAsDataURL(file)
+    e.target.value = ''
+  }
+
+  const clearBg = () => {
+    setBgImage('')
+    if (fileInputRef.current) fileInputRef.current.value = ''
+    toast.success('Background removed')
+  }
+
   // ─────────────────────────────────────────────
-  // PRINT / PDF — modern clean layout
+  // PRINT / PDF
   // ─────────────────────────────────────────────
   const handlePrint = () => {
     if (!selectedStudent) {
@@ -291,16 +491,17 @@ export default function CertificatesPage() {
     const s = selectedStudent
 
     const logoHtml = school.logo
-      ? `<img src="${esc(school.logo)}" alt="" style="width:20mm;height:20mm;object-fit:contain;border-radius:3mm;" />`
-      : `<div style="width:20mm;height:20mm;border-radius:3mm;background:linear-gradient(135deg,${accentColor},${goldColor});display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:22pt;font-family:'Segoe UI',sans-serif;">${esc((school.name || 'S').charAt(0))}</div>`
+      ? `<img src="${esc(school.logo)}" alt="" style="width:20mm;height:20mm;object-fit:contain;border-radius:3mm;position:relative;z-index:1;" />`
+      : `<div style="width:20mm;height:20mm;border-radius:3mm;background:linear-gradient(135deg,${accentColor},${goldColor});display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:22pt;font-family:'Segoe UI',sans-serif;position:relative;z-index:1;">${esc((school.name || 'S').charAt(0))}</div>`
 
-    // Info grid rows
     const infoItems = [
       { label: 'Roll No', value: s.rollNo || '—' },
       { label: 'Father Name', value: s.fatherName || '—' },
       { label: 'Class', value: `${s.grade || '—'}${s.section ? ' - ' + s.section : ''}` },
       { label: 'Session', value: s.session || session || '—' },
     ]
+
+    const tpl = getTemplateStyles(template, accentColor, goldColor, bgImage)
 
     const html = `<!DOCTYPE html>
 <html><head><meta charset="utf-8" />
@@ -318,19 +519,19 @@ export default function CertificatesPage() {
     display: flex;
     flex-direction: column;
   }
-  /* Corner decorations */
+  .bg-image { opacity: ${bgOpacity} !important; }
   .cert .corner {
     position: absolute;
     width: 40mm; height: 40mm;
     border-radius: 50%;
     opacity: 0.08;
+    z-index: 0;
   }
   .cert .corner.tl { top: -18mm; left: -18mm; background: ${accentColor}; }
   .cert .corner.tr { top: -18mm; right: -18mm; background: ${goldColor}; }
   .cert .corner.bl { bottom: -18mm; left: -18mm; background: ${goldColor}; }
   .cert .corner.br { bottom: -18mm; right: -18mm; background: ${accentColor}; }
 
-  /* Header */
   .head {
     position: relative;
     display: flex;
@@ -338,6 +539,7 @@ export default function CertificatesPage() {
     gap: 6mm;
     padding-bottom: 6mm;
     border-bottom: 0.5mm solid #e2e8f0;
+    z-index: 1;
   }
   .head .school-block { flex: 1; min-width: 0; }
   .head .school-name {
@@ -369,12 +571,7 @@ export default function CertificatesPage() {
     margin-top: 0.5mm;
   }
 
-  /* Title bar */
-  .title-bar {
-    text-align: center;
-    padding: 6mm 0 5mm;
-    position: relative;
-  }
+  .title-bar { text-align: center; padding: 6mm 0 5mm; position: relative; z-index: 1; }
   .title-badge {
     display: inline-block;
     font-size: 8pt;
@@ -390,7 +587,6 @@ export default function CertificatesPage() {
   .title-main {
     font-size: 34pt;
     font-weight: 900;
-    letter-spacing: 1.5mm;
     color: #0f172a;
     text-transform: uppercase;
     line-height: 1;
@@ -406,11 +602,7 @@ export default function CertificatesPage() {
     border-radius: 1mm;
   }
 
-  /* Presented-to block */
-  .presented {
-    text-align: center;
-    margin-top: 4mm;
-  }
+  .presented { text-align: center; margin-top: 4mm; position: relative; z-index: 1; }
   .presented .label {
     font-size: 9pt;
     color: #64748b;
@@ -436,7 +628,6 @@ export default function CertificatesPage() {
     border-radius: 1mm;
   }
 
-  /* Info grid */
   .info-grid {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
@@ -446,6 +637,7 @@ export default function CertificatesPage() {
     background: #f8fafc;
     border-radius: 3mm;
     border: 0.3mm solid #e2e8f0;
+    position: relative; z-index: 1;
   }
   .info-cell { text-align: center; }
   .info-cell .k {
@@ -463,7 +655,6 @@ export default function CertificatesPage() {
     word-break: break-word;
   }
 
-  /* Body */
   .body {
     flex: 1;
     margin-top: 5mm;
@@ -472,11 +663,11 @@ export default function CertificatesPage() {
     color: #334155;
     text-align: center;
     padding: 0 8mm;
+    position: relative; z-index: 1;
   }
   .body p { margin: 0; }
   .body strong { color: ${accentColor}; font-weight: 800; }
 
-  /* Footer */
   .foot {
     display: flex;
     align-items: flex-end;
@@ -484,6 +675,7 @@ export default function CertificatesPage() {
     padding-top: 4mm;
     margin-top: 4mm;
     border-top: 0.5mm solid #e2e8f0;
+    position: relative; z-index: 1;
   }
   .foot .sig-block { text-align: center; min-width: 45mm; }
   .foot .sig-line {
@@ -521,11 +713,7 @@ export default function CertificatesPage() {
     padding: 3mm;
   }
   .foot .date-block { text-align: center; min-width: 45mm; }
-  .foot .date-value {
-    font-size: 10pt;
-    font-weight: 700;
-    color: #0f172a;
-  }
+  .foot .date-value { font-size: 10pt; font-weight: 700; color: #0f172a; }
   .foot .date-label {
     font-size: 8pt;
     color: #64748b;
@@ -543,70 +731,72 @@ export default function CertificatesPage() {
     font-family: 'Courier New', monospace;
     letter-spacing: 0.4mm;
     font-weight: 600;
+    z-index: 2;
   }
+
+  ${tpl.extraCSS}
 </style></head>
 <body>
 <div class="cert">
-  <div class="corner tl"></div>
-  <div class="corner tr"></div>
-  <div class="corner bl"></div>
-  <div class="corner br"></div>
-
-  <div class="head">
-    ${logoHtml}
-    <div class="school-block">
-      <div class="school-name">${esc(school.name || 'School Name')}</div>
-      <div class="school-sub">
-        ${school.address ? esc(school.address) : ''}${school.address && school.phone ? ' &nbsp;•&nbsp; ' : ''}${school.phone ? 'Ph: ' + esc(school.phone) : ''}
+  ${tpl.bgLayer}
+  ${tpl.cornerOrnaments}
+  ${tpl.contentWrap}
+    <div class="head">
+      ${logoHtml}
+      <div class="school-block">
+        <div class="school-name">${esc(school.name || 'School Name')}</div>
+        <div class="school-sub">
+          ${school.address ? esc(school.address) : ''}${school.address && school.phone ? ' &nbsp;•&nbsp; ' : ''}${school.phone ? 'Ph: ' + esc(school.phone) : ''}
+        </div>
+      </div>
+      <div class="meta-block">
+        <div class="meta-label">Serial No.</div>
+        <div class="meta-value">${esc(serial)}</div>
+        <div class="meta-label" style="margin-top:2.5mm;">Issue Date</div>
+        <div class="meta-value">${esc(issueDate)}</div>
       </div>
     </div>
-    <div class="meta-block">
-      <div class="meta-label">Serial No.</div>
-      <div class="meta-value">${esc(serial)}</div>
-      <div class="meta-label" style="margin-top:2.5mm;">Issue Date</div>
-      <div class="meta-value">${esc(issueDate)}</div>
+
+    <div class="title-bar">
+      <div class="title-badge">${esc(title)}</div>
+      <h1 class="title-main">Certificate <span class="accent">of</span> Achievement</h1>
+      <div class="title-divider"></div>
     </div>
-  </div>
 
-  <div class="title-bar">
-    <div class="title-badge">${esc(title)}</div>
-    <h1 class="title-main">Certificate <span class="accent">of</span> Achievement</h1>
-    <div class="title-divider"></div>
-  </div>
+    <div class="presented">
+      <div class="label">This certificate is proudly presented to</div>
+      <div class="student-name">${esc(s.name || 'Student Name')}</div>
+    </div>
 
-  <div class="presented">
-    <div class="label">This certificate is proudly presented to</div>
-    <div class="student-name">${esc(s.name || 'Student Name')}</div>
-  </div>
+    <div class="info-grid">
+      ${infoItems.map((it) => `
+        <div class="info-cell">
+          <div class="k">${esc(it.label)}</div>
+          <div class="v">${esc(it.value)}</div>
+        </div>
+      `).join('')}
+    </div>
 
-  <div class="info-grid">
-    ${infoItems.map((it) => `
-      <div class="info-cell">
-        <div class="k">${esc(it.label)}</div>
-        <div class="v">${esc(it.value)}</div>
+    <div class="body">
+      <p>${esc(bodyText).replace(/\n/g, '<br/>')}</p>
+    </div>
+
+    <div class="foot">
+      <div class="sig-block">
+        <div class="sig-line">${esc(signatureLabel || 'Principal')}</div>
+        <div class="sig-label">Signature &amp; Seal</div>
       </div>
-    `).join('')}
-  </div>
-
-  <div class="body">
-    <p>${esc(bodyText).replace(/\n/g, '<br/>')}</p>
-  </div>
-
-  <div class="foot">
-    <div class="sig-block">
-      <div class="sig-line">${esc(signatureLabel || 'Principal')}</div>
-      <div class="sig-label">Signature &amp; Seal</div>
+      <div class="seal">
+        ${esc(school.name || 'School')}<br/>Official Seal
+      </div>
+      <div class="date-block">
+        <div class="date-value">${esc(issueDate)}</div>
+        <div class="date-label">Date of Issue</div>
+      </div>
     </div>
-    <div class="seal">
-      ${esc(school.name || 'School')}<br/>Official Seal
-    </div>
-    <div class="date-block">
-      <div class="date-value">${esc(issueDate)}</div>
-      <div class="date-label">Date of Issue</div>
-    </div>
-  </div>
 
-  <div class="serial">SERIAL: ${esc(serial)}</div>
+    <div class="serial">SERIAL: ${esc(serial)}</div>
+  </div>
 </div>
 <script>window.onload = function () { setTimeout(function () { window.print() }, 600) }</script>
 </body></html>`
@@ -617,7 +807,7 @@ export default function CertificatesPage() {
   }
 
   // ─────────────────────────────────────────────
-  // LIVE PREVIEW — modern layout, same as print
+  // LIVE PREVIEW — mirrors print output
   // ─────────────────────────────────────────────
   const Preview = () => {
     if (!selectedStudent) {
@@ -640,151 +830,240 @@ export default function CertificatesPage() {
       { label: 'Session', value: s.session || session || '—' },
     ]
 
+    const tpl = getTemplateStyles(template, accentColor, goldColor, bgImage)
+
+    const styleOverrides = (() => {
+      const base = {
+        width: '297mm',
+        height: '210mm',
+        transform: 'scale(0.62)',
+        transformOrigin: 'top center',
+        marginBottom: '-80mm',
+        background: '#ffffff',
+        padding: '12mm',
+        boxSizing: 'border-box',
+        position: 'relative',
+        overflow: 'hidden',
+        fontFamily: "'Segoe UI', 'Helvetica Neue', Arial, sans-serif",
+        color: '#0f172a',
+        display: 'flex',
+        flexDirection: 'column',
+        boxShadow: '0 10px 40px rgba(15,23,42,0.15)',
+        borderRadius: '2mm',
+      }
+      if (template === 'royal') {
+        base.background = 'linear-gradient(135deg, #0f172a 0%, #1e293b 60%, #0f172a 100%)'
+        base.color = '#f8fafc'
+        base.padding = '14mm'
+      } else if (template === 'classic') {
+        base.padding = '16mm'
+      } else if (template === 'minimal') {
+        base.padding = '18mm'
+      }
+      return base
+    })()
+
+    const royalStyle = template === 'royal'
+    const classicStyle = template === 'classic'
+    const minimalStyle = template === 'minimal'
+
+    const schoolNameColor = royalStyle ? goldColor : accentColor
+    const schoolSubColor = royalStyle ? '#94a3b8' : '#64748b'
+    const headBorder = royalStyle ? `${goldColor}60` : `${accentColor}30`
+    const metaLabelColor = royalStyle ? '#94a3b8' : '#94a3b8'
+    const metaValueColor = royalStyle ? '#f8fafc' : '#0f172a'
+    const titleColor = royalStyle ? '#f8fafc' : '#0f172a'
+    const titleAccent = royalStyle ? goldColor : accentColor
+    const presentedLabel = royalStyle ? '#94a3b8' : '#64748b'
+    const studentNameColor = royalStyle ? goldColor : accentColor
+    const underlineColor = royalStyle ? accentColor : goldColor
+    const infoBg = royalStyle ? '#1e293b' : '#f8fafc'
+    const infoBorder = royalStyle ? `${goldColor}50` : '#e2e8f0'
+    const infoK = royalStyle ? '#94a3b8' : '#94a3b8'
+    const infoV = royalStyle ? '#f8fafc' : '#0f172a'
+    const bodyColor = royalStyle ? '#cbd5e1' : '#334155'
+    const footBorder = royalStyle ? `${goldColor}60` : '#e2e8f0'
+    const sigLineColor = royalStyle ? goldColor : '#0f172a'
+    const sigLabelColor = royalStyle ? '#94a3b8' : '#64748b'
+    const dateValue = royalStyle ? '#f8fafc' : '#0f172a'
+    const dateLabel = royalStyle ? '#94a3b8' : '#64748b'
+
     return (
-      <div
-        className="rounded-xl bg-slate-100 p-4 overflow-auto"
-        style={{ maxHeight: '80vh' }}
-      >
-        <div
-          style={{
-            width: '297mm',
-            height: '210mm',
-            transform: 'scale(0.62)',
-            transformOrigin: 'top center',
-            marginBottom: '-80mm',
-            background: '#ffffff',
-            padding: '12mm',
-            boxSizing: 'border-box',
-            position: 'relative',
-            overflow: 'hidden',
-            fontFamily: "'Segoe UI', 'Helvetica Neue', Arial, sans-serif",
-            color: '#0f172a',
-            display: 'flex',
-            flexDirection: 'column',
-            boxShadow: '0 10px 40px rgba(15,23,42,0.15)',
-            borderRadius: '2mm',
-          }}
-        >
-          {/* Corner decorations */}
-          <div style={{ position: 'absolute', top: '-18mm', left: '-18mm', width: '40mm', height: '40mm', borderRadius: '50%', background: accentColor, opacity: 0.08 }} />
-          <div style={{ position: 'absolute', top: '-18mm', right: '-18mm', width: '40mm', height: '40mm', borderRadius: '50%', background: goldColor, opacity: 0.08 }} />
-          <div style={{ position: 'absolute', bottom: '-18mm', left: '-18mm', width: '40mm', height: '40mm', borderRadius: '50%', background: goldColor, opacity: 0.08 }} />
-          <div style={{ position: 'absolute', bottom: '-18mm', right: '-18mm', width: '40mm', height: '40mm', borderRadius: '50%', background: accentColor, opacity: 0.08 }} />
+      <div className="rounded-xl bg-slate-100 p-4 overflow-auto" style={{ maxHeight: '80vh' }}>
+        <div style={styleOverrides}>
+          {/* Background image layer */}
+          {bgImage && (
+            <div
+              style={{
+                position: 'absolute', inset: 0,
+                backgroundImage: `url('${bgImage}')`,
+                backgroundSize: 'cover',
+                backgroundPosition: 'center',
+                backgroundRepeat: 'no-repeat',
+                opacity: bgOpacity,
+                zIndex: 0,
+                pointerEvents: 'none',
+              }}
+            />
+          )}
 
-          {/* Header */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6mm', paddingBottom: '6mm', borderBottom: '0.5mm solid #e2e8f0', position: 'relative' }}>
-            {school.logo ? (
-              <img src={school.logo} alt="" style={{ width: '20mm', height: '20mm', objectFit: 'contain', borderRadius: '3mm' }} />
-            ) : (
-              <div style={{ width: '20mm', height: '20mm', borderRadius: '3mm', background: `linear-gradient(135deg, ${accentColor}, ${goldColor})`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 800, fontSize: '22pt' }}>
-                {(school.name || 'S').charAt(0)}
-              </div>
-            )}
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: '22pt', fontWeight: 800, color: accentColor, lineHeight: 1.1, letterSpacing: '-0.2mm', textTransform: 'uppercase' }}>
-                {school.name || 'School Name'}
-              </div>
-              <div style={{ fontSize: '9pt', color: '#64748b', marginTop: '1.5mm', lineHeight: 1.5 }}>
-                {school.address || ''}{school.address && school.phone ? '  •  ' : ''}{school.phone ? `Ph: ${school.phone}` : ''}
-              </div>
-            </div>
-            <div style={{ textAlign: 'right' }}>
-              <div style={{ fontSize: '7.5pt', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.5mm', fontWeight: 700 }}>
-                Serial No.
-              </div>
-              <div style={{ fontSize: '10pt', color: '#0f172a', fontWeight: 700, marginTop: '0.5mm' }}>
-                {serial}
-              </div>
-              <div style={{ fontSize: '7.5pt', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.5mm', fontWeight: 700, marginTop: '2.5mm' }}>
-                Issue Date
-              </div>
-              <div style={{ fontSize: '10pt', color: '#0f172a', fontWeight: 700, marginTop: '0.5mm' }}>
-                {issueDate}
-              </div>
-            </div>
-          </div>
+          {/* Template-specific decorations */}
+          {classicStyle && (
+            <>
+              <div style={{ position: 'absolute', inset: '6mm', border: `1.2mm double ${goldColor}`, borderRadius: '2mm', zIndex: 2, pointerEvents: 'none' }} />
+              <div style={{ position: 'absolute', inset: '9mm', border: `0.3mm solid ${accentColor}`, borderRadius: '1mm', zIndex: 2, pointerEvents: 'none' }} />
+              <div style={{ position: 'absolute', top: '10mm', left: '10mm', width: '18mm', height: '18mm', borderTop: `0.8mm solid ${goldColor}`, borderLeft: `0.8mm solid ${goldColor}`, borderTopLeftRadius: '3mm', zIndex: 3, pointerEvents: 'none' }} />
+              <div style={{ position: 'absolute', top: '10mm', right: '10mm', width: '18mm', height: '18mm', borderTop: `0.8mm solid ${goldColor}`, borderRight: `0.8mm solid ${goldColor}`, borderTopRightRadius: '3mm', zIndex: 3, pointerEvents: 'none' }} />
+              <div style={{ position: 'absolute', bottom: '10mm', left: '10mm', width: '18mm', height: '18mm', borderBottom: `0.8mm solid ${goldColor}`, borderLeft: `0.8mm solid ${goldColor}`, borderBottomLeftRadius: '3mm', zIndex: 3, pointerEvents: 'none' }} />
+              <div style={{ position: 'absolute', bottom: '10mm', right: '10mm', width: '18mm', height: '18mm', borderBottom: `0.8mm solid ${goldColor}`, borderRight: `0.8mm solid ${goldColor}`, borderBottomRightRadius: '3mm', zIndex: 3, pointerEvents: 'none' }} />
+            </>
+          )}
 
-          {/* Title bar */}
-          <div style={{ textAlign: 'center', padding: '6mm 0 5mm', position: 'relative' }}>
-            <div style={{ display: 'inline-block', fontSize: '8pt', fontWeight: 800, letterSpacing: '2mm', textTransform: 'uppercase', color: accentColor, background: `${accentColor}14`, padding: '1.5mm 4mm', borderRadius: '10mm', marginBottom: '3mm' }}>
-              {ctype.name}
-            </div>
-            <h1 style={{ fontSize: '34pt', fontWeight: 900, letterSpacing: '2mm', color: '#0f172a', textTransform: 'uppercase', lineHeight: 1, margin: 0 }}>
-              Certificate <span style={{ color: accentColor }}>of</span> Achievement
-            </h1>
-            <div style={{ width: '30mm', height: '1mm', background: `linear-gradient(90deg, ${accentColor}, ${goldColor})`, margin: '3mm auto 0', borderRadius: '1mm' }} />
-          </div>
+          {royalStyle && (
+            <>
+              <div style={{ position: 'absolute', inset: '5mm', border: `0.8mm solid ${goldColor}`, borderRadius: '1mm', zIndex: 2, pointerEvents: 'none' }} />
+              <div style={{ position: 'absolute', inset: '7mm', border: `0.2mm solid ${goldColor}80`, borderRadius: '1mm', zIndex: 2, pointerEvents: 'none' }} />
+              <div style={{ position: 'absolute', top: '-30mm', left: '-30mm', width: '80mm', height: '80mm', borderRadius: '50%', background: goldColor, filter: 'blur(60mm)', opacity: 0.35, zIndex: 0, pointerEvents: 'none' }} />
+              <div style={{ position: 'absolute', bottom: '-30mm', right: '-30mm', width: '80mm', height: '80mm', borderRadius: '50%', background: accentColor, filter: 'blur(60mm)', opacity: 0.35, zIndex: 0, pointerEvents: 'none' }} />
+            </>
+          )}
 
-          {/* Presented to */}
-          <div style={{ textAlign: 'center', marginTop: '4mm' }}>
-            <div style={{ fontSize: '9pt', color: '#64748b', textTransform: 'uppercase', letterSpacing: '1mm', fontWeight: 700 }}>
-              This certificate is proudly presented to
-            </div>
-            <div style={{ fontSize: '26pt', fontWeight: 800, color: accentColor, marginTop: '2mm', lineHeight: 1.15, letterSpacing: '0.3mm' }}>
-              {s.name || 'Student Name'}
-            </div>
-            <div style={{ width: '80mm', height: '0.6mm', background: goldColor, margin: '3mm auto 0', borderRadius: '1mm' }} />
-          </div>
+          {minimalStyle && (
+            <div style={{ position: 'absolute', inset: '8mm', border: `0.3mm solid ${accentColor}40`, zIndex: 2, pointerEvents: 'none' }} />
+          )}
 
-          {/* Info grid */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '3mm', marginTop: '6mm', padding: '4mm 5mm', background: '#f8fafc', borderRadius: '3mm', border: '0.3mm solid #e2e8f0' }}>
-            {infoItems.map((it) => (
-              <div key={it.label} style={{ textAlign: 'center' }}>
-                <div style={{ fontSize: '7.5pt', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.4mm', fontWeight: 700 }}>
-                  {it.label}
+          {template === 'modern' && (
+            <>
+              <div style={{ position: 'absolute', top: '-18mm', left: '-18mm', width: '40mm', height: '40mm', borderRadius: '50%', background: accentColor, opacity: 0.08, zIndex: 0 }} />
+              <div style={{ position: 'absolute', top: '-18mm', right: '-18mm', width: '40mm', height: '40mm', borderRadius: '50%', background: goldColor, opacity: 0.08, zIndex: 0 }} />
+              <div style={{ position: 'absolute', bottom: '-18mm', left: '-18mm', width: '40mm', height: '40mm', borderRadius: '50%', background: goldColor, opacity: 0.08, zIndex: 0 }} />
+              <div style={{ position: 'absolute', bottom: '-18mm', right: '-18mm', width: '40mm', height: '40mm', borderRadius: '50%', background: accentColor, opacity: 0.08, zIndex: 0 }} />
+            </>
+          )}
+
+          {/* Content */}
+          <div style={{ position: 'relative', zIndex: 1, width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>
+            {/* Header */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6mm', paddingBottom: '6mm', borderBottom: `0.5mm solid ${headBorder}`, position: 'relative' }}>
+              {school.logo ? (
+                <img src={school.logo} alt="" style={{ width: '20mm', height: '20mm', objectFit: 'contain', borderRadius: '3mm', position: 'relative', zIndex: 1 }} />
+              ) : (
+                <div style={{ width: '20mm', height: '20mm', borderRadius: '3mm', background: `linear-gradient(135deg, ${accentColor}, ${goldColor})`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 800, fontSize: '22pt', position: 'relative', zIndex: 1 }}>
+                  {(school.name || 'S').charAt(0)}
                 </div>
-                <div style={{ fontSize: '11pt', color: '#0f172a', fontWeight: 700, marginTop: '1mm', wordBreak: 'break-word' }}>
-                  {it.value}
+              )}
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: '22pt', fontWeight: 800, color: schoolNameColor, lineHeight: 1.1, letterSpacing: '-0.2mm', textTransform: 'uppercase' }}>
+                  {school.name || 'School Name'}
+                </div>
+                <div style={{ fontSize: '9pt', color: schoolSubColor, marginTop: '1.5mm', lineHeight: 1.5 }}>
+                  {school.address || ''}{school.address && school.phone ? '  •  ' : ''}{school.phone ? `Ph: ${school.phone}` : ''}
                 </div>
               </div>
-            ))}
-          </div>
-
-          {/* Body */}
-          <div style={{ flex: 1, marginTop: '5mm', fontSize: '12pt', lineHeight: 1.8, color: '#334155', textAlign: 'center', padding: '0 8mm' }}>
-            {bodyText}
-          </div>
-
-          {/* Footer */}
-          <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', paddingTop: '4mm', marginTop: '4mm', borderTop: '0.5mm solid #e2e8f0' }}>
-            <div style={{ textAlign: 'center', minWidth: '45mm' }}>
-              <div style={{ width: '45mm', borderTop: '0.4mm solid #0f172a', paddingTop: '1.5mm', fontSize: '10pt', fontWeight: 700, color: '#0f172a', margin: '0 auto' }}>
-                {signatureLabel || 'Principal'}
-              </div>
-              <div style={{ fontSize: '8pt', color: '#64748b', marginTop: '1mm', textTransform: 'uppercase', letterSpacing: '0.4mm' }}>
-                Signature &amp; Seal
+              <div style={{ textAlign: 'right' }}>
+                <div style={{ fontSize: '7.5pt', color: metaLabelColor, textTransform: 'uppercase', letterSpacing: '0.5mm', fontWeight: 700 }}>Serial No.</div>
+                <div style={{ fontSize: '10pt', color: metaValueColor, fontWeight: 700, marginTop: '0.5mm' }}>{serial}</div>
+                <div style={{ fontSize: '7.5pt', color: metaLabelColor, textTransform: 'uppercase', letterSpacing: '0.5mm', fontWeight: 700, marginTop: '2.5mm' }}>Issue Date</div>
+                <div style={{ fontSize: '10pt', color: metaValueColor, fontWeight: 700, marginTop: '0.5mm' }}>{issueDate}</div>
               </div>
             </div>
-            <div style={{ width: '28mm', height: '28mm', border: `0.7mm dashed ${accentColor}`, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center', fontSize: '6.5pt', color: accentColor, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.3mm', lineHeight: 1.3, opacity: 0.75, padding: '3mm', boxSizing: 'border-box' }}>
-              {school.name || 'School'}<br />Official Seal
+
+            {/* Title */}
+            <div style={{ textAlign: 'center', padding: '6mm 0 5mm', position: 'relative' }}>
+              <div style={{
+                display: 'inline-block',
+                fontSize: '8pt',
+                fontWeight: 800,
+                letterSpacing: minimalStyle ? '3mm' : '2mm',
+                textTransform: 'uppercase',
+                color: royalStyle ? goldColor : accentColor,
+                background: minimalStyle ? 'transparent' : (royalStyle ? `${goldColor}20` : `${accentColor}14`),
+                padding: minimalStyle ? '0' : '1.5mm 4mm',
+                borderRadius: '10mm',
+                marginBottom: '3mm',
+              }}>
+                {ctype.name}
+              </div>
+              <h1 style={{
+                fontSize: minimalStyle ? '30pt' : '34pt',
+                fontWeight: minimalStyle ? 300 : 900,
+                letterSpacing: '2mm',
+                color: titleColor,
+                textTransform: 'uppercase',
+                lineHeight: 1,
+                margin: 0,
+              }}>
+                Certificate <span style={{ color: titleAccent, fontWeight: minimalStyle ? 800 : 900 }}>of</span> Achievement
+              </h1>
+              <div style={{ width: minimalStyle ? '20mm' : '30mm', height: minimalStyle ? '0.3mm' : '1mm', background: `linear-gradient(90deg, ${accentColor}, ${goldColor})`, margin: '3mm auto 0', borderRadius: '1mm' }} />
             </div>
-            <div style={{ textAlign: 'center', minWidth: '45mm' }}>
-              <div style={{ fontSize: '10pt', fontWeight: 700, color: '#0f172a' }}>{issueDate}</div>
-              <div style={{ fontSize: '8pt', color: '#64748b', marginTop: '1mm', textTransform: 'uppercase', letterSpacing: '0.4mm' }}>
-                Date of Issue
+
+            {/* Presented */}
+            <div style={{ textAlign: 'center', marginTop: '4mm' }}>
+              <div style={{ fontSize: '9pt', color: presentedLabel, textTransform: 'uppercase', letterSpacing: '1mm', fontWeight: 700 }}>
+                This certificate is proudly presented to
+              </div>
+              <div style={{ fontSize: '26pt', fontWeight: 800, color: studentNameColor, marginTop: '2mm', lineHeight: 1.15, letterSpacing: '0.3mm' }}>
+                {s.name || 'Student Name'}
+              </div>
+              <div style={{ width: '80mm', height: '0.6mm', background: underlineColor, margin: '3mm auto 0', borderRadius: '1mm' }} />
+            </div>
+
+            {/* Info */}
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(4, 1fr)',
+              gap: minimalStyle ? '0' : '3mm',
+              marginTop: '6mm',
+              padding: minimalStyle ? '0' : '4mm 5mm',
+              background: minimalStyle ? 'transparent' : infoBg,
+              borderRadius: '3mm',
+              border: minimalStyle ? 'none' : `0.3mm solid ${infoBorder}`,
+            }}>
+              {infoItems.map((it, idx) => (
+                <div key={it.label} style={{ textAlign: 'center', borderLeft: minimalStyle && idx > 0 ? `0.2mm solid ${accentColor}30` : 'none' }}>
+                  <div style={{ fontSize: '7.5pt', color: infoK, textTransform: 'uppercase', letterSpacing: '0.4mm', fontWeight: 700 }}>{it.label}</div>
+                  <div style={{ fontSize: '11pt', color: infoV, fontWeight: 700, marginTop: '1mm', wordBreak: 'break-word' }}>{it.value}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* Body */}
+            <div style={{ flex: 1, marginTop: '5mm', fontSize: '12pt', lineHeight: 1.8, color: bodyColor, textAlign: 'center', padding: '0 8mm' }}>
+              {bodyText}
+            </div>
+
+            {/* Footer */}
+            <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', paddingTop: '4mm', marginTop: '4mm', borderTop: `0.5mm solid ${footBorder}` }}>
+              <div style={{ textAlign: 'center', minWidth: '45mm' }}>
+                <div style={{ width: '45mm', borderTop: `0.4mm solid ${sigLineColor}`, paddingTop: '1.5mm', fontSize: '10pt', fontWeight: 700, color: sigLineColor, margin: '0 auto' }}>
+                  {signatureLabel || 'Principal'}
+                </div>
+                <div style={{ fontSize: '8pt', color: sigLabelColor, marginTop: '1mm', textTransform: 'uppercase', letterSpacing: '0.4mm' }}>Signature &amp; Seal</div>
+              </div>
+              <div style={{ width: '28mm', height: '28mm', border: `0.7mm dashed ${sigLineColor}`, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center', fontSize: '6.5pt', color: sigLineColor, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.3mm', lineHeight: 1.3, opacity: 0.75, padding: '3mm', boxSizing: 'border-box' }}>
+                {school.name || 'School'}<br />Official Seal
+              </div>
+              <div style={{ textAlign: 'center', minWidth: '45mm' }}>
+                <div style={{ fontSize: '10pt', fontWeight: 700, color: dateValue }}>{issueDate}</div>
+                <div style={{ fontSize: '8pt', color: dateLabel, marginTop: '1mm', textTransform: 'uppercase', letterSpacing: '0.4mm' }}>Date of Issue</div>
               </div>
             </div>
-          </div>
 
-          {/* Serial */}
-          <div style={{ position: 'absolute', bottom: '8mm', right: '14mm', fontSize: '7pt', color: '#94a3b8', fontFamily: "'Courier New', monospace", letterSpacing: '0.4mm', fontWeight: 600 }}>
-            SERIAL: {serial}
+            {/* Serial */}
+            <div style={{ position: 'absolute', bottom: '8mm', right: '14mm', fontSize: '7pt', color: royalStyle ? `${goldColor}80` : '#94a3b8', fontFamily: "'Courier New', monospace", letterSpacing: '0.4mm', fontWeight: 600, zIndex: 2 }}>
+              SERIAL: {serial}
+            </div>
           </div>
         </div>
       </div>
     )
   }
 
-  // ─────────────────────────────────────────────
-  // UI
-  // ─────────────────────────────────────────────
-  const accent = isAcademy
-    ? 'from-violet-500 to-purple-600'
-    : 'from-indigo-500 to-blue-600'
+  const accent = isAcademy ? 'from-violet-500 to-purple-600' : 'from-indigo-500 to-blue-600'
 
   return (
     <div className="p-7">
-      {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
         <div className="flex items-center gap-3">
           <div className={`w-11 h-11 rounded-xl bg-gradient-to-br ${accent} text-white flex items-center justify-center shadow`}>
@@ -792,23 +1071,15 @@ export default function CertificatesPage() {
           </div>
           <div>
             <h2 className="font-bold text-2xl leading-tight">Certificates</h2>
-            <p className="text-xs text-slate-500">
-              Generate modern, professional certificates — print or save as PDF
-            </p>
+            <p className="text-xs text-slate-500">Generate modern, professional certificates — print or save as PDF</p>
           </div>
         </div>
-
-        <Button
-          onClick={handlePrint}
-          disabled={!selectedStudent}
-          className="bg-indigo-600 hover:bg-indigo-700 text-white gap-2"
-        >
+        <Button onClick={handlePrint} disabled={!selectedStudent} className="bg-indigo-600 hover:bg-indigo-700 text-white gap-2">
           <Printer size={16} /> Print / Save PDF
         </Button>
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-[420px_1fr] gap-6 items-start">
-        {/* ── LEFT PANEL ── */}
         <div className="space-y-4">
           {/* 1. Certificate type */}
           <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
@@ -818,15 +1089,10 @@ export default function CertificatesPage() {
                 const Icon = c.icon
                 const active = certType === c.id
                 return (
-                  <button
-                    key={c.id}
-                    onClick={() => setCertType(c.id)}
+                  <button key={c.id} onClick={() => setCertType(c.id)}
                     className={`flex flex-col items-start gap-1.5 p-3 rounded-xl border-2 transition text-left ${
-                      active
-                        ? `border-transparent bg-gradient-to-br ${c.color} text-white shadow`
-                        : 'border-slate-200 bg-white text-slate-700 hover:border-slate-400'
-                    }`}
-                  >
+                      active ? `border-transparent bg-gradient-to-br ${c.color} text-white shadow` : 'border-slate-200 bg-white text-slate-700 hover:border-slate-400'
+                    }`}>
                     <Icon size={18} />
                     <span className="text-xs font-bold leading-tight">{c.name}</span>
                   </button>
@@ -835,9 +1101,89 @@ export default function CertificatesPage() {
             </div>
           </div>
 
-          {/* 2. Student filter */}
+          {/* 2. Template */}
           <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
-            <h3 className="font-bold text-slate-800 mb-3">2. Choose student</h3>
+            <h3 className="font-bold text-slate-800 mb-3">2. Certificate template</h3>
+            <div className="grid grid-cols-2 gap-2">
+              {TEMPLATES.map((t) => {
+                const Icon = t.icon
+                const active = template === t.id
+                return (
+                  <button key={t.id} onClick={() => setTemplate(t.id)}
+                    className={`relative overflow-hidden rounded-xl border-2 p-3 text-left transition ${
+                      active ? 'border-indigo-500 ring-2 ring-indigo-100' : 'border-slate-200 hover:border-slate-400'
+                    }`}>
+                    <div style={{ position: 'absolute', inset: 0, background: t.preview, opacity: 0.12 }} />
+                    <div className="relative flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-lg flex items-center justify-center text-white shadow-sm" style={{ background: t.preview }}>
+                        <Icon size={14} />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="text-xs font-bold text-slate-800">{t.name}</div>
+                        <div className="text-[10px] text-slate-500">{t.desc}</div>
+                      </div>
+                    </div>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+
+          {/* 3. Background image */}
+          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
+            <h3 className="font-bold text-slate-800 mb-3 flex items-center gap-2">
+              <ImageIcon size={16} /> 3. Background / Watermark
+            </h3>
+
+            <div className="border-2 border-dashed border-slate-300 rounded-xl p-4 text-center mb-3">
+              {bgImage ? (
+                <div className="space-y-2">
+                  <img src={bgImage} alt="background" className="w-full h-24 object-cover rounded-lg border border-slate-200" />
+                  <div className="text-[11px] text-slate-500">Background image uploaded</div>
+                </div>
+              ) : (
+                <div className="text-slate-400">
+                  <Upload size={22} className="mx-auto mb-1" />
+                  <div className="text-[11px]">No background uploaded</div>
+                </div>
+              )}
+            </div>
+
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              onChange={handleBgUpload}
+              className="hidden"
+            />
+
+            <div className="grid grid-cols-2 gap-2">
+              <Button onClick={() => fileInputRef.current?.click()} variant="outline" className="gap-2">
+                <Upload size={14} /> Upload
+              </Button>
+              <Button onClick={clearBg} variant="outline" disabled={!bgImage} className="gap-2 text-red-600 border-red-200 hover:bg-red-50">
+                <X size={14} /> Remove
+              </Button>
+            </div>
+
+            <div className="mt-3">
+              <label className={LABEL}>Opacity: {Math.round(bgOpacity * 100)}%</label>
+              <input
+                type="range"
+                min="0" max="1" step="0.05"
+                value={bgOpacity}
+                onChange={(e) => setBgOpacity(Number(e.target.value))}
+                className="w-full accent-indigo-600"
+              />
+              <p className="text-[10px] text-slate-500 mt-1">
+                Lower opacity makes it a watermark. Use 100% for a full template background.
+              </p>
+            </div>
+          </div>
+
+          {/* 4. Student filter */}
+          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
+            <h3 className="font-bold text-slate-800 mb-3">4. Choose student</h3>
 
             <div className="grid grid-cols-3 gap-2 mb-3">
               <div>
@@ -865,12 +1211,7 @@ export default function CertificatesPage() {
 
             <div className="flex items-center gap-2 border border-slate-300 rounded-lg px-3 py-2 mb-3 bg-white">
               <Search size={14} className="text-slate-400" />
-              <input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search name, roll no…"
-                className="flex-1 outline-none text-sm bg-transparent"
-              />
+              <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search name, roll no…" className="flex-1 outline-none text-sm bg-transparent" />
             </div>
 
             <label className={LABEL}>Select student</label>
@@ -879,20 +1220,13 @@ export default function CertificatesPage() {
                 <Loader2 className="w-5 h-5 animate-spin text-indigo-600 mx-auto" />
               </div>
             ) : filteredStudents.length === 0 ? (
-              <p className="py-4 text-center text-sm text-slate-400">
-                No students match these filters
-              </p>
+              <p className="py-4 text-center text-sm text-slate-400">No students match these filters</p>
             ) : (
-              <select
-                className={INPUT}
-                value={selectedStudentId}
-                onChange={(e) => setSelectedStudentId(e.target.value)}
-              >
+              <select className={INPUT} value={selectedStudentId} onChange={(e) => setSelectedStudentId(e.target.value)}>
                 <option value="">— choose a student —</option>
                 {filteredStudents.map((s) => (
                   <option key={studentKey(s)} value={studentKey(s)}>
-                    {s.rollNo ? `[${s.rollNo}] ` : ''}{s.name}
-                    {s.fatherName ? ` s/o ${s.fatherName}` : ''}
+                    {s.rollNo ? `[${s.rollNo}] ` : ''}{s.name}{s.fatherName ? ` s/o ${s.fatherName}` : ''}
                   </option>
                 ))}
               </select>
@@ -909,69 +1243,42 @@ export default function CertificatesPage() {
             )}
           </div>
 
-          {/* 3. Customize */}
+          {/* 5. Customize */}
           <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
-            <h3 className="font-bold text-slate-800 mb-3">3. Customize certificate</h3>
+            <h3 className="font-bold text-slate-800 mb-3">5. Customize certificate</h3>
 
             {certType === 'course' && (
               <div className="mb-3">
                 <label className={LABEL}>Course name</label>
-                <input
-                  className={INPUT}
-                  value={courseName}
-                  onChange={(e) => setCourseName(e.target.value)}
-                  placeholder="MS Word, MS Excel, Web Development…"
-                />
+                <input className={INPUT} value={courseName} onChange={(e) => setCourseName(e.target.value)} placeholder="MS Word, MS Excel…" />
               </div>
             )}
-
             {certType === 'merit' && (
               <div className="mb-3">
                 <label className={LABEL}>Position</label>
                 <select className={INPUT} value={position} onChange={(e) => setPosition(e.target.value)}>
-                  {['1st', '2nd', '3rd', '4th', '5th'].map((p) => (
-                    <option key={p} value={p}>{p}</option>
-                  ))}
+                  {['1st', '2nd', '3rd', '4th', '5th'].map((p) => <option key={p} value={p}>{p}</option>)}
                 </select>
               </div>
             )}
-
             {certType === 'participation' && (
               <div className="mb-3">
                 <label className={LABEL}>Event name</label>
-                <input
-                  className={INPUT}
-                  value={eventName}
-                  onChange={(e) => setEventName(e.target.value)}
-                  placeholder="Annual Function, Sports Day…"
-                />
+                <input className={INPUT} value={eventName} onChange={(e) => setEventName(e.target.value)} placeholder="Annual Function, Sports Day…" />
               </div>
             )}
 
             <label className={LABEL}>Certificate body</label>
-            <textarea
-              className={INPUT + ' mb-3'}
-              rows={5}
-              value={bodyText}
-              onChange={(e) => setBodyText(e.target.value)}
-            />
+            <textarea className={INPUT + ' mb-3'} rows={5} value={bodyText} onChange={(e) => setBodyText(e.target.value)} />
 
             <div className="grid grid-cols-2 gap-3 mb-3">
               <div>
                 <label className={LABEL}>Signature label</label>
-                <input
-                  className={INPUT}
-                  value={signatureLabel}
-                  onChange={(e) => setSignatureLabel(e.target.value)}
-                />
+                <input className={INPUT} value={signatureLabel} onChange={(e) => setSignatureLabel(e.target.value)} />
               </div>
               <div>
                 <label className={LABEL}>Issue date</label>
-                <input
-                  className={INPUT}
-                  value={issueDate}
-                  onChange={(e) => setIssueDate(e.target.value)}
-                />
+                <input className={INPUT} value={issueDate} onChange={(e) => setIssueDate(e.target.value)} />
               </div>
             </div>
 
@@ -979,57 +1286,31 @@ export default function CertificatesPage() {
               <div>
                 <label className={LABEL}>Accent color</label>
                 <div className="flex items-center gap-2">
-                  <input
-                    type="color"
-                    value={accentColor}
-                    onChange={(e) => setAccentColor(e.target.value)}
-                    className="w-9 h-9 rounded border border-slate-300 cursor-pointer p-0.5 bg-white"
-                  />
-                  <input
-                    className={INPUT}
-                    value={accentColor}
-                    onChange={(e) => setAccentColor(e.target.value)}
-                  />
+                  <input type="color" value={accentColor} onChange={(e) => setAccentColor(e.target.value)} className="w-9 h-9 rounded border border-slate-300 cursor-pointer p-0.5 bg-white" />
+                  <input className={INPUT} value={accentColor} onChange={(e) => setAccentColor(e.target.value)} />
                 </div>
               </div>
               <div>
                 <label className={LABEL}>Gold color</label>
                 <div className="flex items-center gap-2">
-                  <input
-                    type="color"
-                    value={goldColor}
-                    onChange={(e) => setGoldColor(e.target.value)}
-                    className="w-9 h-9 rounded border border-slate-300 cursor-pointer p-0.5 bg-white"
-                  />
-                  <input
-                    className={INPUT}
-                    value={goldColor}
-                    onChange={(e) => setGoldColor(e.target.value)}
-                  />
+                  <input type="color" value={goldColor} onChange={(e) => setGoldColor(e.target.value)} className="w-9 h-9 rounded border border-slate-300 cursor-pointer p-0.5 bg-white" />
+                  <input className={INPUT} value={goldColor} onChange={(e) => setGoldColor(e.target.value)} />
                 </div>
               </div>
             </div>
 
-            <Button
-              onClick={() => setSerial(serialNumber(certType.slice(0, 4).toUpperCase()))}
-              variant="outline"
-              className="w-full gap-2 mt-3"
-            >
+            <Button onClick={() => setSerial(serialNumber(certType.slice(0, 4).toUpperCase()))} variant="outline" className="w-full gap-2 mt-3">
               <RotateCcw size={14} /> Regenerate Serial
             </Button>
           </div>
         </div>
 
-        {/* ── RIGHT PANEL: LIVE PREVIEW ── */}
+        {/* Right: Live preview */}
         <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 min-w-0">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
-              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-                Live Preview
-              </span>
-              <span className="text-[11px] text-slate-400">
-                — {certTypes.find((c) => c.id === certType)?.name}
-              </span>
+              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Live Preview</span>
+              <span className="text-[11px] text-slate-400">— {certTypes.find((c) => c.id === certType)?.name} · {template}</span>
             </div>
             <div className="text-[11px] text-slate-400 font-mono">#{serial}</div>
           </div>
@@ -1038,13 +1319,9 @@ export default function CertificatesPage() {
 
           <div className="flex items-center justify-between mt-3">
             <p className="text-[11px] text-slate-400">
-              In the print window, enable "Background graphics" to keep all colors and borders.
+              Enable "Background graphics" in the print dialog to keep all colors, borders, and the uploaded background.
             </p>
-            <Button
-              onClick={handlePrint}
-              disabled={!selectedStudent}
-              className="gap-2 bg-indigo-600 hover:bg-indigo-700 text-white"
-            >
+            <Button onClick={handlePrint} disabled={!selectedStudent} className="gap-2 bg-indigo-600 hover:bg-indigo-700 text-white">
               <Download size={15} /> Print / Save PDF
             </Button>
           </div>
